@@ -14,10 +14,18 @@
       "error": null,
       "pages_crawled": 0,
       "duration_ms": 2569
+    },
+    {
+      "version": 1,
+      "status": "success",
+      "output": [],
+      "error": null,
+      "pages_crawled": 0,
+      "duration_ms": 2769
     }
   ],
   "created_at": "2026-03-20T10:35:28.841527",
-  "updated_at": "2026-03-20T10:38:28.552986",
+  "updated_at": "2026-03-20T10:45:51.065459",
   "messages": [
     {
       "role": "user",

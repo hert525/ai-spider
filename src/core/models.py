@@ -1,58 +1,134 @@
-"""
-Data models for crawler projects.
-"""
+"""Pydantic models for the application."""
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional
 from pydantic import BaseModel, Field
 import uuid
 
 
-class CrawlerStatus(str, Enum):
-    DRAFT = "draft"           # AI generated, not tested yet
-    TESTING = "testing"       # Running sandbox test
-    TESTED = "tested"         # Test completed, awaiting review
-    APPROVED = "approved"     # User approved, ready for deployment
-    RUNNING = "running"       # Deployed and running
-    PAUSED = "paused"
+def _uid() -> str:
+    return uuid.uuid4().hex[:12]
+
+
+# ── Enums ──
+class ProjectMode(str, Enum):
+    SMART_SCRAPER = "smart_scraper"
+    CODE_GENERATOR = "code_generator"
+
+
+class ProjectStatus(str, Enum):
+    DRAFT = "draft"
+    GENERATING = "generating"
+    GENERATED = "generated"
+    TESTING = "testing"
+    TESTED = "tested"
     FAILED = "failed"
-    COMPLETED = "completed"
+    APPROVED = "approved"
 
 
-class CrawlerProject(BaseModel):
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+class TaskStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    PAUSED = "paused"
+
+
+class TaskType(str, Enum):
+    ONE_TIME = "one_time"
+    CRON = "cron"
+    CONTINUOUS = "continuous"
+
+
+class WorkerStatus(str, Enum):
+    ONLINE = "online"
+    OFFLINE = "offline"
+    BUSY = "busy"
+
+
+# ── Project ──
+class Project(BaseModel):
+    id: str = Field(default_factory=_uid)
     name: str = ""
-    description: str = ""  # User's natural language description
+    description: str = ""
     target_url: str = ""
-    code: str = ""         # Generated Python crawler code
-    status: CrawlerStatus = CrawlerStatus.DRAFT
+    mode: ProjectMode = ProjectMode.CODE_GENERATOR
+    status: ProjectStatus = ProjectStatus.DRAFT
+    code: str = ""
+    extracted_data: Optional[list] = None
     version: int = 1
-    test_results: list[dict[str, Any]] = []
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    # Conversation history for iterative refinement
-    messages: list[dict[str, str]] = []
+    messages: list[dict] = []
+    test_results: list[dict] = []
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class TestRun(BaseModel):
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
-    project_id: str
-    code: str
-    status: str = "pending"  # pending / running / success / error
-    output: list[dict[str, Any]] = []
-    error: Optional[str] = None
+# ── Task ──
+class Task(BaseModel):
+    id: str = Field(default_factory=_uid)
+    project_id: str = ""
+    name: str = ""
+    task_type: TaskType = TaskType.ONE_TIME
+    status: TaskStatus = TaskStatus.QUEUED
+    target_urls: list[str] = []
+    cron_expr: str = ""
+    priority: int = 5
+    max_pages: int = 100
+    max_items: int = 10000
+    timeout_seconds: int = 300
+    concurrency: int = 3
+    retry_count: int = 0
+    max_retries: int = 3
+    worker_id: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class TaskRun(BaseModel):
+    id: str = Field(default_factory=_uid)
+    task_id: str = ""
+    worker_id: str = ""
+    status: TaskStatus = TaskStatus.RUNNING
+    items_count: int = 0
+    pages_crawled: int = 0
+    error: str = ""
+    started_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    finished_at: str = ""
+    duration_ms: int = 0
+
+
+# ── Worker ──
+class Worker(BaseModel):
+    id: str = ""
+    hostname: str = ""
+    ip: str = ""
+    status: WorkerStatus = WorkerStatus.ONLINE
+    max_concurrency: int = 3
+    active_jobs: int = 0
+    total_completed: int = 0
+    total_failed: int = 0
+    cpu_percent: float = 0
+    memory_mb: float = 0
+    tags: list[str] = []
+    last_heartbeat: str = Field(default_factory=lambda: datetime.now().isoformat())
+    registered_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+# ── Test result ──
+class TestResult(BaseModel):
+    status: str = "success"
+    output: list[dict] = []
+    error: str = ""
     pages_crawled: int = 0
     duration_ms: int = 0
-    created_at: datetime = Field(default_factory=datetime.now)
 
 
-class CrawlTask(BaseModel):
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
-    project_id: str
-    code: str
-    target_urls: list[str] = []
-    status: str = "queued"  # queued / running / completed / failed
-    total_items: int = 0
-    progress: int = 0
-    worker_id: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.now)
+# ── Data record ──
+class DataRecord(BaseModel):
+    id: str = Field(default_factory=_uid)
+    project_id: str = ""
+    task_id: str = ""
+    task_run_id: str = ""
+    data: dict = {}
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())

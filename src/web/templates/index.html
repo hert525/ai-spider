@@ -1,515 +1,623 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Spider - 智能爬虫平台</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
-<style>
-  body { background: #0a0b10; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
-  .glass-hover:hover { background: rgba(255,255,255,0.08); }
-  .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
-  .btn-primary:hover { background: linear-gradient(135deg, #818cf8, #a78bfa); }
-  .btn-danger { background: #dc2626; } .btn-danger:hover { background: #ef4444; }
-  .btn-success { background: #059669; } .btn-success:hover { background: #10b981; }
-  .btn-outline { border: 1px solid #374151; background: transparent; }
-  .btn-outline:hover { background: rgba(255,255,255,0.06); }
-  .code-area { background: #12131a; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.6; }
-  .chat-user { background: rgba(99,102,241,0.12); border-left: 3px solid #6366f1; }
-  .chat-ai { background: rgba(16,185,129,0.08); border-left: 3px solid #10b981; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .dot-draft { background: #fbbf24; } .dot-testing { background: #3b82f6; animation: pulse 1.5s infinite; }
-  .dot-tested { background: #10b981; } .dot-failed { background: #ef4444; }
-  .dot-approved { background: #8b5cf6; } .dot-running { background: #3b82f6; animation: pulse 1.5s infinite; }
-  .dot-completed { background: #10b981; } .dot-queued { background: #fbbf24; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-  .tab-active { border-bottom: 2px solid #6366f1; color: #fff; }
-  .tab-inactive { color: #6b7280; }
-  .tab-inactive:hover { color: #9ca3af; }
-  .sidebar-item.active { background: rgba(99,102,241,0.15); border-left: 3px solid #6366f1; }
-  .modal-bg { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
-  .toast { animation: slideIn 0.3s ease; }
-  @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } }
-  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Spider - 智能爬虫平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={darkMode:'class',theme:{extend:{colors:{dark:{50:'#f8fafc',100:'#1e293b',200:'#1a2332',300:'#151d2b',400:'#111827',500:'#0d1117',600:'#0a0e14'}}}}}</script>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
+        .btn-primary { background: #238636; color: #fff; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
+        .btn-secondary:hover { background: #30363d; }
+        .btn-danger { background: #da3633; color: #fff; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
+        .input-field { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; color: #c9d1d9; width: 100%; }
+        .input-field:focus { outline: none; border-color: #58a6ff; box-shadow: 0 0 0 3px rgba(56,139,253,0.3); }
+        .tab-active { color: #58a6ff; border-bottom: 2px solid #58a6ff; }
+        .tab-inactive { color: #8b949e; }
+        .tab-inactive:hover { color: #c9d1d9; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .badge-green { background: #238636; color: #fff; }
+        .badge-yellow { background: #9e6a03; color: #fff; }
+        .badge-red { background: #da3633; color: #fff; }
+        .badge-blue { background: #1f6feb; color: #fff; }
+        .badge-gray { background: #30363d; color: #8b949e; }
+        .code-editor { background: #0d1117; color: #c9d1d9; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; border: 1px solid #30363d; border-radius: 6px; padding: 12px; resize: vertical; min-height: 300px; width: 100%; tab-size: 4; line-height: 1.6; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .table-row:hover { background: #1c2128; }
+        .spinner { border: 3px solid #30363d; border-top: 3px solid #58a6ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .chat-msg { padding: 8px 12px; border-radius: 8px; margin: 4px 0; max-width: 85%; }
+        .chat-user { background: #1f6feb; color: #fff; margin-left: auto; }
+        .chat-ai { background: #21262d; color: #c9d1d9; }
+    </style>
 </head>
-<body class="min-h-screen flex flex-col">
-
-<!-- Toast container -->
-<div id="toasts" class="fixed top-4 right-4 z-50 space-y-2"></div>
-
-<!-- Header -->
-<nav class="flex items-center justify-between px-6 py-3 border-b border-gray-800/60">
-  <div class="flex items-center gap-3">
-    <span class="text-2xl">🕷️</span>
-    <h1 class="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">AI Spider</h1>
-  </div>
-  <div class="flex items-center gap-4 text-sm">
-    <span class="text-gray-500" id="statsBar">加载中...</span>
-    <a href="/admin" class="text-gray-400 hover:text-white transition">⚙️ 管理后台</a>
-  </div>
-</nav>
-
-<div class="flex flex-1 overflow-hidden">
-
-  <!-- ══ Sidebar ══ -->
-  <aside class="w-64 border-r border-gray-800/60 flex flex-col">
-    <!-- Tabs -->
-    <div class="flex border-b border-gray-800/60">
-      <button onclick="switchTab('projects')" id="tabProjects" class="flex-1 py-3 text-sm font-medium tab-active">🧪 爬虫项目</button>
-      <button onclick="switchTab('tasks')" id="tabTasks" class="flex-1 py-3 text-sm font-medium tab-inactive">📋 任务</button>
-    </div>
-
-    <!-- Projects list -->
-    <div id="panelProjects" class="flex-1 overflow-y-auto p-3 space-y-1">
-      <button onclick="showCreate()" class="btn-primary w-full py-2 rounded-lg text-white text-sm font-medium mb-3">+ 新建爬虫</button>
-      <div id="projectList"></div>
-    </div>
-
-    <!-- Tasks list -->
-    <div id="panelTasks" class="flex-1 overflow-y-auto p-3 space-y-1 hidden">
-      <div id="taskList"></div>
-    </div>
-  </aside>
-
-  <!-- ══ Main Content ══ -->
-  <main class="flex-1 flex flex-col overflow-hidden">
-
-    <!-- Empty state -->
-    <div id="viewEmpty" class="flex-1 flex items-center justify-center">
-      <div class="text-center max-w-md">
-        <div class="text-7xl mb-6">🕷️</div>
-        <h2 class="text-2xl font-bold mb-2">AI 智能爬虫平台</h2>
-        <p class="text-gray-400 mb-8 leading-relaxed">用自然语言描述你想要的数据，AI 自动生成爬虫代码。<br>测试、迭代、一键部署。</p>
-        <button onclick="showCreate()" class="btn-primary py-3 px-10 rounded-xl text-white font-medium text-lg">🚀 开始创建</button>
-      </div>
-    </div>
-
-    <!-- Create view -->
-    <div id="viewCreate" class="flex-1 p-8 overflow-y-auto hidden">
-      <div class="max-w-2xl mx-auto space-y-6">
-        <h2 class="text-xl font-bold">🆕 创建新爬虫</h2>
-        <div>
-          <label class="block text-sm text-gray-400 mb-1.5">名称 <span class="text-gray-600">(可选)</span></label>
-          <input id="inName" type="text" placeholder="给爬虫起个名字..."
-            class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:border-indigo-500 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-sm text-gray-400 mb-1.5">目标网址</label>
-          <input id="inUrl" type="url" placeholder="https://example.com/products"
-            class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:border-indigo-500 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-sm text-gray-400 mb-1.5">描述你想爬取什么数据</label>
-          <textarea id="inDesc" rows="5" placeholder="例如：爬取所有商品的名称、价格、销量和评分，支持翻页，爬取前10页的数据"
-            class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-white focus:border-indigo-500 focus:outline-none resize-none"></textarea>
-        </div>
-        <button onclick="doCreate()" id="btnCreate" class="btn-primary w-full py-3 rounded-xl text-white font-medium text-lg transition">
-          🤖 AI 生成爬虫代码
-        </button>
-      </div>
-    </div>
-
-    <!-- Project detail view -->
-    <div id="viewProject" class="flex-1 flex flex-col hidden">
-      <!-- Project header -->
-      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800/60">
+<body>
+    <!-- Header -->
+    <header class="border-b border-gray-700 px-6 py-3 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <span class="dot" id="pDot"></span>
-          <h3 class="font-bold text-base" id="pName"></h3>
-          <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded" id="pVersion"></span>
-          <span class="text-xs text-gray-500" id="pStatus"></span>
+            <span class="text-xl">🕷️</span>
+            <h1 class="text-lg font-semibold text-white">AI Spider</h1>
         </div>
-        <div class="flex gap-2">
-          <button onclick="doTest()" class="btn-success px-4 py-1.5 rounded-lg text-sm text-white">▶ 测试运行</button>
-          <button onclick="doApprove()" class="btn-outline px-4 py-1.5 rounded-lg text-sm text-gray-300">✅ 审核通过</button>
-          <button onclick="showDeployModal()" class="btn-primary px-4 py-1.5 rounded-lg text-sm text-white">🚀 部署任务</button>
-          <button onclick="doDeleteProject()" class="btn-outline px-3 py-1.5 rounded-lg text-sm text-red-400 border-red-900 hover:bg-red-900/30">🗑</button>
-        </div>
-      </div>
-
-      <!-- Split view -->
-      <div class="flex-1 flex overflow-hidden">
-        <!-- Code editor -->
-        <div class="flex-1 flex flex-col border-r border-gray-800/60 min-w-0">
-          <div class="px-4 py-2 text-xs text-gray-500 bg-gray-900/50 flex justify-between items-center">
-            <span>📝 crawler.py</span>
-            <span id="codeLen" class="text-gray-600"></span>
-          </div>
-          <textarea id="codeEditor" class="flex-1 code-area p-4 text-green-300 resize-none focus:outline-none w-full" spellcheck="false"></textarea>
-        </div>
-
-        <!-- Right panel -->
-        <div class="w-[380px] flex flex-col min-w-0">
-          <!-- Test results -->
-          <div class="flex-1 overflow-y-auto border-b border-gray-800/60">
-            <div class="px-4 py-2 text-xs text-gray-500 bg-gray-900/50 sticky top-0">📊 测试结果</div>
-            <div id="testResults" class="p-3 text-sm space-y-2">
-              <p class="text-gray-600 text-center py-8">尚未运行测试</p>
+        <div class="flex items-center gap-4">
+            <div class="flex gap-1">
+                <button onclick="switchTab('projects')" id="tab-projects" class="px-3 py-1 text-sm tab-active cursor-pointer">项目</button>
+                <button onclick="switchTab('tasks')" id="tab-tasks" class="px-3 py-1 text-sm tab-inactive cursor-pointer">任务</button>
+                <button onclick="switchTab('data')" id="tab-data" class="px-3 py-1 text-sm tab-inactive cursor-pointer">数据</button>
             </div>
-          </div>
+            <button onclick="showNewProject()" class="btn-primary text-sm">+ 新建项目</button>
+        </div>
+    </header>
 
-          <!-- Chat -->
-          <div class="h-[280px] flex flex-col">
-            <div class="px-4 py-2 text-xs text-gray-500 bg-gray-900/50">💬 对话优化</div>
-            <div id="chatHistory" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
-            <div class="p-3 border-t border-gray-800/60 flex gap-2">
-              <input id="chatInput" type="text" placeholder="告诉 AI 怎么修改代码..."
-                class="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                onkeydown="if(event.key==='Enter'&&!event.shiftKey)doRefine()">
-              <button onclick="doRefine()" class="btn-primary px-4 py-2 rounded-lg text-sm text-white">发送</button>
+    <!-- Main Content -->
+    <main class="p-6 max-w-7xl mx-auto">
+        <!-- Projects Tab -->
+        <div id="view-projects">
+            <div id="project-list" class="space-y-3"></div>
+            <div id="project-empty" class="text-center py-20 text-gray-500">
+                <p class="text-4xl mb-4">🕷️</p>
+                <p>暂无项目，点击右上角"新建项目"开始</p>
             </div>
-          </div>
         </div>
-      </div>
+
+        <!-- Project Detail -->
+        <div id="view-detail" class="hidden">
+            <div class="flex items-center gap-2 mb-4">
+                <button onclick="backToList()" class="btn-secondary text-sm">← 返回</button>
+                <h2 id="detail-name" class="text-lg font-semibold text-white"></h2>
+                <span id="detail-status" class="badge"></span>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <!-- Code Editor -->
+                <div class="card p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-medium text-white">代码编辑器</h3>
+                        <div class="flex gap-2">
+                            <button onclick="testProject()" class="btn-secondary text-xs">▶ 测试</button>
+                            <button onclick="saveCode()" class="btn-primary text-xs">💾 保存</button>
+                        </div>
+                    </div>
+                    <textarea id="code-editor" class="code-editor" spellcheck="false"></textarea>
+                    <!-- Extracted Data (for smart_scraper mode) -->
+                    <div id="extracted-data-section" class="hidden mt-3">
+                        <h4 class="text-sm font-medium text-white mb-2">提取结果</h4>
+                        <pre id="extracted-data" class="code-editor" style="min-height:150px;resize:none;overflow:auto"></pre>
+                    </div>
+                </div>
+                <!-- Chat + Test Results -->
+                <div class="card p-4 flex flex-col" style="max-height:calc(100vh - 200px)">
+                    <div class="flex gap-2 mb-3">
+                        <button onclick="switchDetailTab('chat')" id="dtab-chat" class="text-sm tab-active cursor-pointer px-2 pb-1">对话</button>
+                        <button onclick="switchDetailTab('test')" id="dtab-test" class="text-sm tab-inactive cursor-pointer px-2 pb-1">测试结果</button>
+                        <button onclick="switchDetailTab('deploy')" id="dtab-deploy" class="text-sm tab-inactive cursor-pointer px-2 pb-1">部署</button>
+                    </div>
+                    <!-- Chat -->
+                    <div id="panel-chat" class="flex-1 flex flex-col min-h-0">
+                        <div id="chat-messages" class="flex-1 overflow-y-auto space-y-2 mb-3 flex flex-col"></div>
+                        <div class="flex gap-2">
+                            <input id="chat-input" class="input-field flex-1" placeholder="描述修改需求..." onkeydown="if(event.key==='Enter')sendChat()">
+                            <button onclick="sendChat()" class="btn-primary text-sm">发送</button>
+                        </div>
+                    </div>
+                    <!-- Test Results -->
+                    <div id="panel-test" class="hidden flex-1 overflow-y-auto">
+                        <div id="test-output" class="text-sm text-gray-400">暂无测试结果</div>
+                    </div>
+                    <!-- Deploy -->
+                    <div id="panel-deploy" class="hidden flex-1">
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-sm text-gray-400">任务类型</label>
+                                <select id="deploy-type" class="input-field mt-1">
+                                    <option value="one_time">单次执行</option>
+                                    <option value="cron">定时任务</option>
+                                    <option value="continuous">持续运行</option>
+                                </select>
+                            </div>
+                            <div id="cron-section" class="hidden">
+                                <label class="text-sm text-gray-400">Cron表达式</label>
+                                <input id="deploy-cron" class="input-field mt-1" placeholder="0 */6 * * *">
+                            </div>
+                            <div>
+                                <label class="text-sm text-gray-400">目标URL (每行一个)</label>
+                                <textarea id="deploy-urls" class="input-field mt-1" rows="3"></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-sm text-gray-400">最大页数</label>
+                                    <input id="deploy-pages" type="number" class="input-field mt-1" value="100">
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-400">优先级 (1-10)</label>
+                                    <input id="deploy-priority" type="number" class="input-field mt-1" value="5" min="1" max="10">
+                                </div>
+                            </div>
+                            <button onclick="deployTask()" class="btn-primary w-full">🚀 部署任务</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tasks Tab -->
+        <div id="view-tasks" class="hidden">
+            <div id="task-list" class="space-y-2"></div>
+            <div id="task-empty" class="text-center py-20 text-gray-500">
+                <p>暂无任务</p>
+            </div>
+        </div>
+
+        <!-- Data Tab -->
+        <div id="view-data" class="hidden">
+            <div class="card p-4 mb-4">
+                <div class="flex items-center gap-3 mb-3">
+                    <select id="data-project-filter" class="input-field" style="width:200px" onchange="loadData()">
+                        <option value="">全部项目</option>
+                    </select>
+                    <button onclick="exportData('json')" class="btn-secondary text-sm">📥 JSON</button>
+                    <button onclick="exportData('csv')" class="btn-secondary text-sm">📥 CSV</button>
+                    <span id="data-count" class="text-sm text-gray-500 ml-auto"></span>
+                </div>
+                <div id="data-table-wrap" class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead id="data-thead" class="text-gray-400 border-b border-gray-700"></thead>
+                        <tbody id="data-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="data-pagination" class="flex justify-center gap-2 mt-4"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- New Project Modal -->
+    <div id="modal-new" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+        <div class="modal-content">
+            <h2 class="text-lg font-semibold text-white mb-4">新建项目</h2>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-sm text-gray-400">模式</label>
+                    <div class="flex gap-3 mt-1">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="mode" value="code_generator" checked class="accent-green-500">
+                            <span class="text-sm">代码生成</span>
+                            <span class="text-xs text-gray-500">生成可编辑的爬虫代码</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="mode" value="smart_scraper" class="accent-blue-500">
+                            <span class="text-sm">智能提取</span>
+                            <span class="text-xs text-gray-500">LLM直接提取数据</span>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">目标URL</label>
+                    <input id="new-url" class="input-field mt-1" placeholder="https://example.com">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">需求描述</label>
+                    <textarea id="new-desc" class="input-field mt-1" rows="3" placeholder="描述你想爬取的数据..."></textarea>
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">项目名称 (可选)</label>
+                    <input id="new-name" class="input-field mt-1" placeholder="自动生成">
+                </div>
+                <div class="flex gap-2 justify-end">
+                    <button onclick="document.getElementById('modal-new').classList.add('hidden')" class="btn-secondary">取消</button>
+                    <button onclick="createProject()" id="btn-create" class="btn-primary">🚀 创建</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Task detail view -->
-    <div id="viewTask" class="flex-1 p-6 overflow-y-auto hidden">
-      <div class="max-w-4xl mx-auto">
-        <div class="flex items-center justify-between mb-6">
-          <div class="flex items-center gap-3">
-            <span class="dot" id="tDot"></span>
-            <h3 class="text-xl font-bold" id="tName"></h3>
-            <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded" id="tType"></span>
-          </div>
-          <div class="flex gap-2">
-            <button onclick="doCancelTask()" class="btn-outline px-4 py-1.5 rounded-lg text-sm text-gray-300">⏹ 取消</button>
-            <button onclick="doDeleteTask()" class="btn-outline px-3 py-1.5 rounded-lg text-sm text-red-400 border-red-900 hover:bg-red-900/30">🗑 删除</button>
-          </div>
-        </div>
+    <script>
+    // ── State ──
+    const API = (() => {
+        const base = location.pathname.replace(/\/$/, '');
+        return (path) => `${base}${path}`.replace(/\/+/g, '/');
+    })();
+    let currentProject = null;
+    let dataPage = 1;
 
-        <!-- Task stats -->
-        <div class="grid grid-cols-4 gap-4 mb-6" id="tStats"></div>
+    // ── Utils ──
+    async function api(path, opts = {}) {
+        const url = API(path.startsWith('/api') ? path : `/api/v1${path}`);
+        const res = await fetch(url, {
+            headers: { 'Content-Type': 'application/json', ...opts.headers },
+            ...opts,
+        });
+        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+        return res.json();
+    }
 
-        <!-- Task config -->
-        <div class="glass rounded-xl p-5 mb-6">
-          <h4 class="text-sm font-bold text-gray-400 mb-3">配置</h4>
-          <div id="tConfig" class="grid grid-cols-2 gap-3 text-sm"></div>
-        </div>
+    function statusBadge(status) {
+        const map = {
+            draft: ['草稿', 'badge-gray'],
+            generating: ['生成中', 'badge-blue'],
+            generated: ['已生成', 'badge-green'],
+            testing: ['测试中', 'badge-yellow'],
+            tested: ['已测试', 'badge-green'],
+            failed: ['失败', 'badge-red'],
+            approved: ['已通过', 'badge-green'],
+            queued: ['排队中', 'badge-yellow'],
+            running: ['运行中', 'badge-blue'],
+            success: ['成功', 'badge-green'],
+            cancelled: ['已取消', 'badge-gray'],
+            paused: ['已暂停', 'badge-gray'],
+        };
+        const [text, cls] = map[status] || [status, 'badge-gray'];
+        return `<span class="badge ${cls}">${text}</span>`;
+    }
 
-        <!-- Run history -->
-        <div class="glass rounded-xl p-5">
-          <h4 class="text-sm font-bold text-gray-400 mb-3">运行记录</h4>
-          <div id="tRuns" class="space-y-2"></div>
-        </div>
-      </div>
-    </div>
+    function timeAgo(iso) {
+        if (!iso) return '';
+        const diff = (Date.now() - new Date(iso)) / 1000;
+        if (diff < 60) return '刚刚';
+        if (diff < 3600) return `${Math.floor(diff/60)}分钟前`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}小时前`;
+        return `${Math.floor(diff/86400)}天前`;
+    }
 
-  </main>
-</div>
+    // ── Tabs ──
+    function switchTab(tab) {
+        ['projects', 'tasks', 'data'].forEach(t => {
+            document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
+            document.getElementById(`tab-${t}`).className = `px-3 py-1 text-sm cursor-pointer ${t === tab ? 'tab-active' : 'tab-inactive'}`;
+        });
+        document.getElementById('view-detail').classList.add('hidden');
+        if (tab === 'projects') loadProjects();
+        if (tab === 'tasks') loadTasks();
+        if (tab === 'data') loadData();
+    }
 
-<!-- Deploy Modal -->
-<div id="deployModal" class="fixed inset-0 modal-bg z-40 hidden flex items-center justify-center">
-  <div class="glass rounded-2xl p-6 w-[480px] max-h-[80vh] overflow-y-auto">
-    <h3 class="text-lg font-bold mb-4">🚀 部署爬虫任务</h3>
-    <div class="space-y-4">
-      <div>
-        <label class="block text-sm text-gray-400 mb-1">任务名称</label>
-        <input id="dName" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none">
-      </div>
-      <div>
-        <label class="block text-sm text-gray-400 mb-1">目标URL（每行一个）</label>
-        <textarea id="dUrls" rows="3" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none resize-none"></textarea>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-sm text-gray-400 mb-1">任务类型</label>
-          <select id="dType" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
-            <option value="one_time">单次运行</option>
-            <option value="scheduled">定时运行</option>
-            <option value="continuous">持续运行</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm text-gray-400 mb-1">优先级 (1最高)</label>
-          <input id="dPriority" type="number" value="5" min="1" max="10" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
-        </div>
-      </div>
-      <div id="cronRow" class="hidden">
-        <label class="block text-sm text-gray-400 mb-1">Cron 表达式</label>
-        <input id="dCron" placeholder="0 */6 * * *" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none">
-      </div>
-      <div class="grid grid-cols-3 gap-3">
-        <div>
-          <label class="block text-sm text-gray-400 mb-1">最大页数</label>
-          <input id="dMaxPages" type="number" value="100" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
-        </div>
-        <div>
-          <label class="block text-sm text-gray-400 mb-1">最大数据量</label>
-          <input id="dMaxItems" type="number" value="10000" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
-        </div>
-        <div>
-          <label class="block text-sm text-gray-400 mb-1">超时(秒)</label>
-          <input id="dTimeout" type="number" value="300" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
-        </div>
-      </div>
-    </div>
-    <div class="flex gap-3 mt-6">
-      <button onclick="closeModal()" class="btn-outline flex-1 py-2.5 rounded-lg text-sm text-gray-300">取消</button>
-      <button onclick="doDeploy()" class="btn-primary flex-1 py-2.5 rounded-lg text-sm text-white font-medium">确认部署</button>
-    </div>
-  </div>
-</div>
+    function switchDetailTab(tab) {
+        ['chat', 'test', 'deploy'].forEach(t => {
+            document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
+            document.getElementById(`dtab-${t}`).className = `text-sm cursor-pointer px-2 pb-1 ${t === tab ? 'tab-active' : 'tab-inactive'}`;
+        });
+    }
 
-<script>
-// ── State ──
-const B = (() => { const p = window.location.pathname; return p.startsWith('/spider') ? '/spider' : ''; })();
-let curProject = null, curTask = null, curTab = 'projects';
+    // ── Projects ──
+    async function loadProjects() {
+        try {
+            const projects = await api('/projects');
+            const list = document.getElementById('project-list');
+            const empty = document.getElementById('project-empty');
+            if (!projects.length) {
+                list.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+            list.innerHTML = projects.map(p => `
+                <div class="card p-4 cursor-pointer table-row" onclick="openProject('${p.id}')">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-white font-medium">${p.name || '未命名'}</span>
+                            <span class="badge ${p.mode === 'smart_scraper' ? 'badge-blue' : 'badge-green'} ml-2 text-xs">${p.mode === 'smart_scraper' ? '智能提取' : '代码生成'}</span>
+                            ${statusBadge(p.status)}
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-500">v${p.version || 1}</span>
+                            <span class="text-xs text-gray-500">${timeAgo(p.updated_at)}</span>
+                            <button onclick="event.stopPropagation();deleteProject('${p.id}')" class="text-gray-500 hover:text-red-400 text-sm">🗑️</button>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-1 truncate">${p.description || ''}</p>
+                    ${p.target_url ? `<p class="text-xs text-gray-600 mt-1">🔗 ${p.target_url}</p>` : ''}
+                </div>
+            `).join('');
+        } catch (e) {
+            console.error('Load projects failed:', e);
+        }
+    }
 
-// ── API ──
-async function api(method, path, body) {
-  const o = { method, headers: {'Content-Type':'application/json'} };
-  if (body) o.body = JSON.stringify(body);
-  const r = await fetch(B + path, o);
-  if (!r.ok) { const t = await r.text(); throw new Error(t); }
-  return r.json();
-}
+    async function openProject(id) {
+        try {
+            const p = await api(`/projects/${id}`);
+            currentProject = p;
+            document.getElementById('view-projects').classList.add('hidden');
+            document.getElementById('view-detail').classList.remove('hidden');
+            document.getElementById('detail-name').textContent = p.name || '未命名';
+            document.getElementById('detail-status').innerHTML = statusBadge(p.status).replace(/<\/?span[^>]*>/g, '');
+            
+            const editor = document.getElementById('code-editor');
+            const extractedSection = document.getElementById('extracted-data-section');
+            
+            if (p.mode === 'smart_scraper') {
+                editor.parentElement.querySelector('h3').textContent = '提取结果';
+                editor.classList.add('hidden');
+                extractedSection.classList.remove('hidden');
+                let data = p.extracted_data;
+                if (typeof data === 'string') try { data = JSON.parse(data); } catch {}
+                document.getElementById('extracted-data').textContent = JSON.stringify(data, null, 2);
+            } else {
+                editor.classList.remove('hidden');
+                extractedSection.classList.add('hidden');
+                editor.parentElement.querySelector('h3').textContent = '代码编辑器';
+                editor.value = p.code || '# 等待生成...';
+            }
 
-function toast(msg, type='info') {
-  const el = document.createElement('div');
-  const colors = { info: 'bg-gray-800 border-gray-700', success: 'bg-green-900/80 border-green-700', error: 'bg-red-900/80 border-red-700' };
-  el.className = `toast ${colors[type]||colors.info} border rounded-lg px-4 py-2.5 text-sm shadow-lg`;
-  el.textContent = msg;
-  document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.remove(), 3500);
-}
+            // Load messages
+            const chatDiv = document.getElementById('chat-messages');
+            let messages = p.messages;
+            if (typeof messages === 'string') try { messages = JSON.parse(messages); } catch { messages = []; }
+            chatDiv.innerHTML = (messages || []).map(m =>
+                `<div class="chat-msg ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">${m.content}</div>`
+            ).join('');
+            chatDiv.scrollTop = chatDiv.scrollHeight;
 
-// ── Views ──
-function showView(name) {
-  ['Empty','Create','Project','Task'].forEach(v => document.getElementById('view'+v).classList.toggle('hidden', v!==name));
-}
-function switchTab(tab) {
-  curTab = tab;
-  document.getElementById('tabProjects').className = `flex-1 py-3 text-sm font-medium ${tab==='projects'?'tab-active':'tab-inactive'}`;
-  document.getElementById('tabTasks').className = `flex-1 py-3 text-sm font-medium ${tab==='tasks'?'tab-active':'tab-inactive'}`;
-  document.getElementById('panelProjects').classList.toggle('hidden', tab!=='projects');
-  document.getElementById('panelTasks').classList.toggle('hidden', tab!=='tasks');
-  if (tab==='tasks') loadTasks();
-}
-function showCreate() { showView('Create'); document.getElementById('inDesc').focus(); }
+            // Deploy URLs
+            document.getElementById('deploy-urls').value = p.target_url || '';
 
-// ── Projects ──
-async function loadProjects() {
-  const projects = await api('GET', '/api/projects');
-  const stats = `${projects.length} 个项目`;
-  document.getElementById('statsBar').textContent = stats;
-  const html = projects.map(p => `
-    <div class="glass glass-hover rounded-lg px-3 py-2.5 cursor-pointer sidebar-item ${curProject?.id===p.id?'active':''}" onclick="openProject('${p.id}')">
-      <div class="flex items-center gap-2">
-        <span class="dot dot-${p.status}"></span>
-        <span class="text-sm truncate flex-1">${esc(p.name)}</span>
-      </div>
-      <p class="text-xs text-gray-600 mt-1 truncate">${esc(p.description)}</p>
-    </div>
-  `).join('');
-  document.getElementById('projectList').innerHTML = html;
-}
+            switchDetailTab('chat');
+        } catch (e) {
+            alert('加载项目失败: ' + e.message);
+        }
+    }
 
-async function openProject(id) {
-  curProject = await api('GET', `/api/projects/${id}`);
-  showView('Project');
-  document.getElementById('pName').textContent = curProject.name;
-  document.getElementById('pVersion').textContent = `v${curProject.version}`;
-  document.getElementById('pStatus').textContent = curProject.status;
-  document.getElementById('pDot').className = `dot dot-${curProject.status}`;
-  document.getElementById('codeEditor').value = curProject.code;
-  document.getElementById('codeLen').textContent = `${curProject.code.length} chars`;
-  renderChat(curProject.messages || []);
-  renderResults(curProject.test_results || []);
-  loadProjects(); // Refresh sidebar highlight
-}
+    function backToList() {
+        document.getElementById('view-detail').classList.add('hidden');
+        document.getElementById('view-projects').classList.remove('hidden');
+        currentProject = null;
+        loadProjects();
+    }
 
-function renderChat(msgs) {
-  const el = document.getElementById('chatHistory');
-  el.innerHTML = msgs.map(m => `<div class="px-3 py-2 rounded-lg text-sm ${m.role==='user'?'chat-user':'chat-ai'}">${esc(m.content)}</div>`).join('');
-  el.scrollTop = el.scrollHeight;
-}
+    function showNewProject() {
+        document.getElementById('modal-new').classList.remove('hidden');
+    }
 
-function renderResults(results) {
-  const el = document.getElementById('testResults');
-  if (!results.length) { el.innerHTML = '<p class="text-gray-600 text-center py-8">尚未运行测试</p>'; return; }
-  const last = results[results.length-1];
-  let html = `<div class="flex items-center gap-2 mb-2">
-    <span class="dot dot-${last.status==='success'?'tested':'failed'}"></span>
-    <span class="text-xs text-gray-400">v${last.version} · ${last.duration_ms}ms · ${last.pages_crawled}条数据</span>
-  </div>`;
-  if (last.error) html += `<div class="bg-red-900/30 rounded-lg p-3 text-red-300 text-xs mb-2 font-mono">${esc(last.error)}</div>`;
-  if (last.output?.length) {
-    html += last.output.map(item => `<div class="glass rounded-lg p-2.5 text-xs"><pre class="text-gray-300 whitespace-pre-wrap overflow-x-auto">${esc(JSON.stringify(item,null,2))}</pre></div>`).join('');
-  }
-  el.innerHTML = html;
-}
+    async function createProject() {
+        const btn = document.getElementById('btn-create');
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        const url = document.getElementById('new-url').value.trim();
+        const desc = document.getElementById('new-desc').value.trim();
+        const name = document.getElementById('new-name').value.trim();
 
-async function doCreate() {
-  const btn = document.getElementById('btnCreate');
-  btn.disabled = true; btn.textContent = '⏳ AI 正在生成代码...';
-  try {
-    const p = await api('POST', '/api/projects', {
-      name: document.getElementById('inName').value,
-      description: document.getElementById('inDesc').value,
-      target_url: document.getElementById('inUrl').value,
+        if (!desc) return alert('请输入需求描述');
+        if (!url) return alert('请输入目标URL');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> 生成中...';
+
+        try {
+            const p = await api('/projects', {
+                method: 'POST',
+                body: JSON.stringify({ description: desc, target_url: url, name, mode }),
+            });
+            document.getElementById('modal-new').classList.add('hidden');
+            document.getElementById('new-url').value = '';
+            document.getElementById('new-desc').value = '';
+            document.getElementById('new-name').value = '';
+            openProject(p.id);
+        } catch (e) {
+            alert('创建失败: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '🚀 创建';
+        }
+    }
+
+    async function deleteProject(id) {
+        if (!confirm('确定删除此项目？')) return;
+        await api(`/projects/${id}`, { method: 'DELETE' });
+        loadProjects();
+    }
+
+    async function saveCode() {
+        if (!currentProject) return;
+        const code = document.getElementById('code-editor').value;
+        await api(`/projects/${currentProject.id}/code`, {
+            method: 'PUT',
+            body: JSON.stringify({ code }),
+        });
+        alert('已保存');
+    }
+
+    async function testProject() {
+        if (!currentProject) return;
+        const testBtn = event.target;
+        testBtn.disabled = true;
+        testBtn.textContent = '⏳ 测试中...';
+
+        // Save code first
+        if (currentProject.mode !== 'smart_scraper') {
+            const code = document.getElementById('code-editor').value;
+            await api(`/projects/${currentProject.id}/code`, {
+                method: 'PUT',
+                body: JSON.stringify({ code }),
+            });
+        }
+
+        try {
+            const result = await api(`/projects/${currentProject.id}/test`, {
+                method: 'POST',
+                body: JSON.stringify({ target_url: currentProject.target_url }),
+            });
+            switchDetailTab('test');
+            const output = document.getElementById('test-output');
+            if (result.error) {
+                output.innerHTML = `<div class="text-red-400 mb-2">❌ 错误</div><pre class="text-xs text-gray-400 whitespace-pre-wrap">${result.error}</pre>`;
+            } else {
+                const data = result.output || [];
+                output.innerHTML = `<div class="text-green-400 mb-2">✅ 成功 (${data.length}条, ${result.duration_ms}ms)</div>
+                    <pre class="text-xs text-gray-400 whitespace-pre-wrap" style="max-height:400px;overflow:auto">${JSON.stringify(data, null, 2)}</pre>`;
+            }
+        } catch (e) {
+            switchDetailTab('test');
+            document.getElementById('test-output').innerHTML = `<div class="text-red-400">❌ ${e.message}</div>`;
+        } finally {
+            testBtn.disabled = false;
+            testBtn.textContent = '▶ 测试';
+        }
+    }
+
+    async function sendChat() {
+        if (!currentProject) return;
+        const input = document.getElementById('chat-input');
+        const msg = input.value.trim();
+        if (!msg) return;
+        input.value = '';
+
+        const chatDiv = document.getElementById('chat-messages');
+        chatDiv.innerHTML += `<div class="chat-msg chat-user">${msg}</div>`;
+        chatDiv.innerHTML += `<div class="chat-msg chat-ai" id="chat-pending"><span class="spinner"></span> 思考中...</div>`;
+        chatDiv.scrollTop = chatDiv.scrollHeight;
+
+        try {
+            const result = await api(`/projects/${currentProject.id}/refine`, {
+                method: 'POST',
+                body: JSON.stringify({ feedback: msg }),
+            });
+            document.getElementById('chat-pending').innerHTML = `已修改代码 v${result.version || '?'}`;
+            if (result.code) {
+                document.getElementById('code-editor').value = result.code;
+            }
+            currentProject = result;
+        } catch (e) {
+            document.getElementById('chat-pending').innerHTML = `❌ ${e.message}`;
+        }
+    }
+
+    async function deployTask() {
+        if (!currentProject) return;
+        const type = document.getElementById('deploy-type').value;
+        const urls = document.getElementById('deploy-urls').value.trim().split('\n').filter(Boolean);
+        const maxPages = parseInt(document.getElementById('deploy-pages').value) || 100;
+        const priority = parseInt(document.getElementById('deploy-priority').value) || 5;
+        const cron = document.getElementById('deploy-cron')?.value || '';
+
+        try {
+            await api('/tasks', {
+                method: 'POST',
+                body: JSON.stringify({
+                    project_id: currentProject.id,
+                    target_urls: urls,
+                    task_type: type,
+                    cron_expr: cron,
+                    max_pages: maxPages,
+                    priority,
+                }),
+            });
+            alert('任务已创建');
+            switchTab('tasks');
+        } catch (e) {
+            alert('部署失败: ' + e.message);
+        }
+    }
+
+    // Deploy type toggle
+    document.getElementById('deploy-type')?.addEventListener('change', (e) => {
+        document.getElementById('cron-section').classList.toggle('hidden', e.target.value !== 'cron');
     });
-    toast('爬虫代码已生成！', 'success');
-    await loadProjects();
-    openProject(p.id);
-  } catch(e) { toast('生成失败: '+e.message, 'error'); }
-  finally { btn.disabled = false; btn.textContent = '🤖 AI 生成爬虫代码'; }
-}
 
-async function doTest() {
-  if (!curProject) return;
-  document.getElementById('testResults').innerHTML = '<p class="text-yellow-400 text-center py-8">⏳ 正在沙箱中运行测试...</p>';
-  try {
-    await api('POST', `/api/projects/${curProject.id}/test`, { max_pages: 5 });
-    toast('测试完成', 'success');
-    await openProject(curProject.id);
-  } catch(e) { toast('测试失败: '+e.message, 'error'); }
-}
+    // ── Tasks ──
+    async function loadTasks() {
+        try {
+            const tasks = await api('/tasks');
+            const list = document.getElementById('task-list');
+            const empty = document.getElementById('task-empty');
+            if (!tasks.length) {
+                list.innerHTML = '';
+                empty.classList.remove('hidden');
+                return;
+            }
+            empty.classList.add('hidden');
+            list.innerHTML = tasks.map(t => {
+                let urls = t.target_urls;
+                if (typeof urls === 'string') try { urls = JSON.parse(urls); } catch { urls = []; }
+                return `
+                <div class="card p-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-white text-sm">${t.name || t.id}</span>
+                            ${statusBadge(t.status)}
+                            <span class="badge badge-gray text-xs">${t.task_type}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            ${t.status === 'failed' || t.status === 'cancelled' ? `<button onclick="retryTask('${t.id}')" class="btn-secondary text-xs">🔄</button>` : ''}
+                            ${t.status === 'running' || t.status === 'queued' ? `<button onclick="cancelTask('${t.id}')" class="btn-secondary text-xs">⏹️</button>` : ''}
+                            <button onclick="deleteTask('${t.id}')" class="text-gray-500 hover:text-red-400 text-xs">🗑️</button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1">${(Array.isArray(urls) ? urls : []).join(', ')}</p>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            console.error(e);
+        }
+    }
 
-async function doRefine() {
-  if (!curProject) return;
-  const input = document.getElementById('chatInput');
-  const feedback = input.value.trim();
-  if (!feedback) return;
-  input.value = '';
-  const chat = document.getElementById('chatHistory');
-  chat.innerHTML += `<div class="px-3 py-2 rounded-lg text-sm chat-user">${esc(feedback)}</div>`;
-  chat.innerHTML += `<div class="px-3 py-2 rounded-lg text-sm chat-ai text-gray-500">⏳ AI 正在修改...</div>`;
-  chat.scrollTop = chat.scrollHeight;
-  try {
-    const p = await api('POST', `/api/projects/${curProject.id}/refine`, { feedback });
-    toast('代码已更新', 'success');
-    await openProject(p.id);
-  } catch(e) { toast('修改失败: '+e.message, 'error'); }
-}
+    async function retryTask(id) { await api(`/tasks/${id}/retry`, { method: 'POST' }); loadTasks(); }
+    async function cancelTask(id) { await api(`/tasks/${id}/cancel`, { method: 'POST' }); loadTasks(); }
+    async function deleteTask(id) { if (confirm('确定删除？')) { await api(`/tasks/${id}`, { method: 'DELETE' }); loadTasks(); } }
 
-async function doApprove() {
-  if (!curProject) return;
-  await api('POST', `/api/projects/${curProject.id}/approve`);
-  toast('已审核通过 ✅', 'success');
-  await openProject(curProject.id);
-}
+    // ── Data ──
+    async function loadData() {
+        const projectId = document.getElementById('data-project-filter').value;
+        try {
+            const result = await api(`/data?project_id=${projectId}&page=${dataPage}&page_size=20`);
+            document.getElementById('data-count').textContent = `共 ${result.total} 条`;
+            
+            const items = result.items || [];
+            if (!items.length) {
+                document.getElementById('data-thead').innerHTML = '';
+                document.getElementById('data-tbody').innerHTML = '<tr><td class="text-center py-8 text-gray-500" colspan="99">暂无数据</td></tr>';
+                document.getElementById('data-pagination').innerHTML = '';
+                return;
+            }
 
-async function doDeleteProject() {
-  if (!curProject || !confirm('确认删除该项目？')) return;
-  await api('DELETE', `/api/projects/${curProject.id}`);
-  curProject = null;
-  showView('Empty');
-  await loadProjects();
-  toast('已删除', 'info');
-}
+            // Build table from first item's data keys
+            let firstData = items[0].data;
+            if (typeof firstData === 'string') try { firstData = JSON.parse(firstData); } catch {}
+            const keys = typeof firstData === 'object' ? Object.keys(firstData) : ['data'];
 
-// ── Tasks ──
-async function loadTasks() {
-  const tasks = await api('GET', '/api/tasks');
-  const html = tasks.length ? tasks.map(t => `
-    <div class="glass glass-hover rounded-lg px-3 py-2.5 cursor-pointer sidebar-item ${curTask?.id===t.id?'active':''}" onclick="openTask('${t.id}')">
-      <div class="flex items-center gap-2">
-        <span class="dot dot-${t.status}"></span>
-        <span class="text-sm truncate flex-1">${esc(t.name)}</span>
-      </div>
-      <div class="flex gap-2 text-xs text-gray-600 mt-1">
-        <span>${t.task_type}</span>
-        <span>·</span>
-        <span>${t.total_runs} 次运行</span>
-      </div>
-    </div>
-  `).join('') : '<p class="text-gray-600 text-center py-8 text-sm">暂无任务<br><span class="text-gray-700">在项目中点击"部署任务"创建</span></p>';
-  document.getElementById('taskList').innerHTML = html;
-}
+            document.getElementById('data-thead').innerHTML = '<tr>' + keys.map(k => `<th class="text-left p-2">${k}</th>`).join('') + '</tr>';
+            document.getElementById('data-tbody').innerHTML = items.map(item => {
+                let d = item.data;
+                if (typeof d === 'string') try { d = JSON.parse(d); } catch {}
+                return '<tr class="border-b border-gray-800 table-row">' + keys.map(k => {
+                    let v = typeof d === 'object' ? (d[k] ?? '') : d;
+                    if (typeof v === 'object') v = JSON.stringify(v);
+                    if (typeof v === 'string' && v.length > 80) v = v.slice(0, 80) + '...';
+                    return `<td class="p-2 text-sm">${v}</td>`;
+                }).join('') + '</tr>';
+            }).join('');
 
-async function openTask(id) {
-  curTask = await api('GET', `/api/tasks/${id}`);
-  showView('Task');
-  document.getElementById('tName').textContent = curTask.name;
-  document.getElementById('tDot').className = `dot dot-${curTask.status}`;
-  document.getElementById('tType').textContent = {one_time:'单次',scheduled:'定时',continuous:'持续'}[curTask.task_type]||curTask.task_type;
-  document.getElementById('tStats').innerHTML = [
-    ['总运行', curTask.total_runs, '📊'],
-    ['成功', curTask.successful_runs, '✅'],
-    ['失败', curTask.failed_runs, '❌'],
-    ['数据量', curTask.total_items, '📦'],
-  ].map(([l,v,i]) => `<div class="glass rounded-xl p-4 text-center"><div class="text-2xl mb-1">${i}</div><div class="text-lg font-bold">${v}</div><div class="text-xs text-gray-500">${l}</div></div>`).join('');
-  document.getElementById('tConfig').innerHTML = [
-    ['状态', curTask.status], ['URLs', curTask.target_urls.length],
-    ['最大页数', curTask.max_pages], ['最大数据量', curTask.max_items],
-    ['超时', curTask.timeout_seconds+'s'], ['并发', curTask.concurrency],
-    ['优先级', curTask.priority], ['Cron', curTask.cron_expr||'—'],
-  ].map(([k,v]) => `<div><span class="text-gray-500">${k}:</span> <span class="text-gray-300">${v}</span></div>`).join('');
-  const runs = (curTask.runs||[]).slice(-20).reverse();
-  document.getElementById('tRuns').innerHTML = runs.length ? runs.map(r => `
-    <div class="glass rounded-lg p-3 text-sm flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="dot dot-${r.status}"></span>
-        <span>${r.id}</span>
-      </div>
-      <div class="flex gap-4 text-xs text-gray-500">
-        <span>${r.items_crawled} 条</span>
-        <span>${r.duration_ms}ms</span>
-        <span>${new Date(r.created_at).toLocaleString('zh-CN')}</span>
-      </div>
-    </div>
-  `).join('') : '<p class="text-gray-600 text-sm">暂无运行记录</p>';
-  loadTasks();
-}
+            // Pagination
+            const totalPages = result.total_pages || 1;
+            let pag = '';
+            for (let i = 1; i <= Math.min(totalPages, 10); i++) {
+                pag += `<button onclick="dataPage=${i};loadData()" class="${i === dataPage ? 'btn-primary' : 'btn-secondary'} text-xs">${i}</button>`;
+            }
+            document.getElementById('data-pagination').innerHTML = pag;
+        } catch (e) {
+            console.error(e);
+        }
+    }
 
-async function doCancelTask() {
-  if (!curTask) return;
-  await api('POST', `/api/tasks/${curTask.id}/cancel`);
-  toast('任务已取消', 'info');
-  await openTask(curTask.id);
-}
-async function doDeleteTask() {
-  if (!curTask || !confirm('确认删除？')) return;
-  await api('DELETE', `/api/tasks/${curTask.id}`);
-  curTask = null; showView('Empty'); loadTasks();
-  toast('已删除', 'info');
-}
+    function exportData(format) {
+        const projectId = document.getElementById('data-project-filter').value;
+        window.open(API(`/api/v1/data/export/${format}?project_id=${projectId}`));
+    }
 
-// ── Deploy modal ──
-function showDeployModal() {
-  if (!curProject) return;
-  document.getElementById('dName').value = curProject.name;
-  document.getElementById('dUrls').value = curProject.target_url;
-  document.getElementById('deployModal').classList.remove('hidden');
-}
-function closeModal() { document.getElementById('deployModal').classList.add('hidden'); }
-document.getElementById('dType').addEventListener('change', e => {
-  document.getElementById('cronRow').classList.toggle('hidden', e.target.value !== 'scheduled');
-});
+    // ── Init ──
+    async function init() {
+        loadProjects();
+        // Populate project filter for data tab
+        try {
+            const projects = await api('/projects');
+            const sel = document.getElementById('data-project-filter');
+            projects.forEach(p => {
+                sel.innerHTML += `<option value="${p.id}">${p.name || p.id}</option>`;
+            });
+        } catch {}
+    }
 
-async function doDeploy() {
-  if (!curProject) return;
-  const urls = document.getElementById('dUrls').value.split('\n').map(s=>s.trim()).filter(Boolean);
-  try {
-    const task = await api('POST', '/api/tasks', {
-      project_id: curProject.id,
-      name: document.getElementById('dName').value,
-      target_urls: urls,
-      task_type: document.getElementById('dType').value,
-      cron_expr: document.getElementById('dCron').value,
-      max_pages: +document.getElementById('dMaxPages').value,
-      max_items: +document.getElementById('dMaxItems').value,
-      timeout_seconds: +document.getElementById('dTimeout').value,
-      priority: +document.getElementById('dPriority').value,
-    });
-    closeModal();
-    toast('任务已创建！', 'success');
-    switchTab('tasks');
-    await loadTasks();
-    openTask(task.id);
-  } catch(e) { toast('部署失败: '+e.message, 'error'); }
-}
-
-// ── Util ──
-function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
-
-// ── Init ──
-loadProjects();
-</script>
+    init();
+    </script>
 </body>
 </html>
