@@ -163,6 +163,9 @@ CREATE TABLE IF NOT EXISTS seed_templates (
     rating REAL DEFAULT 0,
     rating_count INTEGER DEFAULT 0,
     status TEXT DEFAULT 'active',
+    original_code TEXT DEFAULT '',
+    source_url TEXT DEFAULT '',
+    original_format TEXT DEFAULT '',
     created_at TEXT DEFAULT '',
     updated_at TEXT DEFAULT ''
 );

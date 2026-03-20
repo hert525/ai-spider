@@ -25,6 +25,13 @@ async def run_code_in_sandbox(
     import time
     start = time.monotonic()
 
+    # Auto-adapt non-standard code formats
+    from src.engine.adapters import CodeAdapter
+    detected_format = CodeAdapter.detect_format(code)
+    if detected_format != 'standard':
+        code = CodeAdapter.wrap(code, detected_format)
+        logger.info(f"Sandbox: auto-adapted code from {detected_format} format")
+
     # Prepare sandbox globals
     import httpx
     import parsel

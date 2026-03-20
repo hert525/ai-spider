@@ -354,6 +354,8 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div class="page-title">🌱 种子库管理</div>
       <div style="display:flex;gap:12px;margin-bottom:16px">
         <button class="btn btn-primary" style="width:auto" onclick="showSeedModal()">➕ 创建模板</button>
+        <button class="btn btn-outline" style="width:auto;margin-left:8px" onclick="showGithubImportModal()">📥 从GitHub导入</button>
+        <button class="btn btn-outline" style="width:auto;margin-left:8px" onclick="syncCommunitySeeds()">🔄 同步社区模板</button>
         <button class="btn btn-outline" style="width:auto" onclick="showSeedImportModal()">📥 批量导入</button>
       </div>
       <div class="table-wrap">
@@ -1202,6 +1204,60 @@ async function doSeedImport() {
     toast('导入成功: ' + (res.imported||0) + '个模板');
     loadAdminSeeds();
   } catch(e) { toast('导入失败: ' + e.message); }
+}
+
+function showGithubImportModal() {
+  let html = `<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center" class="seed-modal-overlay" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:520px;max-height:80vh;overflow-y:auto">
+      <h3>📥 从GitHub导入爬虫</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin:8px 0">支持仓库URL、文件URL、Raw URL</p>
+      <label style="font-size:13px;margin-top:12px;display:block">GitHub URL *</label>
+      <input id="gh-url" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)" placeholder="https://github.com/user/repo 或文件URL">
+      <label style="font-size:13px;margin-top:8px;display:block">名称</label>
+      <input id="gh-name" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)" placeholder="留空自动检测">
+      <label style="font-size:13px;margin-top:8px;display:block">分类</label>
+      <input id="gh-category" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)" value="community">
+      <label style="font-size:13px;margin-top:8px;display:block">描述</label>
+      <textarea id="gh-desc" rows="2" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)" placeholder="留空自动生成"></textarea>
+      <div id="gh-result" style="margin-top:12px;display:none;padding:12px;background:var(--bg-input);border-radius:8px;font-size:13px"></div>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="doGithubImport()">🚀 导入</button>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function doGithubImport() {
+  const url = document.getElementById('gh-url').value.trim();
+  if (!url) return toast('请输入GitHub URL');
+  const resultDiv = document.getElementById('gh-result');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '⏳ 正在从GitHub拉取代码...';
+  try {
+    const res = await api('/api/v1/admin/seeds/import-github', {
+      method: 'POST',
+      body: JSON.stringify({
+        url,
+        name: document.getElementById('gh-name').value.trim(),
+        description: document.getElementById('gh-desc').value.trim(),
+        category: document.getElementById('gh-category').value.trim() || 'community',
+      })
+    });
+    resultDiv.innerHTML = `✅ 导入成功！<br>检测格式: <b>${res.detected_format}</b><br>状态: <b>draft</b> (需审核后激活)<br>${res.message}`;
+    loadAdminSeeds();
+  } catch(e) {
+    resultDiv.innerHTML = '❌ 导入失败: ' + e.message;
+  }
+}
+
+async function syncCommunitySeeds() {
+  if (!confirm('将从GitHub拉取所有社区爬虫模板，可能需要1-2分钟，确定？')) return;
+  toast('⏳ 正在同步社区模板...');
+  try {
+    const res = await api('/api/v1/admin/seeds/sync-community', {method: 'POST'});
+    const ok = res.results.filter(r => r.status === 'ok').length;
+    const fail = res.results.filter(r => r.status === 'error').length;
+    toast(`同步完成: ${ok}个成功, ${fail}个失败`);
+    loadAdminSeeds();
+  } catch(e) { toast('同步失败: ' + e.message); }
 }
 </script>
 </body>
