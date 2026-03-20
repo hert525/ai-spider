@@ -131,8 +131,23 @@ async def test_project(pid: str, req: TestReq):
 
     await db.update("projects", pid, {"status": ProjectStatus.TESTING})
 
-    from src.engine.sandbox import run_code_in_sandbox
-    result = await run_code_in_sandbox(proj["code"], url, max_pages=req.max_pages)
+    mode = proj.get("mode", "code_generator")
+
+    if mode == "smart_scraper":
+        # Re-run LLM extraction
+        from src.engine.graphs.smart_scraper import SmartScraperGraph
+        graph = SmartScraperGraph()
+        state = await graph.run(url=url, description=proj.get("description", ""))
+        extracted = state.get("extracted_data", [])
+        result = {
+            "output": extracted if isinstance(extracted, list) else [extracted],
+            "error": state.get("error", ""),
+            "pages_crawled": 1,
+            "duration_ms": state.get("_exec_time_ms", 0),
+        }
+    else:
+        from src.engine.sandbox import run_code_in_sandbox
+        result = await run_code_in_sandbox(proj["code"], url)
     
     # Update test results
     test_results = proj.get("test_results", [])
