@@ -144,6 +144,29 @@ CREATE TABLE IF NOT EXISTS system_config (
     updated_by TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS seed_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    category TEXT DEFAULT 'general',
+    icon TEXT DEFAULT '🕷️',
+    target_url TEXT DEFAULT '',
+    mode TEXT DEFAULT 'smart_scraper',
+    code TEXT DEFAULT '',
+    extract_schema TEXT DEFAULT '{}',
+    use_browser INTEGER DEFAULT 0,
+    proxy_required INTEGER DEFAULT 0,
+    tags TEXT DEFAULT '[]',
+    difficulty TEXT DEFAULT 'easy',
+    author TEXT DEFAULT 'system',
+    download_count INTEGER DEFAULT 0,
+    rating REAL DEFAULT 0,
+    rating_count INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS proxy_permissions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -162,6 +185,7 @@ _JSON_FIELDS = {
     "data_records": ["data"],
     "task_runs": [],
     "proxy_pools": ["proxies"],
+    "seed_templates": ["tags", "extract_schema"],
 }
 
 

@@ -172,9 +172,29 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </header>
   <nav class="nav-tabs">
     <div class="nav-tab active" data-page="projects" onclick="switchPage('projects')"><i class="ri-folder-3-line"></i> 项目</div>
+    <div class="nav-tab" data-page="seeds" onclick="switchPage('seeds')"><i class="ri-seedling-line"></i> 模板市场</div>
     <div class="nav-tab" data-page="tasks" onclick="switchPage('tasks')"><i class="ri-play-circle-line"></i> 任务</div>
     <div class="nav-tab" data-page="data" onclick="switchPage('data')"><i class="ri-database-2-line"></i> 数据</div>
   </nav>
+
+  <!-- Seeds/Template Marketplace Page -->
+  <div id="page-seeds" class="container hidden">
+    <div class="toolbar">
+      <h2>🌱 模板市场</h2>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="seed-categories">
+      <span class="badge badge-green" style="cursor:pointer;padding:6px 14px;font-size:13px" onclick="filterSeeds('category','')" data-cat="">全部</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <span class="badge" style="cursor:pointer;padding:5px 12px;font-size:12px;background:var(--bg-secondary)" onclick="filterSeeds('difficulty','')" data-diff="">全部难度</span>
+      <span class="badge" style="cursor:pointer;padding:5px 12px;font-size:12px;background:#22c55e22;color:#22c55e" onclick="filterSeeds('difficulty','easy')" data-diff="easy">🟢 简单</span>
+      <span class="badge" style="cursor:pointer;padding:5px 12px;font-size:12px;background:#eab30822;color:#eab308" onclick="filterSeeds('difficulty','medium')" data-diff="medium">🟡 中等</span>
+      <span class="badge" style="cursor:pointer;padding:5px 12px;font-size:12px;background:#ef444422;color:#ef4444" onclick="filterSeeds('difficulty','hard')" data-diff="hard">🔴 困难</span>
+      <div style="flex:1"></div>
+      <input type="text" id="seed-search" placeholder="搜索模板..." style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text-primary);font-size:13px;width:220px" oninput="searchSeeds()">
+    </div>
+    <div id="seed-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px"></div>
+  </div>
 
   <!-- Projects Page -->
   <div id="page-projects" class="container">
@@ -494,10 +514,11 @@ function handleWSMessage(msg) {
 
 // Navigation
 function switchPage(page) {
-  ['projects','tasks','data','detail'].forEach(p => document.getElementById('page-'+p).classList.add('hidden'));
+  ['projects','seeds','tasks','data','detail'].forEach(p => document.getElementById('page-'+p).classList.add('hidden'));
   document.getElementById('page-'+page).classList.remove('hidden');
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.page===page));
   if (page==='projects') loadProjects();
+  if (page==='seeds') loadSeeds();
   if (page==='tasks') loadTasks();
   if (page==='data') { loadProjectFilter(); loadData(); }
 }
@@ -510,6 +531,112 @@ function statusBadge(status) {
 function modeLabel(m) { return m==='smart_scraper'?'智能提取':'代码生成'; }
 function shortId(id) { return id ? String(id).slice(0,8) : '-'; }
 function fmtTime(t) { if(!t)return'-'; try{return new Date(t).toLocaleString('zh-CN')}catch{return t} }
+
+// Seeds / Template Marketplace
+let _seedFilter = {category:'', difficulty:'', keyword:''};
+let _seedData = [];
+const _catLabels = {news:'📰 新闻资讯',ecommerce:'🛒 电商价格',social:'💬 社交媒体',academic:'📚 学术数据',jobs:'💼 招聘职位',life:'🌤️ 生活服务',finance:'📈 金融投资',realestate:'🏠 房产',tools:'🔧 通用工具'};
+const _diffLabels = {easy:'🟢简单',medium:'🟡中等',hard:'🔴困难'};
+
+async function loadSeeds() {
+  try {
+    const params = new URLSearchParams();
+    if (_seedFilter.category) params.set('category', _seedFilter.category);
+    if (_seedFilter.difficulty) params.set('difficulty', _seedFilter.difficulty);
+    if (_seedFilter.keyword) params.set('keyword', _seedFilter.keyword);
+    const qs = params.toString();
+    _seedData = await api('GET', '/api/v1/seeds' + (qs ? '?' + qs : ''));
+    renderSeeds();
+    loadSeedCategories();
+  } catch(e) { console.error(e); }
+}
+
+async function loadSeedCategories() {
+  try {
+    const cats = await api('GET', '/api/v1/seeds/categories');
+    const el = document.getElementById('seed-categories');
+    let html = `<span class="badge ${!_seedFilter.category?'badge-green':''}" style="cursor:pointer;padding:6px 14px;font-size:13px" onclick="filterSeeds('category','')">全部</span>`;
+    for (const c of cats) {
+      const active = _seedFilter.category === c.key;
+      html += `<span class="badge ${active?'badge-green':''}" style="cursor:pointer;padding:6px 14px;font-size:13px" onclick="filterSeeds('category','${c.key}')">${c.label} (${c.count})</span>`;
+    }
+    el.innerHTML = html;
+  } catch(e) {}
+}
+
+function filterSeeds(type, val) {
+  _seedFilter[type] = val;
+  loadSeeds();
+}
+function searchSeeds() {
+  _seedFilter.keyword = document.getElementById('seed-search').value.trim();
+  clearTimeout(window._seedSearchTimer);
+  window._seedSearchTimer = setTimeout(() => loadSeeds(), 300);
+}
+
+function renderSeeds() {
+  const grid = document.getElementById('seed-grid');
+  if (!_seedData || !_seedData.length) { grid.innerHTML = '<p style="color:var(--text-secondary);grid-column:1/-1;text-align:center;padding:40px">暂无模板</p>'; return; }
+  grid.innerHTML = _seedData.map(s => {
+    const tags = (Array.isArray(s.tags) ? s.tags : []).map(t => `<span style="font-size:11px;color:var(--text-secondary)">#${t}</span>`).join(' ');
+    const rating = s.rating ? `⭐ ${s.rating.toFixed(1)}` : '';
+    const diffLabel = _diffLabels[s.difficulty] || s.difficulty;
+    const modeL = s.mode === 'smart_scraper' ? 'smart_scraper' : 'code_generator';
+    const hasBrowser = s.use_browser ? ' 🌐' : '';
+    const hasProxy = s.proxy_required ? ' 🔒' : '';
+    // Check for placeholders
+    const placeholders = (s.target_url || '').match(/\{(\w+)\}/g);
+    const useBtn = placeholders
+      ? `<button class="btn btn-primary btn-sm" style="width:100%" onclick="showSeedUseModal('${s.id}')">使用此模板</button>`
+      : `<button class="btn btn-primary btn-sm" style="width:100%" onclick="useSeed('${s.id}')">使用此模板</button>`;
+    return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:16px;font-weight:600">${s.icon||'🕷️'} ${s.name}</div>
+      <div style="font-size:13px;color:var(--text-secondary);flex:1">${s.description||''}</div>
+      <div style="font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span>${diffLabel}</span><span style="color:var(--text-secondary)">${modeL}${hasBrowser}${hasProxy}</span>
+      </div>
+      <div style="font-size:12px;display:flex;gap:8px;align-items:center">
+        <span>📥 ${s.download_count||0}次使用</span>${rating?`<span>${rating}</span>`:''}
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${tags}</div>
+      ${useBtn}
+    </div>`;
+  }).join('');
+}
+
+async function useSeed(sid, params={}) {
+  try {
+    const proj = await api('POST', `/api/v1/seeds/${sid}/use`, {params});
+    if (proj && proj.id) { await loadProjects(); switchPage('detail'); showProjectDetail(proj.id); }
+  } catch(e) { alert('使用模板失败: ' + e.message); }
+}
+
+function showSeedUseModal(sid) {
+  const seed = _seedData.find(s => s.id === sid);
+  if (!seed) return;
+  const placeholders = (seed.target_url || '').match(/\{(\w+)\}/g) || [];
+  const fields = placeholders.map(p => p.slice(1,-1));
+  let html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:400px;max-width:90vw">
+      <h3 style="margin-bottom:16px">${seed.icon} ${seed.name}</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">请填写以下参数：</p>`;
+  for (const f of fields) {
+    html += `<div style="margin-bottom:12px"><label style="font-size:13px;display:block;margin-bottom:4px">${f}</label>
+      <input type="text" id="seed-param-${f}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);color:var(--text-primary)" placeholder="输入${f}"></div>`;
+  }
+  html += `<button class="btn btn-primary" style="width:100%" onclick="submitSeedUse('${sid}',[${fields.map(f=>`'${f}'`).join(',')}])">创建项目</button>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function submitSeedUse(sid, fields) {
+  const params = {};
+  for (const f of fields) {
+    params[f] = document.getElementById('seed-param-' + f).value.trim();
+  }
+  document.querySelector('[onclick*="submitSeedUse"]').closest('[style*="position:fixed"]').remove();
+  useSeed(sid, params);
+}
 
 // Projects
 async function loadProjects() {

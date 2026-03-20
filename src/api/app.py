@@ -20,6 +20,7 @@ from src.api.v1 import projects, tasks, workers, data, system, auth, admin
 from src.api.v1.proxy_admin import router as proxy_admin_router
 from src.api.v1.settings import router as settings_router
 from src.api.v1.deploy import router as deploy_router
+from src.api.v1.seeds import router as seeds_router
 from src.api.ws import ws_manager
 
 # Configure logging before anything else
@@ -29,6 +30,27 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Initialize seed templates if table is empty
+    from src.core.seeds import SEED_TEMPLATES
+    seed_count = await db.count("seed_templates")
+    if seed_count == 0:
+        from src.core.models import _uid
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        for tmpl in SEED_TEMPLATES:
+            record = {
+                "id": _uid(),
+                "download_count": 0,
+                "rating": 0,
+                "rating_count": 0,
+                "status": "active",
+                "author": "system",
+                "created_at": now,
+                "updated_at": now,
+                **tmpl,
+            }
+            await db.insert("seed_templates", record)
+        logger.info(f"Initialized {len(SEED_TEMPLATES)} seed templates")
     from src.core.settings_manager import settings_manager
     await settings_manager.init()
     from src.scheduler.queue import task_queue
@@ -55,6 +77,7 @@ app.include_router(admin.router, prefix="/api/v1")
 app.include_router(proxy_admin_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(deploy_router, prefix="/api/v1")
+app.include_router(seeds_router, prefix="/api/v1")
 
 # Also mount under /api/ for backward compat
 app.include_router(projects.router, prefix="/api", tags=["projects-compat"], include_in_schema=False)

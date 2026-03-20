@@ -182,6 +182,7 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div class="nav-item" data-page="proxies" onclick="switchPage('proxies')">📡 代理管理</div>
       <div class="nav-item" data-page="logs" onclick="switchPage('logs')">📜 系统日志</div>
       <div class="nav-item" data-page="settings" onclick="switchPage('settings')">⚙️ 系统设置</div>
+      <div class="nav-item" data-page="seeds" onclick="switchPage('seeds')">🌱 种子库</div>
     </div>
     <div class="sidebar-footer">
       <div id="admin-email" style="margin-bottom:8px"></div>
@@ -347,6 +348,22 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
         </div>
       </div>
     </div>
+
+    <!-- Seeds Management Page -->
+    <div class="page" id="page-seeds">
+      <div class="page-title">🌱 种子库管理</div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <button class="btn btn-primary" style="width:auto" onclick="showSeedModal()">➕ 创建模板</button>
+        <button class="btn btn-outline" style="width:auto" onclick="showSeedImportModal()">📥 批量导入</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>名称</th><th>分类</th><th>难度</th><th>模式</th><th>使用次数</th><th>评分</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="seeds-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -449,7 +466,7 @@ function switchPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
-  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings};
+  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings, seeds:loadAdminSeeds};
   if (loaders[name]) loaders[name]();
 }
 
@@ -1025,7 +1042,7 @@ async function loadDeployCommand() {
 
 function copyDeployCommand() {
   const t = document.getElementById('deploy-command').textContent;
-  navigator.clipboard.writeText(t).then(() => showToast('已复制'));
+  navigator.clipboard.writeText(t).then(() => toast('已复制'));
 }
 
 async function loadDeployTokens() {
@@ -1046,8 +1063,8 @@ async function createDeployToken() {
     await apiFetch('/api/v1/deploy/tokens', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, expires_hours:720}) });
     await loadDeployTokens();
     await loadDeployCommand();
-    showToast('Token已生成');
-  } catch(e) { showToast('生成失败: ' + e.message); }
+    toast('Token已生成');
+  } catch(e) { toast('生成失败: ' + e.message); }
 }
 
 async function revokeDeployToken(id) {
@@ -1055,8 +1072,136 @@ async function revokeDeployToken(id) {
   try {
     await apiFetch('/api/v1/deploy/tokens/' + id, { method:'DELETE' });
     await loadDeployTokens();
-    showToast('已撤销');
-  } catch(e) { showToast('撤销失败: ' + e.message); }
+    toast('已撤销');
+  } catch(e) { toast('撤销失败: ' + e.message); }
+}
+
+// --- Admin Seeds ---
+const _catMap = {news:'📰新闻',ecommerce:'🛒电商',social:'💬社交',academic:'📚学术',jobs:'💼招聘',life:'🌤️生活',finance:'📈金融',realestate:'🏠房产',tools:'🔧工具',general:'🕷️通用'};
+const _diffMap = {easy:'🟢简单',medium:'🟡中等',hard:'🔴困难'};
+let _adminSeeds = [];
+
+async function loadAdminSeeds() {
+  try {
+    _adminSeeds = await api('/api/v1/seeds?limit=500') || [];
+    const tb = document.getElementById('seeds-tbody');
+    tb.innerHTML = _adminSeeds.map(s => `<tr>
+      <td>${s.icon||''} ${s.name}</td>
+      <td>${_catMap[s.category]||s.category}</td>
+      <td>${_diffMap[s.difficulty]||s.difficulty}</td>
+      <td>${s.mode==='smart_scraper'?'智能提取':'代码生成'}</td>
+      <td>${s.download_count||0}</td>
+      <td>${s.rating?s.rating.toFixed(1)+' ('+s.rating_count+')':'-'}</td>
+      <td><span class="badge ${s.status==='active'?'badge-green':'badge-gray'}">${s.status}</span></td>
+      <td><button class="btn btn-sm" onclick="editSeedModal('${s.id}')">编辑</button> <button class="btn btn-sm btn-danger" onclick="deleteSeed('${s.id}')">删除</button></td>
+    </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function showSeedModal(seed) {
+  const s = seed || {};
+  const isEdit = !!s.id;
+  const title = isEdit ? '编辑模板' : '创建模板';
+  let html = `<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center" class="seed-modal-overlay" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:560px;max-height:85vh;overflow-y:auto">
+      <h3>${title}</h3>
+      <div style="display:grid;gap:12px;margin-top:16px">
+        <div><label>名称</label><input id="sf-name" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px" value="${s.name||''}"></div>
+        <div><label>描述</label><input id="sf-desc" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px" value="${s.description||''}"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label>分类</label><select id="sf-cat" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px">
+            ${Object.entries(_catMap).map(([k,v])=>`<option value="${k}" ${s.category===k?'selected':''}>${v}</option>`).join('')}
+          </select></div>
+          <div><label>难度</label><select id="sf-diff" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px">
+            <option value="easy" ${s.difficulty==='easy'?'selected':''}>简单</option>
+            <option value="medium" ${s.difficulty==='medium'?'selected':''}>中等</option>
+            <option value="hard" ${s.difficulty==='hard'?'selected':''}>困难</option>
+          </select></div>
+        </div>
+        <div><label>图标</label><input id="sf-icon" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px" value="${s.icon||'🕷️'}"></div>
+        <div><label>目标URL</label><input id="sf-url" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px" value="${s.target_url||''}"></div>
+        <div><label>模式</label><select id="sf-mode" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px">
+          <option value="smart_scraper" ${s.mode==='smart_scraper'?'selected':''}>智能提取</option>
+          <option value="code_generator" ${s.mode==='code_generator'?'selected':''}>代码生成</option>
+        </select></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label><input type="checkbox" id="sf-browser" ${s.use_browser?'checked':''}> 需要浏览器</label></div>
+          <div><label><input type="checkbox" id="sf-proxy" ${s.proxy_required?'checked':''}> 需要代理</label></div>
+        </div>
+        <div><label>标签(逗号分隔)</label><input id="sf-tags" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px" value="${(Array.isArray(s.tags)?s.tags:[]).join(',')}"></div>
+        <div><label>代码</label><textarea id="sf-code" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:monospace" rows="4">${s.code||''}</textarea></div>
+        <div><label>状态</label><select id="sf-status" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px">
+          <option value="active" ${s.status==='active'||!s.status?'selected':''}>active</option>
+          <option value="draft" ${s.status==='draft'?'selected':''}>draft</option>
+          <option value="deprecated" ${s.status==='deprecated'?'selected':''}>deprecated</option>
+        </select></div>
+        <button class="btn btn-primary" onclick="saveSeed('${s.id||''}')">${isEdit?'保存':'创建'}</button>
+      </div>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function editSeedModal(sid) {
+  const s = _adminSeeds.find(x => x.id === sid);
+  if (s) showSeedModal(s);
+}
+
+async function saveSeed(sid) {
+  const data = {
+    name: document.getElementById('sf-name').value.trim(),
+    description: document.getElementById('sf-desc').value.trim(),
+    category: document.getElementById('sf-cat').value,
+    difficulty: document.getElementById('sf-diff').value,
+    icon: document.getElementById('sf-icon').value.trim() || '🕷️',
+    target_url: document.getElementById('sf-url').value.trim(),
+    mode: document.getElementById('sf-mode').value,
+    use_browser: document.getElementById('sf-browser').checked ? 1 : 0,
+    proxy_required: document.getElementById('sf-proxy').checked ? 1 : 0,
+    tags: document.getElementById('sf-tags').value.split(',').map(t=>t.trim()).filter(Boolean),
+    code: document.getElementById('sf-code').value,
+    status: document.getElementById('sf-status').value,
+    extract_schema: {},
+  };
+  try {
+    if (sid) {
+      await api('/api/v1/admin/seeds/' + sid, {method:'PUT', body:JSON.stringify(data)});
+    } else {
+      await api('/api/v1/admin/seeds', {method:'POST', body:JSON.stringify(data)});
+    }
+    document.querySelector('.seed-modal-overlay').remove();
+    loadAdminSeeds();
+    toast('保存成功');
+  } catch(e) { toast('保存失败: ' + e.message); }
+}
+
+async function deleteSeed(sid) {
+  if (!confirm('确定删除此模板？')) return;
+  try {
+    await api('/api/v1/admin/seeds/' + sid, {method:'DELETE'});
+    loadAdminSeeds();
+    toast('已删除');
+  } catch(e) { toast('删除失败: ' + e.message); }
+}
+
+function showSeedImportModal() {
+  let html = `<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center" class="seed-modal-overlay" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--bg-card);border-radius:12px;padding:24px;width:500px">
+      <h3>批量导入模板</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin:12px 0">粘贴JSON数组格式的模板数据</p>
+      <textarea id="seed-import-data" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;font-family:monospace" rows="10" placeholder='[{"name":"...","category":"..."}]'></textarea>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="doSeedImport()">导入</button>
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function doSeedImport() {
+  try {
+    const data = JSON.parse(document.getElementById('seed-import-data').value);
+    const res = await api('/api/v1/admin/seeds/import', {method:'POST', body:JSON.stringify(data)});
+    document.querySelector('.seed-modal-overlay').remove();
+    toast('导入成功: ' + (res.imported||0) + '个模板');
+    loadAdminSeeds();
+  } catch(e) { toast('导入失败: ' + e.message); }
 }
 </script>
 </body>
