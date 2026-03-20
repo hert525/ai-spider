@@ -1,8 +1,12 @@
 """Tasks API."""
-from fastapi import APIRouter, HTTPException
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+
 from src.core.database import db
-from src.core.models import Task, TaskType, TaskStatus
+from src.core.models import TaskStatus
+from src.core.auth import get_current_user
 from src.scheduler.task_manager import task_manager
 
 router = APIRouter()
@@ -22,41 +26,44 @@ class CreateTaskReq(BaseModel):
 
 
 @router.get("/tasks")
-async def list_tasks(project_id: str = "", status: str = ""):
+async def list_tasks(project_id: str = "", status: str = "", user: dict = Depends(get_current_user)):
     where = {}
     if project_id:
         where["project_id"] = project_id
     if status:
         where["status"] = status
+    if user.get("role") != "admin":
+        where["user_id"] = user["id"]
     rows = await db.list("tasks", where=where or None)
     return rows
 
 
 @router.post("/tasks")
-async def create_task(req: CreateTaskReq):
+async def create_task(req: CreateTaskReq, user: dict = Depends(get_current_user)):
     proj = await db.get("projects", req.project_id)
     if not proj:
         raise HTTPException(400, "Project not found")
 
     urls = req.target_urls or ([proj.get("target_url")] if proj.get("target_url") else [])
-    task = Task(
+
+    task_data = await task_manager.create_task(
         project_id=req.project_id,
-        name=req.name or proj.get("name", ""),
-        task_type=TaskType(req.task_type),
+        user_id=user.get("id", ""),
+        task_type=req.task_type,
         target_urls=urls,
+        priority=req.priority,
+        cron_expr=req.cron_expr,
         max_pages=req.max_pages,
         max_items=req.max_items,
         timeout_seconds=req.timeout_seconds,
         concurrency=req.concurrency,
-        priority=req.priority,
-        cron_expr=req.cron_expr,
+        name=req.name or proj.get("name", ""),
     )
-    await task_manager.create_task(task)
-    return task.model_dump()
+    return task_data
 
 
 @router.get("/tasks/{tid}")
-async def get_task(tid: str):
+async def get_task(tid: str, user: dict = Depends(get_current_user)):
     task = await db.get("tasks", tid)
     if not task:
         raise HTTPException(404)
@@ -64,20 +71,24 @@ async def get_task(tid: str):
 
 
 @router.get("/tasks/{tid}/runs")
-async def get_task_runs(tid: str):
+async def get_task_runs(tid: str, user: dict = Depends(get_current_user)):
     runs = await task_manager.get_runs(tid)
     return [r.model_dump() for r in runs]
 
 
 @router.post("/tasks/{tid}/cancel")
 async def cancel_task(tid: str):
-    await task_manager.update_task(tid, status=TaskStatus.CANCELLED)
+    ok = await task_manager.cancel_task(tid)
+    if not ok:
+        raise HTTPException(404)
     return {"ok": True}
 
 
 @router.post("/tasks/{tid}/retry")
 async def retry_task(tid: str):
-    await task_manager.queue_task(tid)
+    ok = await task_manager.retry_task(tid)
+    if not ok:
+        raise HTTPException(404)
     return {"ok": True}
 
 

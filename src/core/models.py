@@ -69,6 +69,7 @@ class Task(BaseModel):
     id: str = Field(default_factory=_uid)
     project_id: str = ""
     name: str = ""
+    user_id: str = ""
     task_type: TaskType = TaskType.ONE_TIME
     status: TaskStatus = TaskStatus.QUEUED
     target_urls: list[str] = []

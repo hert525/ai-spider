@@ -1,13 +1,14 @@
 """Projects API - CRUD + AI generation."""
 import json
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from loguru import logger
 
 from src.core.database import db
 from src.core.models import Project, ProjectMode, ProjectStatus, _uid
+from src.core.auth import get_current_user
 
 router = APIRouter()
 
@@ -17,6 +18,11 @@ class CreateProjectReq(BaseModel):
     target_url: str = ""
     name: str = ""
     mode: str = "code_generator"  # "smart_scraper" or "code_generator"
+    sink_config: dict = {}
+
+
+class UpdateSinkReq(BaseModel):
+    sink_config: dict
 
 
 class RefineReq(BaseModel):
@@ -29,13 +35,17 @@ class TestReq(BaseModel):
 
 
 @router.get("/projects")
-async def list_projects():
-    rows = await db.list("projects")
+async def list_projects(user: dict = Depends(get_current_user)):
+    """List projects for current user (admin sees all)."""
+    if user.get("role") == "admin":
+        rows = await db.list("projects")
+    else:
+        rows = await db.list("projects", where={"user_id": user["id"]})
     return rows
 
 
 @router.post("/projects")
-async def create_project(req: CreateProjectReq):
+async def create_project(req: CreateProjectReq, user: dict = Depends(get_current_user)):
     mode = ProjectMode(req.mode)
     project = Project(
         name=req.name or req.description[:30],
@@ -44,7 +54,10 @@ async def create_project(req: CreateProjectReq):
         mode=mode,
         status=ProjectStatus.GENERATING,
     )
-    await db.insert("projects", project.model_dump())
+    project_data = project.model_dump()
+    project_data["user_id"] = user["id"]
+    project_data["sink_config"] = req.sink_config
+    await db.insert("projects", project_data)
     
     try:
         if mode == ProjectMode.SMART_SCRAPER:
@@ -91,7 +104,7 @@ async def create_project(req: CreateProjectReq):
 
 
 @router.get("/projects/{pid}")
-async def get_project(pid: str):
+async def get_project(pid: str, user: dict = Depends(get_current_user)):
     proj = await db.get("projects", pid)
     if not proj:
         raise HTTPException(404, "Project not found")
@@ -99,14 +112,14 @@ async def get_project(pid: str):
 
 
 @router.delete("/projects/{pid}")
-async def delete_project(pid: str):
+async def delete_project(pid: str, user: dict = Depends(get_current_user)):
     if not await db.delete("projects", pid):
         raise HTTPException(404)
     return {"ok": True}
 
 
 @router.put("/projects/{pid}/code")
-async def update_code(pid: str, req: dict):
+async def update_code(pid: str, req: dict, user: dict = Depends(get_current_user)):
     """Manually update project code."""
     proj = await db.get("projects", pid)
     if not proj:
@@ -120,7 +133,7 @@ async def update_code(pid: str, req: dict):
 
 
 @router.post("/projects/{pid}/test")
-async def test_project(pid: str, req: TestReq):
+async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_user)):
     proj = await db.get("projects", pid)
     if not proj:
         raise HTTPException(404)
@@ -172,7 +185,7 @@ async def test_project(pid: str, req: TestReq):
 
 
 @router.post("/projects/{pid}/refine")
-async def refine_project(pid: str, req: RefineReq):
+async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_current_user)):
     proj = await db.get("projects", pid)
     if not proj:
         raise HTTPException(404)
@@ -221,4 +234,20 @@ async def refine_project(pid: str, req: RefineReq):
         "updated_at": datetime.now().isoformat(),
     })
 
+    return await db.get("projects", pid)
+
+
+@router.put("/projects/{pid}/sink")
+async def update_sink(pid: str, req: UpdateSinkReq, user: dict = Depends(get_current_user)):
+    """Update sink configuration for a project."""
+    proj = await db.get("projects", pid)
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    if user.get("role") != "admin" and proj.get("user_id") != user["id"]:
+        raise HTTPException(403, "Not your project")
+
+    await db.update("projects", pid, {
+        "sink_config": req.sink_config,
+        "updated_at": datetime.now().isoformat(),
+    })
     return await db.get("projects", pid)

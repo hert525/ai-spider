@@ -10,21 +10,25 @@ from loguru import logger
 
 from src.core.config import settings, BASE_DIR
 from src.core.database import init_db
-from src.api.v1 import projects, tasks, workers, data, system
+from src.api.v1 import projects, tasks, workers, data, system, auth
 from src.api.ws import router as ws_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    from src.scheduler.queue import task_queue
+    await task_queue.connect()
     logger.info("AI Spider started")
     yield
+    await task_queue.close()
     logger.info("AI Spider stopped")
 
 
 app = FastAPI(title="AI Spider", version="2.0.0", lifespan=lifespan)
 
 # ── Include routers ──
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(projects.router, prefix="/api/v1", tags=["projects"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(workers.router, prefix="/api/v1", tags=["workers"])

@@ -9,6 +9,23 @@ from src.core.config import settings
 DB_PATH = settings.db_path
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    api_key TEXT UNIQUE,
+    role TEXT DEFAULT 'user',
+    quota_projects INTEGER DEFAULT 20,
+    quota_tasks INTEGER DEFAULT 100,
+    status TEXT DEFAULT 'active',
+    created_at TEXT,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);
+
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -21,6 +38,8 @@ CREATE TABLE IF NOT EXISTS projects (
     version INTEGER DEFAULT 1,
     messages TEXT DEFAULT '[]',
     test_results TEXT DEFAULT '[]',
+    sink_config TEXT DEFAULT '{}',
+    user_id TEXT DEFAULT '',
     created_at TEXT,
     updated_at TEXT
 );
@@ -29,6 +48,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     project_id TEXT,
     name TEXT,
+    user_id TEXT DEFAULT '',
     task_type TEXT DEFAULT 'one_time',
     status TEXT DEFAULT 'queued',
     target_urls TEXT DEFAULT '[]',
@@ -91,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_data_task ON data_records(task_id);
 
 # JSON fields that need serialization
 _JSON_FIELDS = {
-    "projects": ["extracted_data", "messages", "test_results"],
+    "projects": ["extracted_data", "messages", "test_results", "sink_config"],
     "tasks": ["target_urls"],
     "workers": ["tags"],
     "data_records": ["data"],
