@@ -2427,6 +2427,1870 @@ async def crawl(url: str, config: dict) -> list[dict]:
         "tags": ["公告", "研报", "A股", "信息披露"],
         "difficulty": "easy",
     },
+
+    # ═══════════════════════════════════════
+    # Community Seeds (auto-fetched from GitHub)
+    # ═══════════════════════════════════════
+    {
+        "name": "小红书笔记爬虫",
+        "description": "社区爬虫 - 来自 NanmiCoder/MediaCrawler (GitHub高星项目)",
+        "category": "social",
+        "icon": "📕",
+        "target_url": "https://www.xiaohongshu.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from Playwright script
+# === media_platform/xhs/core.py ===
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 relakkes@gmail.com
+#
+# This file is part of MediaCrawler project.
+# Repository: https://github.com/NanmiCoder/MediaCrawler/blob/main/media_platform/xhs/core.py
+# GitHub: https://github.com/NanmiCoder
+# Licensed under NON-COMMERCIAL LEARNING LICENSE 1.1
+#
+
+# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：
+# 1. 不得用于任何商业用途。
+# 2. 使用时应遵守目标平台的使用条款和robots.txt规则。
+# 3. 不得进行大规模爬取或对平台造成运营干扰。
+# 4. 应合理控制请求频率，避免给目标平台带来不必要的负担。
+# 5. 不得用于任何非法或不当的用途。
+#
+# 详细许可条款请参阅项目根目录下的LICENSE文件。
+# 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
+
+import asyncio
+import os
+import random
+from asyncio import Task
+from typing import Dict, List, Optional
+
+from playwright.async_api import (
+    BrowserContext,
+    BrowserType,
+    Page,
+    Playwright,
+    async_playwright,
+)
+from tenacity import RetryError
+
+import config
+from base.base_crawler import AbstractCrawler
+from model.m_xiaohongshu import NoteUrlInfo, CreatorUrlInfo
+from proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
+from store import xhs as xhs_store
+from tools import utils
+from tools.cdp_browser import CDPBrowserManager
+from var import crawler_type_var, source_keyword_var
+
+from .client import XiaoHongShuClient
+from .exception import DataFetchError, NoteNotFoundError
+from .field import SearchSortType
+from .help import parse_note_info_from_note_url, parse_creator_info_from_url, get_search_id
+from .login import XiaoHongShuLogin
+
+
+class XiaoHongShuCrawler(AbstractCrawler):
+    context_page: Page
+    xhs_client: XiaoHongShuClient
+    browser_context: BrowserContext
+    cdp_manager: Optional[CDPBrowserManager]
+
+    def __init__(self) -> None:
+        self.index_url = "https://www.xiaohongshu.com"
+        # self.user_agent = utils.get_user_agent()
+        self.user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        self.cdp_manager = None
+        self.ip_proxy_pool = None  # Proxy IP pool for automatic proxy refresh
+
+    async def start(self) -> None:
+        playwright_proxy_format, httpx_proxy_format = None, None
+        if config.ENABLE_IP_PROXY:
+            self.ip_proxy_pool = await create_ip_pool(config.IP_PROXY_POOL_COUNT, enable_validate_ip=True)
+            ip_proxy_info: IpInfoModel = await self.ip_proxy_pool.get_proxy()
+            playwright_proxy_format, httpx_proxy_format = utils.format_proxy_info(ip_proxy_info)
+
+        async with async_playwright() as playwright:
+            # Choose launch mode based on configuration
+            if config.ENABLE_CDP_MODE:
+                utils.logger.info("[XiaoHongShuCrawler] Launching browser using CDP mode")
+                self.browser_context = await self.launch_browser_with_cdp(
+                    playwright,
+                    playwright_proxy_format,
+                    self.user_agent,
+                    headless=config.CDP_HEADLESS,
+                )
+            else:
+                utils.logger.info("[XiaoHongShuCrawler] Launching browser using standard mode")
+                # Launch a browser context.
+                chromium = playwright.chromium
+                self.browser_context = await self.launch_browser(
+                    chromium,
+                    playwright_proxy_format,
+                    self.user_agent,
+                    headless=config.HEADLESS,
+                )
+                # stealth.min.js is a js script to prevent the website from detecting the crawler.
+                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+
+            self.context_page = await self.browser_context.new_page()
+            await self.context_page.goto(self.index_url)
+
+            # Create a client to interact with the Xiaohongshu website.
+            self.xhs_client = await self.create_xhs_client(httpx_proxy_format)
+            if not await self.xhs_client.pong():
+                login_obj = XiaoHongShuLogin(
+                    login_type=config.LOGIN_TYPE,
+                    login_phone="",  # input your phone number
+                    browser_context=self.browser_context,
+                    context_page=self.context_page,
+                    cookie_str=config.COOKIES,
+                )
+                await login_obj.begin()
+                await self.xhs_client.update_cookies(browser_context=self.browser_context)
+
+            crawler_type_var.set(config.CRAWLER_TYPE)
+            if config.CRAWLER_TYPE == "search":
+                # Search for notes and retrieve their comment information.
+                await self.search()
+            elif config.CRAWLER_TYPE == "detail":
+                # Get the information and comments of the specified post
+                await self.get_specified_notes()
+            elif config.CRAWLER_TYPE == "creator":
+                # Get creator's information and their notes and comments
+                await self.get_creators_and_notes()
+            else:
+                pass
+
+            utils.logger.info("[XiaoHongShuCrawler.start] Xhs Crawler finished ...")
+
+    async def search(self) -> None:
+        """Search for notes and retrieve their comment information."""
+        utils.logger.info("[XiaoHongShuCrawler.search] Begin search Xiaohongshu keywords")
+        xhs_limit_count = 20  # Xiaohongshu limit page fixed value
+        if config.CRAWLER_MAX_NOTES_COUNT < xhs_limit_count:
+            config.CRAWLER_MAX_NOTES_COUNT = xhs_limit_count
+        start_page = config.START_PAGE
+        for keyword in config.KEYWORDS.split(","):
+            source_keyword_var.set(keyword)
+            utils.logger.info(f"[XiaoHongShuCrawler.search] Current search keyword: {keyword}")
+            page = 1
+            search_id = get_search_id()
+            while (page - start_page + 1) * xhs_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
+                if page < start_page:
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Skip page {page}")
+                    page += 1
+                    continue
+
+                try:
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] search Xiaohongshu keyword: {keyword}, page: {page}")
+                    note_ids: List[str] = []
+                    xsec_tokens: List[str] = []
+                    notes_res = await self.xhs_client.get_note_by_keyword(
+                        keyword=keyword,
+                        search_id=search_id,
+                        page=page,
+                        sort=(SearchSortType(config.SORT_TYPE) if config.SORT_TYPE != "" else SearchSortType.GENERAL),
+                    )
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Search notes response: {notes_res}")
+                    if not notes_res or not notes_res.get("has_more", False):
+                        utils.logger.info("[XiaoHongShuCrawler.search] No more content!")
+                        break
+                    semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
+                    task_list = [
+                        self.get_note_detail_async_task(
+                            note_id=post_item.get("id"),
+                            xsec_source=post_item.get("xsec_source"),
+                            xsec_token=post_item.get("xsec_token"),
+                            semaphore=semaphore,
+                        ) for post_item in notes_res.get("items", {}) if post_item.get("model_type") not in ("rec_query", "hot_query")
+                    ]
+                    note_details = await asyncio.gather(*task_list)
+                    for note_detail in note_details:
+                        if note_detail:
+                            await xhs_store.update_xhs_note(note_detail)
+                            await self.get_notice_media(note_detail)
+                            note_ids.append(note_detail.get("note_id"))
+                            xsec_tokens.append(note_detail.get("xsec_token"))
+                    page += 1
+                    utils.logger.info(f"[XiaoHongShuCrawler.search] Note detai
+# ... (truncated)
+
+if 'crawl' not in dir():
+    async def crawl(url: str, config: dict) -> list[dict]:
+        for func_name in ['main', 'run', 'scrape']:
+            if func_name in dir():
+                func = globals()[func_name]
+                import asyncio
+                result = await func(url) if asyncio.iscoroutinefunction(func) else func(url)
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+        return [{"error": "No entry function found"}]
+''',
+        "tags": ['小红书', '社交', '笔记', '中文'],
+        "difficulty": "hard",
+        "author": "community",
+        "source_url": "https://github.com/NanmiCoder/MediaCrawler",
+        "use_browser": 1,
+    },
+    {
+        "name": "抖音视频爬虫",
+        "description": "社区爬虫 - 来自 NanmiCoder/MediaCrawler (GitHub高星项目)",
+        "category": "social",
+        "icon": "🎵",
+        "target_url": "https://www.douyin.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from Playwright script
+# === media_platform/douyin/core.py ===
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 relakkes@gmail.com
+#
+# This file is part of MediaCrawler project.
+# Repository: https://github.com/NanmiCoder/MediaCrawler/blob/main/media_platform/douyin/core.py
+# GitHub: https://github.com/NanmiCoder
+# Licensed under NON-COMMERCIAL LEARNING LICENSE 1.1
+#
+
+# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：
+# 1. 不得用于任何商业用途。
+# 2. 使用时应遵守目标平台的使用条款和robots.txt规则。
+# 3. 不得进行大规模爬取或对平台造成运营干扰。
+# 4. 应合理控制请求频率，避免给目标平台带来不必要的负担。
+# 5. 不得用于任何非法或不当的用途。
+#
+# 详细许可条款请参阅项目根目录下的LICENSE文件。
+# 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
+
+import asyncio
+import os
+import random
+from asyncio import Task
+from typing import Any, Dict, List, Optional, Tuple
+
+from playwright.async_api import (
+    BrowserContext,
+    BrowserType,
+    Page,
+    Playwright,
+    async_playwright,
+)
+
+import config
+from base.base_crawler import AbstractCrawler
+from proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
+from store import douyin as douyin_store
+from tools import utils
+from tools.cdp_browser import CDPBrowserManager
+from var import crawler_type_var, source_keyword_var
+
+from .client import DouYinClient
+from .exception import DataFetchError
+from .field import PublishTimeType
+from .help import parse_video_info_from_url, parse_creator_info_from_url
+from .login import DouYinLogin
+
+
+class DouYinCrawler(AbstractCrawler):
+    context_page: Page
+    dy_client: DouYinClient
+    browser_context: BrowserContext
+    cdp_manager: Optional[CDPBrowserManager]
+
+    def __init__(self) -> None:
+        self.index_url = "https://www.douyin.com"
+        self.cdp_manager = None
+        self.ip_proxy_pool = None  # Proxy IP pool for automatic proxy refresh
+
+    async def start(self) -> None:
+        playwright_proxy_format, httpx_proxy_format = None, None
+        if config.ENABLE_IP_PROXY:
+            self.ip_proxy_pool = await create_ip_pool(config.IP_PROXY_POOL_COUNT, enable_validate_ip=True)
+            ip_proxy_info: IpInfoModel = await self.ip_proxy_pool.get_proxy()
+            playwright_proxy_format, httpx_proxy_format = utils.format_proxy_info(ip_proxy_info)
+
+        async with async_playwright() as playwright:
+            # Select startup mode based on configuration
+            if config.ENABLE_CDP_MODE:
+                utils.logger.info("[DouYinCrawler] 使用CDP模式启动浏览器")
+                self.browser_context = await self.launch_browser_with_cdp(
+                    playwright,
+                    playwright_proxy_format,
+                    None,
+                    headless=config.CDP_HEADLESS,
+                )
+            else:
+                utils.logger.info("[DouYinCrawler] 使用标准模式启动浏览器")
+                # Launch a browser context.
+                chromium = playwright.chromium
+                self.browser_context = await self.launch_browser(
+                    chromium,
+                    playwright_proxy_format,
+                    user_agent=None,
+                    headless=config.HEADLESS,
+                )
+                # stealth.min.js is a js script to prevent the website from detecting the crawler.
+                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+
+            self.context_page = await self.browser_context.new_page()
+            await self.context_page.goto(self.index_url)
+
+            self.dy_client = await self.create_douyin_client(httpx_proxy_format)
+            if not await self.dy_client.pong(browser_context=self.browser_context):
+                login_obj = DouYinLogin(
+                    login_type=config.LOGIN_TYPE,
+                    login_phone="",  # you phone number
+                    browser_context=self.browser_context,
+                    context_page=self.context_page,
+                    cookie_str=config.COOKIES,
+                )
+                await login_obj.begin()
+                await self.dy_client.update_cookies(browser_context=self.browser_context)
+            crawler_type_var.set(config.CRAWLER_TYPE)
+            if config.CRAWLER_TYPE == "search":
+                # Search for notes and retrieve their comment information.
+                await self.search()
+            elif config.CRAWLER_TYPE == "detail":
+                # Get the information and comments of the specified post
+                await self.get_specified_awemes()
+            elif config.CRAWLER_TYPE == "creator":
+                # Get the information and comments of the specified creator
+                await self.get_creators_and_videos()
+
+            utils.logger.info("[DouYinCrawler.start] Douyin Crawler finished ...")
+
+    async def search(self) -> None:
+        utils.logger.info("[DouYinCrawler.search] Begin search douyin keywords")
+        dy_limit_count = 10  # douyin limit page fixed value
+        if config.CRAWLER_MAX_NOTES_COUNT < dy_limit_count:
+            config.CRAWLER_MAX_NOTES_COUNT = dy_limit_count
+        start_page = config.START_PAGE  # start page number
+        for keyword in config.KEYWORDS.split(","):
+            source_keyword_var.set(keyword)
+            utils.logger.info(f"[DouYinCrawler.search] Current keyword: {keyword}")
+            aweme_list: List[str] = []
+            page = 0
+            dy_search_id = ""
+            while (page - start_page + 1) * dy_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
+                if page < start_page:
+                    utils.logger.info(f"[DouYinCrawler.search] Skip {page}")
+                    page += 1
+                    continue
+                try:
+                    utils.logger.info(f"[DouYinCrawler.search] search douyin keyword: {keyword}, page: {page}")
+                    posts_res = await self.dy_client.search_info_by_keyword(
+                        keyword=keyword,
+                        offset=page * dy_limit_count - dy_limit_count,
+                        publish_time=PublishTimeType(config.PUBLISH_TIME_TYPE),
+                        search_id=dy_search_id,
+                    )
+                    if posts_res.get("data") is None or posts_res.get("data") == []:
+                        utils.logger.info(f"[DouYinCrawler.search] search douyin keyword: {keyword}, page: {page} is empty,{posts_res.get('data')}`")
+                        break
+                except DataFetchError:
+                    utils.logger.error(f"[DouYinCrawler.search] search douyin keyword: {keyword} failed")
+                    break
+
+                page += 1
+                if "data" not in posts_res:
+                    utils.logger.error(f"[DouYinCrawler.search] search douyin keyword: {keyword} failed，账号也许被风控了。")
+                    break
+                dy_search_id = posts_res.get("extra", {}).get("logid", "")
+                page_aweme_list = []
+                for post_item in posts_res.get("data"):
+                    try:
+                        aweme_info: Dict = (post_item.get("aweme_info") or post_item.get("aweme_mix_info", {}).get("mix_items")[0])
+                    except TypeError:
+                        continue
+                    aweme_list.append(aweme_info.get("aweme_id", ""))
+                    page_aweme_list.append(aweme_info.get("aweme_id", ""))
+                    await douyin_store.update_douyin_aweme(aweme_item=aweme_info)
+                    await self.get_aweme_media(aweme_item=aweme_info)
+                
+                # Batch get note comments for the current page
+                await self.batch_get_note_comments(page_aweme_list)
+
+                # Sleep after each page navigation
+                await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
+                utils.logger.info(f"[DouYinCrawler.search] Sleeping for {config.CRAWLER_MAX_SLEEP_SEC} seconds after page {page-1}")
+            utils.logger.info(f"[DouYinCrawler.search] keyword:{keyword}, aweme_list:{aweme_list}")
+
+    async def get_specified_awemes(self):
+        """Get the information and comments of the specified post from URLs or IDs"""
+        utils.logger.info("[DouYinCrawler.get_specified_awemes] Parsing video URLs...")
+        aweme_id_li
+# ... (truncated)
+
+if 'crawl' not in dir():
+    async def crawl(url: str, config: dict) -> list[dict]:
+        for func_name in ['main', 'run', 'scrape']:
+            if func_name in dir():
+                func = globals()[func_name]
+                import asyncio
+                result = await func(url) if asyncio.iscoroutinefunction(func) else func(url)
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+        return [{"error": "No entry function found"}]
+''',
+        "tags": ['抖音', '短视频', '中文'],
+        "difficulty": "hard",
+        "author": "community",
+        "source_url": "https://github.com/NanmiCoder/MediaCrawler",
+        "use_browser": 1,
+    },
+    {
+        "name": "快手视频爬虫",
+        "description": "社区爬虫 - 来自 NanmiCoder/MediaCrawler (GitHub高星项目)",
+        "category": "social",
+        "icon": "🎬",
+        "target_url": "https://www.kuaishou.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from Playwright script
+# === media_platform/kuaishou/core.py ===
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 relakkes@gmail.com
+#
+# This file is part of MediaCrawler project.
+# Repository: https://github.com/NanmiCoder/MediaCrawler/blob/main/media_platform/kuaishou/core.py
+# GitHub: https://github.com/NanmiCoder
+# Licensed under NON-COMMERCIAL LEARNING LICENSE 1.1
+#
+
+# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：
+# 1. 不得用于任何商业用途。
+# 2. 使用时应遵守目标平台的使用条款和robots.txt规则。
+# 3. 不得进行大规模爬取或对平台造成运营干扰。
+# 4. 应合理控制请求频率，避免给目标平台带来不必要的负担。
+# 5. 不得用于任何非法或不当的用途。
+#
+# 详细许可条款请参阅项目根目录下的LICENSE文件。
+# 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
+
+
+import asyncio
+import os
+# import random  # Removed as we now use fixed config.CRAWLER_MAX_SLEEP_SEC intervals
+import time
+from asyncio import Task
+from typing import Dict, List, Optional, Tuple
+
+from playwright.async_api import (
+    BrowserContext,
+    BrowserType,
+    Page,
+    Playwright,
+    async_playwright,
+)
+
+import config
+from base.base_crawler import AbstractCrawler
+from model.m_kuaishou import VideoUrlInfo, CreatorUrlInfo
+from proxy.proxy_ip_pool import IpInfoModel, create_ip_pool
+from store import kuaishou as kuaishou_store
+from tools import utils
+from tools.cdp_browser import CDPBrowserManager
+from var import comment_tasks_var, crawler_type_var, source_keyword_var
+
+from .client import KuaiShouClient
+from .exception import DataFetchError
+from .help import parse_video_info_from_url, parse_creator_info_from_url
+from .login import KuaishouLogin
+
+
+class KuaishouCrawler(AbstractCrawler):
+    context_page: Page
+    ks_client: KuaiShouClient
+    browser_context: BrowserContext
+    cdp_manager: Optional[CDPBrowserManager]
+
+    def __init__(self):
+        self.index_url = "https://www.kuaishou.com"
+        self.user_agent = utils.get_user_agent()
+        self.cdp_manager = None
+        self.ip_proxy_pool = None  # Proxy IP pool, used for automatic proxy refresh
+
+    async def start(self):
+        playwright_proxy_format, httpx_proxy_format = None, None
+        if config.ENABLE_IP_PROXY:
+            self.ip_proxy_pool = await create_ip_pool(
+                config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
+            )
+            ip_proxy_info: IpInfoModel = await self.ip_proxy_pool.get_proxy()
+            playwright_proxy_format, httpx_proxy_format = utils.format_proxy_info(
+                ip_proxy_info
+            )
+
+        async with async_playwright() as playwright:
+            # Select startup mode based on configuration
+            if config.ENABLE_CDP_MODE:
+                utils.logger.info("[KuaishouCrawler] Launching browser using CDP mode")
+                self.browser_context = await self.launch_browser_with_cdp(
+                    playwright,
+                    playwright_proxy_format,
+                    self.user_agent,
+                    headless=config.CDP_HEADLESS,
+                )
+            else:
+                utils.logger.info("[KuaishouCrawler] Launching browser using standard mode")
+                # Launch a browser context.
+                chromium = playwright.chromium
+                self.browser_context = await self.launch_browser(
+                    chromium, None, self.user_agent, headless=config.HEADLESS
+                )
+                # stealth.min.js is a js script to prevent the website from detecting the crawler.
+                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+
+
+            self.context_page = await self.browser_context.new_page()
+            await self.context_page.goto(f"{self.index_url}?isHome=1")
+
+            # Create a client to interact with the kuaishou website.
+            self.ks_client = await self.create_ks_client(httpx_proxy_format)
+            if not await self.ks_client.pong():
+                login_obj = KuaishouLogin(
+                    login_type=config.LOGIN_TYPE,
+                    login_phone=httpx_proxy_format,
+                    browser_context=self.browser_context,
+                    context_page=self.context_page,
+                    cookie_str=config.COOKIES,
+                )
+                await login_obj.begin()
+                await self.ks_client.update_cookies(
+                    browser_context=self.browser_context
+                )
+
+            crawler_type_var.set(config.CRAWLER_TYPE)
+            if config.CRAWLER_TYPE == "search":
+                # Search for videos and retrieve their comment information.
+                await self.search()
+            elif config.CRAWLER_TYPE == "detail":
+                # Get the information and comments of the specified post
+                await self.get_specified_videos()
+            elif config.CRAWLER_TYPE == "creator":
+                # Get creator's information and their videos and comments
+                await self.get_creators_and_videos()
+            else:
+                pass
+
+            utils.logger.info("[KuaishouCrawler.start] Kuaishou Crawler finished ...")
+
+    async def search(self):
+        utils.logger.info("[KuaishouCrawler.search] Begin search kuaishou keywords")
+        ks_limit_count = 20  # kuaishou limit page fixed value
+        if config.CRAWLER_MAX_NOTES_COUNT < ks_limit_count:
+            config.CRAWLER_MAX_NOTES_COUNT = ks_limit_count
+        start_page = config.START_PAGE
+        for keyword in config.KEYWORDS.split(","):
+            search_session_id = ""
+            source_keyword_var.set(keyword)
+            utils.logger.info(
+                f"[KuaishouCrawler.search] Current search keyword: {keyword}"
+            )
+            page = 1
+            while (
+                page - start_page + 1
+            ) * ks_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
+                if page < start_page:
+                    utils.logger.info(f"[KuaishouCrawler.search] Skip page: {page}")
+                    page += 1
+                    continue
+                utils.logger.info(
+                    f"[KuaishouCrawler.search] search kuaishou keyword: {keyword}, page: {page}"
+                )
+                video_id_list: List[str] = []
+                videos_res = await self.ks_client.search_info_by_keyword(
+                    keyword=keyword,
+                    pcursor=str(page),
+                    search_session_id=search_session_id,
+                )
+                if not videos_res:
+                    utils.logger.error(
+                        f"[KuaishouCrawler.search] search info by keyword:{keyword} not found data"
+                    )
+                    continue
+
+                vision_search_photo: Dict = videos_res.get("visionSearchPhoto")
+                if vision_search_photo.get("result") != 1:
+                    utils.logger.error(
+                        f"[KuaishouCrawler.search] search info by keyword:{keyword} not found data "
+                    )
+                    continue
+                search_session_id = vision_search_photo.get("searchSessionId", "")
+                for video_detail in vision_search_photo.get("feeds"):
+                    video_id_list.append(video_detail.get("photo", {}).get("id"))
+                    await kuaishou_store.update_kuaishou_video(video_item=video_detail)
+
+                # batch fetch video comments
+                page += 1
+
+                # Sleep after page navigation
+                await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
+                utils.logger.info(f"[KuaishouCrawler.search] Sleeping for {config.CRAWLER_MAX_SLEEP_SEC} seconds after page {page-1}")
+
+                await self.batch_get_video_comments(video_id_list)
+
+    async def get_specified_videos(self):
+        """Get the information and comments of the specified post"""
+        utils.logger.info("[KuaishouCrawler.get_specified_videos] Parsing video URLs...")
+        video_ids = []
+        for video_url in config.KS_SPECIFIED_ID_LIST:
+            try:
+                video_info = parse_video_info_from_url(video_url)
+                video_ids.append(video_info.video_id)
+                utils.logger.info(f"Parsed video ID: {video_info.video_id} from 
+# ... (truncated)
+
+if 'crawl' not in dir():
+    async def crawl(url: str, config: dict) -> list[dict]:
+        for func_name in ['main', 'run', 'scrape']:
+            if func_name in dir():
+                func = globals()[func_name]
+                import asyncio
+                result = await func(url) if asyncio.iscoroutinefunction(func) else func(url)
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+        return [{"error": "No entry function found"}]
+''',
+        "tags": ['快手', '短视频', '中文'],
+        "difficulty": "hard",
+        "author": "community",
+        "source_url": "https://github.com/NanmiCoder/MediaCrawler",
+        "use_browser": 1,
+    },
+    {
+        "name": "百度贴吧爬虫",
+        "description": "社区爬虫 - 来自 NanmiCoder/MediaCrawler (GitHub高星项目)",
+        "category": "social",
+        "icon": "💬",
+        "target_url": "https://tieba.baidu.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from Playwright script
+# === media_platform/tieba/core.py ===
+# -*- coding: utf-8 -*-
+# Copyright (c) 2025 relakkes@gmail.com
+#
+# This file is part of MediaCrawler project.
+# Repository: https://github.com/NanmiCoder/MediaCrawler/blob/main/media_platform/tieba/core.py
+# GitHub: https://github.com/NanmiCoder
+# Licensed under NON-COMMERCIAL LEARNING LICENSE 1.1
+#
+
+# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：
+# 1. 不得用于任何商业用途。
+# 2. 使用时应遵守目标平台的使用条款和robots.txt规则。
+# 3. 不得进行大规模爬取或对平台造成运营干扰。
+# 4. 应合理控制请求频率，避免给目标平台带来不必要的负担。
+# 5. 不得用于任何非法或不当的用途。
+#
+# 详细许可条款请参阅项目根目录下的LICENSE文件。
+# 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
+
+
+import asyncio
+import os
+from asyncio import Task
+from typing import Dict, List, Optional, Tuple
+
+from playwright.async_api import (
+    BrowserContext,
+    BrowserType,
+    Page,
+    Playwright,
+    async_playwright,
+)
+
+import config
+from base.base_crawler import AbstractCrawler
+from model.m_baidu_tieba import TiebaCreator, TiebaNote
+from proxy.proxy_ip_pool import IpInfoModel, ProxyIpPool, create_ip_pool
+from store import tieba as tieba_store
+from tools import utils
+from tools.cdp_browser import CDPBrowserManager
+from var import crawler_type_var, source_keyword_var
+
+from .client import BaiduTieBaClient
+from .field import SearchNoteType, SearchSortType
+from .help import TieBaExtractor
+from .login import BaiduTieBaLogin
+
+
+class TieBaCrawler(AbstractCrawler):
+    context_page: Page
+    tieba_client: BaiduTieBaClient
+    browser_context: BrowserContext
+    cdp_manager: Optional[CDPBrowserManager]
+
+    def __init__(self) -> None:
+        self.index_url = "https://tieba.baidu.com"
+        self.user_agent = utils.get_user_agent()
+        self._page_extractor = TieBaExtractor()
+        self.cdp_manager = None
+
+    async def start(self) -> None:
+        """
+        Start the crawler
+        Returns:
+
+        """
+        playwright_proxy_format, httpx_proxy_format = None, None
+        if config.ENABLE_IP_PROXY:
+            utils.logger.info(
+                "[BaiduTieBaCrawler.start] Begin create ip proxy pool ..."
+            )
+            ip_proxy_pool = await create_ip_pool(
+                config.IP_PROXY_POOL_COUNT, enable_validate_ip=True
+            )
+            ip_proxy_info: IpInfoModel = await ip_proxy_pool.get_proxy()
+            playwright_proxy_format, httpx_proxy_format = utils.format_proxy_info(ip_proxy_info)
+            utils.logger.info(
+                f"[BaiduTieBaCrawler.start] Init default ip proxy, value: {httpx_proxy_format}"
+            )
+
+        async with async_playwright() as playwright:
+            # Choose startup mode based on configuration
+            if config.ENABLE_CDP_MODE:
+                utils.logger.info("[BaiduTieBaCrawler] Launching browser in CDP mode")
+                self.browser_context = await self.launch_browser_with_cdp(
+                    playwright,
+                    playwright_proxy_format,
+                    self.user_agent,
+                    headless=config.CDP_HEADLESS,
+                )
+            else:
+                utils.logger.info("[BaiduTieBaCrawler] Launching browser in standard mode")
+                # Launch a browser context.
+                chromium = playwright.chromium
+                self.browser_context = await self.launch_browser(
+                    chromium,
+                    playwright_proxy_format,
+                    self.user_agent,
+                    headless=config.HEADLESS,
+                )
+
+            # Inject anti-detection scripts - for Baidu's special detection
+            await self._inject_anti_detection_scripts()
+
+            self.context_page = await self.browser_context.new_page()
+
+            # First visit Baidu homepage, then click Tieba link to avoid triggering security verification
+            await self._navigate_to_tieba_via_baidu()
+
+            # Create a client to interact with the baidutieba website.
+            self.tieba_client = await self.create_tieba_client(
+                httpx_proxy_format,
+                ip_proxy_pool if config.ENABLE_IP_PROXY else None
+            )
+
+            # Check login status and perform login if necessary
+            if not await self.tieba_client.pong(browser_context=self.browser_context):
+                login_obj = BaiduTieBaLogin(
+                    login_type=config.LOGIN_TYPE,
+                    login_phone="",  # your phone number
+                    browser_context=self.browser_context,
+                    context_page=self.context_page,
+                    cookie_str=config.COOKIES,
+                )
+                await login_obj.begin()
+                await self.tieba_client.update_cookies(browser_context=self.browser_context)
+
+            crawler_type_var.set(config.CRAWLER_TYPE)
+            if config.CRAWLER_TYPE == "search":
+                # Search for notes and retrieve their comment information.
+                await self.search()
+                await self.get_specified_tieba_notes()
+            elif config.CRAWLER_TYPE == "detail":
+                # Get the information and comments of the specified post
+                await self.get_specified_notes()
+            elif config.CRAWLER_TYPE == "creator":
+                # Get creator's information and their notes and comments
+                await self.get_creators_and_notes()
+            else:
+                pass
+
+            utils.logger.info("[BaiduTieBaCrawler.start] Tieba Crawler finished ...")
+
+    async def search(self) -> None:
+        """
+        Search for notes and retrieve their comment information.
+        Returns:
+
+        """
+        utils.logger.info(
+            "[BaiduTieBaCrawler.search] Begin search baidu tieba keywords"
+        )
+        tieba_limit_count = 10  # tieba limit page fixed value
+        if config.CRAWLER_MAX_NOTES_COUNT < tieba_limit_count:
+            config.CRAWLER_MAX_NOTES_COUNT = tieba_limit_count
+        start_page = config.START_PAGE
+        for keyword in config.KEYWORDS.split(","):
+            source_keyword_var.set(keyword)
+            utils.logger.info(
+                f"[BaiduTieBaCrawler.search] Current search keyword: {keyword}"
+            )
+            page = 1
+            while (
+                page - start_page + 1
+            ) * tieba_limit_count <= config.CRAWLER_MAX_NOTES_COUNT:
+                if page < start_page:
+                    utils.logger.info(f"[BaiduTieBaCrawler.search] Skip page {page}")
+                    page += 1
+                    continue
+                try:
+                    utils.logger.info(
+                        f"[BaiduTieBaCrawler.search] search tieba keyword: {keyword}, page: {page}"
+                    )
+                    notes_list: List[TiebaNote] = (
+                        await self.tieba_client.get_notes_by_keyword(
+                            keyword=keyword,
+                            page=page,
+                            page_size=tieba_limit_count,
+                            sort=SearchSortType.TIME_DESC,
+                            note_type=SearchNoteType.FIXED_THREAD,
+                        )
+                    )
+                    if not notes_list:
+                        utils.logger.info(
+                            f"[BaiduTieBaCrawler.search] Search note list is empty"
+                        )
+                        break
+                    utils.logger.info(
+                        f"[BaiduTieBaCrawler.search] Note list len: {len(notes_list)}"
+                    )
+                    await self.get_specified_notes(
+                        note_id_list=[note_detail.note_id for note_detail in notes_list]
+                    )
+
+                    # Sleep after page navigation
+                    await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
+                    utils.logger.info(f"[TieBaCrawler.search] Sleeping for {config.CRAWLER_MAX_SLEEP_SEC} seconds after page {page}")
+
+                    page += 1
+                except Exception as ex:
+                    utils.logger.error(
+                        f"[BaiduTieBaCrawler.search] Search keywords error, c
+# ... (truncated)
+
+if 'crawl' not in dir():
+    async def crawl(url: str, config: dict) -> list[dict]:
+        for func_name in ['main', 'run', 'scrape']:
+            if func_name in dir():
+                func = globals()[func_name]
+                import asyncio
+                result = await func(url) if asyncio.iscoroutinefunction(func) else func(url)
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+        return [{"error": "No entry function found"}]
+''',
+        "tags": ['贴吧', '社区', '中文'],
+        "difficulty": "medium",
+        "author": "community",
+        "source_url": "https://github.com/NanmiCoder/MediaCrawler",
+        "use_browser": 1,
+    },
+    {
+        "name": "抖音视频下载",
+        "description": "社区爬虫 - 来自 Jack-Cherish/python-spider (GitHub高星项目)",
+        "category": "social",
+        "icon": "📱",
+        "target_url": "https://www.douyin.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from requests/httpx script
+import asyncio
+
+# --- Original Code ---
+# === douyin/douyin.py ===
+# -*- coding:utf-8 -*-
+from contextlib import closing
+import requests, json, re, os, sys
+import urllib
+
+class DouYin(object):
+	def __init__(self, width = 500, height = 300):
+		"""
+		抖音App视频下载
+		"""
+		self.headers = {
+			'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36',
+			'sec-fetch-mode': 'cors',
+			'sec-fetch-site': 'same-origin',
+			'accept': 'application/json',
+			'accept-encoding': 'gzip, deflate, br',
+			'accept-language': 'zh-CN,zh;q=0.9',
+		}
+		self.headers1 = {
+			'User-Agent': 'Mozilla/5.0 (Linux; U; Android 5.1.1; zh-cn; MI 4S Build/LMY47V) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/53.0.2785.146 Mobile Safari/537.36 XiaoMi/MiuiBrowser/9.1.3',
+		}
+
+	def get_video_urls(self, user_id, type_flag='f'):
+		"""
+		获得视频播放地址
+		Parameters:
+			user_id：查询的用户UID
+		Returns:
+			video_names: 视频名字列表
+			video_urls: 视频链接列表
+			nickname: 用户昵称
+		"""
+		video_names = []
+		video_urls = []
+		share_urls = []
+		max_cursor = 0
+		has_more = 1
+		sign_api = 'http://49.233.200.77:5001'
+		share_user_url = 'https://www.iesdouyin.com/share/user/%s' % user_id
+		share_user = requests.get(share_user_url, headers=self.headers)
+		while share_user.status_code != 200:
+			share_user = requests.get(share_user_url, headers=self.headers)
+		_tac_re = re.compile(r"tac='([\\s\\S]*?)'</script>")
+		tac = _tac_re.search(share_user.text).group(1)
+		_dytk_re = re.compile(r"dytk\\s*:\\s*'(.+)'")
+		dytk = _dytk_re.search(share_user.text).group(1)
+		_nickname_re = re.compile(r'<p class="nickname">(.+?)<\\/p>')
+		nickname = _nickname_re.search(share_user.text).group(1)
+		data = {
+			'tac': tac.split('|')[0],
+			'user_id': user_id,
+		}
+		req = requests.post(sign_api, data=data)
+		while req.status_code != 200:
+			req = requests.post(sign_api, data=data)
+		sign = req.json().get('signature')
+		user_url_prefix = 'https://www.iesdouyin.com/web/api/v2/aweme/like' if type_flag == 'f' else 'https://www.iesdouyin.com/web/api/v2/aweme/post'
+		print('解析视频链接中')
+		while has_more != 0:
+			user_url = user_url_prefix + '/?user_id=%s&sec_uid=&count=21&max_cursor=%s&aid=1128&_signature=%s&dytk=%s' % (user_id, max_cursor, sign, dytk)
+			req = requests.get(user_url, headers=self.headers)
+			while req.status_code != 200:
+				req = requests.get(user_url, headers=self.headers)
+			html = json.loads(req.text)
+			for each in html['aweme_list']:
+				try:
+					url = 'https://aweme.snssdk.com/aweme/v1/play/?video_id=%s&line=0&ratio=720p&media_type=4&vr_type=0&improve_bitrate=0&is_play_url=1&is_support_h265=0&source=PackSourceEnum_PUBLISH'
+					vid = each['video']['vid']
+					video_url = url % vid
+				except:
+					continue
+				share_desc = each['desc']
+				if os.name == 'nt':
+					for c in r'\\/:*?"<>|':
+						nickname = nickname.replace(c, '').strip().strip('\\.')
+						share_desc = share_desc.replace(c, '').strip()
+				share_id = each['aweme_id']
+				if share_desc in ['抖音-原创音乐短视频社区', 'TikTok', '']:
+					video_names.append(share_id + '.mp4')
+				else:
+					video_names.append(share_id + '-' + share_desc + '.mp4')
+				share_url = 'https://www.iesdouyin.com/share/video/%s' % share_id
+				share_urls.append(share_url)
+				video_urls.append(video_url)
+			max_cursor = html['max_cursor']
+			has_more = html['has_more']
+
+		return video_names, video_urls, share_urls, nickname
+
+	def get_download_url(self, video_url, watermark_flag):
+		"""
+		获得带水印的视频播放地址
+		Parameters:
+			video_url：带水印的视频播放地址
+		Returns:
+			download_url: 带水印的视频下载地址
+		"""
+		# 带水印视频
+		if watermark_flag == True:
+			download_url = video_url.replace('/play/', '/playwm/')
+		# 无水印视频
+		else:
+			download_url = video_url.replace('/playwm/', '/play/')
+
+		return download_url
+
+	def video_downloader(self, video_url, video_name, watermark_flag=False):
+		"""
+		视频下载
+		Parameters:
+			video_url: 带水印的视频地址
+			video_name: 视频名
+			watermark_flag: 是否下载带水印的视频
+		Returns:
+			无
+		"""
+		size = 0
+		video_url = self.get_download_url(video_url, watermark_flag=watermark_flag)
+		with closing(requests.get(video_url, headers=self.headers1, stream=True)) as response:
+			chunk_size = 1024
+			content_size = int(response.headers['content-length'])
+			if response.status_code == 200:
+				sys.stdout.write('  [文件大小]:%0.2f MB\\n' % (content_size / chunk_size / 1024))
+
+				with open(video_name, 'wb') as file:
+					for data in response.iter_content(chunk_size = chunk_size):
+						file.write(data)
+						size += len(data)
+						file.flush()
+
+						sys.stdout.write('  [下载进度]:%.2f%%' % float(size / content_size * 100) + '\\r')
+						sys.stdout.flush()
+
+	def run(self):
+		"""
+		运行函数
+		Parameters:
+			None
+		Returns:
+			None
+		"""
+		self.hello()
+		print('UID取得方式：\\n分享用户页面，用浏览器打开短链接，原始链接中/share/user/后的数字即是UID')
+		user_id = input('请输入UID (例如60388937600):')
+		user_id = user_id if user_id else '60388937600'
+		watermark_flag = input('是否下载带水印的视频 (0-否(默认), 1-是):')
+		watermark_flag = watermark_flag if watermark_flag!='' else '0'
+		watermark_flag = bool(int(watermark_flag))
+		type_flag = input('f-收藏的(默认), p-上传的:')
+		type_flag = type_flag if type_flag!='' else 'f'
+		save_dir = input('保存路径 (例如"E:/Download/", 默认"./Download/"):')
+		save_dir = save_dir if save_dir else "./Download/"
+		video_names, video_urls, share_urls, nickname = self.get_video_urls(user_id, type_flag)
+		nickname_dir = os.path.join(save_dir, nickname)
+		if not os.path.exists(save_dir):
+			os.makedirs(save_dir)
+		if nickname not in os.listdir(save_dir):
+			os.mkdir(nickname_dir)
+		if type_flag == 'f':
+			if 'favorite' not in os.listdir(nickname_dir):
+				os.mkdir(os.path.join(nickname_dir, 'favorite'))
+		print('视频下载中:共有%d个作品!\\n' % len(video_urls))
+		for num in range(len(video_urls)):
+			print('  解析第%d个视频链接 [%s] 中，请稍后!\\n' % (num + 1, share_urls[num]))
+			if '\\\\' in video_names[num]:
+				video_name = video_names[num].replace('\\\\', '')
+			elif '/' in video_names[num]:
+				video_name = video_names[num].replace('/', '')
+			else:
+				video_name = video_names[num]
+			video_path = os.path.join(nickname_dir, video_name) if type_flag!='f' else os.path.join(nickname_dir, 'favorite', video_name)
+			if os.path.isfile(video_path):
+				print('视频已存在')
+			else:
+				self.video_downloader(video_urls[num], video_path, watermark_flag)
+			print('\\n')
+		print('下载完成!')
+
+	def hello(self):
+		"""
+		打印欢迎界面
+		Parameters:
+			None
+		Returns:
+			None
+		"""
+		print('*' * 100)
+		print('\\t\\t\\t\\t抖音App视频下载小助手')
+		print('\\t\\t作者:Jack Cui、steven7851')
+		print('*' * 100)
+
+
+if __name__ == '__main__':
+	douyin = DouYin()
+	douyin.run()
+
+# --- End Original ---
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """Adapter: runs the original script and captures output."""
+    import io, sys, json
+
+    for func_name in ['main', 'run', 'scrape', 'fetch', 'parse', 'spider', 'crawl_sync', 'get_data']:
+        if func_name in dir():
+            func = globals()[func_name]
+            try:
+                result = func(url) if url else func()
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+                else:
+                    return [{"data": str(result)}]
+            except Exception as e:
+                return [{"error": str(e)}]
+
+    old_stdout = sys.stdout
+    sys.stdout = buffer = io.StringIO()
+    try:
+        exec(compile(open(__file__).read() if hasattr(__file__, "read") else "", "<adapted>", "exec"))
+    except:
+        pass
+    finally:
+        sys.stdout = old_stdout
+
+    output = buffer.getvalue()
+    if output:
+        try:
+            return json.loads(output)
+        except:
+            return [{"output": line} for line in output.strip().split("\\n") if line.strip()]
+
+    return [{"error": "No output captured"}]
+''',
+        "tags": ['抖音', '下载', '视频'],
+        "difficulty": "hard",
+        "author": "community",
+        "source_url": "https://github.com/Jack-Cherish/python-spider",
+        "use_browser": 1,
+    },
+    {
+        "name": "小红书数据采集",
+        "description": "社区爬虫 - 来自 cv-cat/Spider_XHS (GitHub高星项目)",
+        "category": "social",
+        "icon": "📕",
+        "target_url": "https://www.xiaohongshu.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from requests/httpx script
+import asyncio
+
+# --- Original Code ---
+# === main.py ===
+import json
+import os
+from loguru import logger
+from apis.xhs_pc_apis import XHS_Apis
+from xhs_utils.common_util import init
+from xhs_utils.data_util import handle_note_info, download_note, save_to_xlsx
+
+
+class Data_Spider():
+    def __init__(self):
+        self.xhs_apis = XHS_Apis()
+
+    def spider_note(self, note_url: str, cookies_str: str, proxies=None):
+        """
+        爬取一个笔记的信息
+        :param note_url:
+        :param cookies_str:
+        :return:
+        """
+        note_info = None
+        try:
+            success, msg, note_info = self.xhs_apis.get_note_info(note_url, cookies_str, proxies)
+            if success:
+                note_info = note_info['data']['items'][0]
+                note_info['url'] = note_url
+                note_info = handle_note_info(note_info)
+        except Exception as e:
+            success = False
+            msg = e
+        logger.info(f'爬取笔记信息 {note_url}: {success}, msg: {msg}')
+        return success, msg, note_info
+
+    def spider_some_note(self, notes: list, cookies_str: str, base_path: dict, save_choice: str, excel_name: str = '', proxies=None):
+        """
+        爬取一些笔记的信息
+        :param notes:
+        :param cookies_str:
+        :param base_path:
+        :return:
+        """
+        if (save_choice == 'all' or save_choice == 'excel') and excel_name == '':
+            raise ValueError('excel_name 不能为空')
+        note_list = []
+        for note_url in notes:
+            success, msg, note_info = self.spider_note(note_url, cookies_str, proxies)
+            if note_info is not None and success:
+                note_list.append(note_info)
+        for note_info in note_list:
+            if save_choice == 'all' or 'media' in save_choice:
+                download_note(note_info, base_path['media'], save_choice)
+        if save_choice == 'all' or save_choice == 'excel':
+            file_path = os.path.abspath(os.path.join(base_path['excel'], f'{excel_name}.xlsx'))
+            save_to_xlsx(note_list, file_path)
+
+
+    def spider_user_all_note(self, user_url: str, cookies_str: str, base_path: dict, save_choice: str, excel_name: str = '', proxies=None):
+        """
+        爬取一个用户的所有笔记
+        :param user_url:
+        :param cookies_str:
+        :param base_path:
+        :return:
+        """
+        note_list = []
+        try:
+            success, msg, all_note_info = self.xhs_apis.get_user_all_notes(user_url, cookies_str, proxies)
+            if success:
+                logger.info(f'用户 {user_url} 作品数量: {len(all_note_info)}')
+                for simple_note_info in all_note_info:
+                    note_url = f"https://www.xiaohongshu.com/explore/{simple_note_info['note_id']}?xsec_token={simple_note_info['xsec_token']}"
+                    note_list.append(note_url)
+            if save_choice == 'all' or save_choice == 'excel':
+                excel_name = user_url.split('/')[-1].split('?')[0]
+            self.spider_some_note(note_list, cookies_str, base_path, save_choice, excel_name, proxies)
+        except Exception as e:
+            success = False
+            msg = e
+        logger.info(f'爬取用户所有视频 {user_url}: {success}, msg: {msg}')
+        return note_list, success, msg
+
+    def spider_some_search_note(self, query: str, require_num: int, cookies_str: str, base_path: dict, save_choice: str, sort_type_choice=0, note_type=0, note_time=0, note_range=0, pos_distance=0, geo: dict = None,  excel_name: str = '', proxies=None):
+        """
+            指定数量搜索笔记，设置排序方式和笔记类型和笔记数量
+            :param query 搜索的关键词
+            :param require_num 搜索的数量
+            :param cookies_str 你的cookies
+            :param base_path 保存路径
+            :param sort_type_choice 排序方式 0 综合排序, 1 最新, 2 最多点赞, 3 最多评论, 4 最多收藏
+            :param note_type 笔记类型 0 不限, 1 视频笔记, 2 普通笔记
+            :param note_time 笔记时间 0 不限, 1 一天内, 2 一周内天, 3 半年内
+            :param note_range 笔记范围 0 不限, 1 已看过, 2 未看过, 3 已关注
+            :param pos_distance 位置距离 0 不限, 1 同城, 2 附近 指定这个必须要指定 geo
+            返回搜索的结果
+        """
+        note_list = []
+        try:
+            success, msg, notes = self.xhs_apis.search_some_note(query, require_num, cookies_str, sort_type_choice, note_type, note_time, note_range, pos_distance, geo, proxies)
+            if success:
+                notes = list(filter(lambda x: x['model_type'] == "note", notes))
+                logger.info(f'搜索关键词 {query} 笔记数量: {len(notes)}')
+                for note in notes:
+                    note_url = f"https://www.xiaohongshu.com/explore/{note['id']}?xsec_token={note['xsec_token']}"
+                    note_list.append(note_url)
+            if save_choice == 'all' or save_choice == 'excel':
+                excel_name = query
+            self.spider_some_note(note_list, cookies_str, base_path, save_choice, excel_name, proxies)
+        except Exception as e:
+            success = False
+            msg = e
+        logger.info(f'搜索关键词 {query} 笔记: {success}, msg: {msg}')
+        return note_list, success, msg
+
+# __main__ removed
+    """
+        此文件为爬虫的入口文件，可以直接运行
+        apis/xhs_pc_apis.py 为爬虫的api文件，包含小红书的全部数据接口，可以继续封装
+        apis/xhs_creator_apis.py 为小红书创作者中心的api文件
+        感谢star和follow
+    """
+
+    cookies_str, base_path = init()
+    data_spider = Data_Spider()
+    """
+        save_choice: all: 保存所有的信息, media: 保存视频和图片（media-video只下载视频, media-image只下载图片，media都下载）, excel: 保存到excel
+        save_choice 为 excel 或者 all 时，excel_name 不能为空
+    """
+
+
+    # 1 爬取列表的所有笔记信息 笔记链接 如下所示 注意此url会过期！
+    notes = [
+        r'https://www.xiaohongshu.com/explore/683fe17f0000000023017c6a?xsec_token=ABBr_cMzallQeLyKSRdPk9fwzA0torkbT_ubuQP1ayvKA=&xsec_source=pc_user',
+    ]
+    data_spider.spider_some_note(notes, cookies_str, base_path, 'all', 'test')
+
+    # 2 爬取用户的所有笔记信息 用户链接 如下所示 注意此url会过期！
+    user_url = 'https://www.xiaohongshu.com/user/profile/64c3f392000000002b009e45?xsec_token=AB-GhAToFu07JwNk_AMICHnp7bSTjVz2beVIDBwSyPwvM=&xsec_source=pc_feed'
+    data_spider.spider_user_all_note(user_url, cookies_str, base_path, 'all')
+
+    # 3 搜索指定关键词的笔记
+    query = "榴莲"
+    query_num = 10
+    sort_type_choice = 0  # 0 综合排序, 1 最新, 2 最多点赞, 3 最多评论, 4 最多收藏
+    note_type = 0 # 0 不限, 1 视频笔记, 2 普通笔记
+    note_time = 0  # 0 不限, 1 一天内, 2 一周内天, 3 半年内
+    note_range = 0  # 0 不限, 1 已看过, 2 未看过, 3 已关注
+    pos_distance = 0  # 0 不限, 1 同城, 2 附近 指定这个1或2必须要指定 geo
+    # geo = {
+    #     # 经纬度
+    #     "latitude": 39.9725,
+    #     "longitude": 116.4207
+    # }
+    data_spider.spider_some_search_note(query, query_num, cookies_str, base_path, 'all', sort_type_choice, note_type, note_time, note_range, pos_distance, geo=None)
+
+# --- End Original ---
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """Adapter: runs the original script and captures output."""
+    import io, sys, json
+
+    for func_name in ['main', 'run', 'scrape', 'fetch', 'parse', 'spider', 'crawl_sync', 'get_data']:
+        if func_name in dir():
+            func = globals()[func_name]
+            try:
+                result = func(url) if url else func()
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+                else:
+                    return [{"data": str(result)}]
+            except Exception as e:
+                return [{"error": str(e)}]
+
+    old_stdout = sys.stdout
+    sys.stdout = buffer = io.StringIO()
+    try:
+        exec(compile(open(__file__).read() if hasattr(__file__, "read") else "", "<adapted>", "exec"))
+    except:
+        pass
+    finally:
+        sys.stdout = old_stdout
+
+    output = buffer.getvalue()
+    if output:
+        try:
+            return json.loads(output)
+        except:
+            return [{"output": line} for line in output.strip().split("\\n") if line.strip()]
+
+    return [{"error": "No output captured"}]
+''',
+        "tags": ['小红书', '采集', '运营'],
+        "difficulty": "hard",
+        "author": "community",
+        "source_url": "https://github.com/cv-cat/Spider_XHS",
+        "use_browser": 1,
+    },
+    {
+        "name": "微博用户爬虫",
+        "description": "社区爬虫 - 来自 dataabc/weiboSpider (GitHub高星项目)",
+        "category": "social",
+        "icon": "📱",
+        "target_url": "https://weibo.com",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from requests/httpx script
+import asyncio
+
+# --- Original Code ---
+# === weibo_spider/spider.py ===
+#!/usr/bin/env python
+# -*- coding: UTF-8 -*-
+
+import json
+import logging
+import logging.config
+import os
+import random
+import shutil
+import sys
+import asyncio
+import aiohttp
+from datetime import date, datetime, timedelta
+from time import sleep
+
+from absl import app, flags
+from tqdm import tqdm
+
+from . import config_util, datetime_util
+from .downloader import AvatarPictureDownloader
+from .parser import AlbumParser, IndexParser, PageParser, PhotoParser
+from .parser.util import handle_html_async
+from .user import User
+
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string('config_path', None, 'The path to config.json.')
+flags.DEFINE_string('u', None, 'The user_id we want to input.')
+flags.DEFINE_string('user_id_list', None, 'The path to user_id_list.txt.')
+flags.DEFINE_string('output_dir', None, 'The dir path to store results.')
+
+logging_path = os.path.split(
+    os.path.realpath(__file__))[0] + os.sep + 'logging.conf'
+logging.config.fileConfig(logging_path)
+logger = logging.getLogger('spider')
+
+
+class Spider:
+    def __init__(self, config):
+        """Weibo类初始化"""
+        self.filter = config[
+            'filter']  # 取值范围为0、1,程序默认值为0,代表要爬取用户的全部微博,1代表只爬取用户的原创微博
+        since_date = config['since_date']
+        if isinstance(since_date, int):
+            since_date = date.today() - timedelta(since_date)
+        self.since_date = str(
+            since_date)  # 起始时间，即爬取发布日期从该值到结束时间的微博，形式为yyyy-mm-dd
+        self.end_date = config[
+            'end_date']  # 结束时间，即爬取发布日期从起始时间到该值的微博，形式为yyyy-mm-dd，特殊值"now"代表现在
+        random_wait_pages = config['random_wait_pages']
+        self.random_wait_pages = [
+            min(random_wait_pages),
+            max(random_wait_pages)
+        ]  # 随机等待频率，即每爬多少页暂停一次
+        random_wait_seconds = config['random_wait_seconds']
+        self.random_wait_seconds = [
+            min(random_wait_seconds),
+            max(random_wait_seconds)
+        ]  # 随机等待时间，即每次暂停要sleep多少秒
+        self.global_wait = config['global_wait']  # 配置全局等待时间，如每爬1000页等待3600秒等
+        self.page_count = 0  # 统计每次全局等待后，爬取了多少页，若页数满足全局等待要求就进入下一次全局等待
+        self.write_mode = config[
+            'write_mode']  # 结果信息保存类型，为list形式，可包含txt、csv、json、mongo和mysql五种类型
+        self.pic_download = config[
+            'pic_download']  # 取值范围为0、1,程序默认值为0,代表不下载微博原始图片,1代表下载
+        self.video_download = config[
+            'video_download']  # 取值范围为0、1,程序默认为0,代表不下载微博视频,1代表下载
+        self.file_download_timeout = config.get(
+            'file_download_timeout',
+            [5, 5, 10
+             ])  # 控制文件下载“超时”时的操作，值是list形式，包含三个数字，依次分别是最大超时重试次数、最大连接时间和最大读取时间
+        self.result_dir_name = config.get(
+            'result_dir_name', 0)  # 结果目录名，取值为0或1，决定结果文件存储在用户昵称文件夹里还是用户id文件夹里
+        self.cookie = config['cookie']
+        self.mysql_config = config.get('mysql_config')  # MySQL数据库连接配置，可以不填
+
+        self.sqlite_config = config.get('sqlite_config')
+        self.kafka_config = config.get('kafka_config')
+        self.mongo_config = config.get('mongo_config')
+        self.post_config = config.get('post_config')
+        self.user_config_file_path = ''
+        user_id_list = config['user_id_list']
+        if FLAGS.user_id_list:
+            user_id_list = FLAGS.user_id_list
+        if not isinstance(user_id_list, list):
+            if not os.path.isabs(user_id_list):
+                user_id_list = os.getcwd() + os.sep + user_id_list
+            if not os.path.isfile(user_id_list):
+                logger.warning('不存在%s文件', user_id_list)
+                sys.exit()
+            self.user_config_file_path = user_id_list
+        if FLAGS.u:
+            user_id_list = FLAGS.u.split(',')
+        if isinstance(user_id_list, list):
+            # 第一部分是处理dict类型的
+            # 第二部分是其他类型,其他类型提供去重功能
+            user_config_list = list(
+                map(
+                    lambda x: {
+                        'user_uri': x['id'],
+                        'since_date': x.get('since_date', self.since_date),
+                        'end_date': x.get('end_date', self.end_date),
+                    }, [user_id for user_id in user_id_list
+                        if isinstance(user_id, dict)])) + list(
+                    map(
+                        lambda x: {
+                            'user_uri': x,
+                            'since_date': self.since_date,
+                            'end_date': self.end_date
+                        },
+                        set([
+                            user_id for user_id in user_id_list
+                            if not isinstance(user_id, dict)
+                        ])))
+            if FLAGS.u:
+                config_util.add_user_uri_list(self.user_config_file_path,
+                                              user_id_list)
+        else:
+            user_config_list = config_util.get_user_config_list(
+                user_id_list, self.since_date)
+            for user_config in user_config_list:
+                user_config['end_date'] = self.end_date
+        self.user_config_list = user_config_list  # 要爬取的微博用户的user_config列表
+        self.user_config = {}  # 用户配置,包含用户id和since_date
+        self.new_since_date = ''  # 完成某用户爬取后，自动生成对应用户新的since_date
+        self.user = User()  # 存储爬取到的用户信息
+        self.got_num = 0  # 存储爬取到的微博数
+        self.weibo_id_list = []  # 存储爬取到的所有微博id
+        self.session = None # aiohttp session
+
+    async def write_weibo(self, weibos):
+        """将爬取到的信息写入文件或数据库"""
+        for downloader in self.downloaders:
+            await downloader.download_files(weibos, self.session)
+        for writer in self.writers:
+            writer.write_weibo(weibos)
+
+    def write_user(self, user):
+        """将用户信息写入数据库"""
+        for writer in self.writers:
+            writer.write_user(user)
+
+    async def get_user_info(self, user_uri):
+        """获取用户信息"""
+        url = 'https://weibo.cn/%s/profile' % (user_uri)
+        selector = await handle_html_async(self.cookie, url, self.session)
+        self.user = await IndexParser(self.cookie, user_uri, selector=selector).get_user_async(self.session)
+        self.page_count += 1
+
+    async def download_user_avatar(self, user_uri):
+        """下载用户头像"""
+        # Note: This remains synchronous for now as it's a minor part of the flow
+        avatar_album_url = PhotoParser(self.cookie,
+                                       user_uri).extract_avatar_album_url()
+        pic_urls = AlbumParser(self.cookie,
+                               avatar_album_url).extract_pic_urls()
+        await AvatarPictureDownloader(
+            self._get_filepath('img'),
+            self.file_download_timeout).handle_download(pic_urls, self.session)
+
+    async def get_weibo_info(self):
+        """获取微博信息"""
+        try:
+            since_date = datetime_util.str_to_time(
+                self.user_config['since_date'])
+            now = datetime.now()
+            if since_date <= now:
+                # Async fetch page num
+                user_uri = self.user_config['user_uri']
+                url = 'https://weibo.cn/%s/profile' % (user_uri)
+                selector = await handle_html_async(self.cookie, url, self.session)
+                page_num = IndexParser(self.cookie, user_uri, selector=selector).get_page_num()
+                
+                self.page_count += 1
+                if self.page_count > 2 and (self.page_count +
+                                            page_num) > self.global_wait[0][0]:
+                    wait_seconds = int(
+                        self.global_wait[0][1] *
+                        min(1, self.page_count / self.global_wait[0][0]))
+                    logger.info(u'即将进入全局等待时间，%d秒后程序继续执行' % wait_seconds)
+                    for i in tqdm(range(wait_seconds)):
+                        await asyncio.sleep(1)
+                    self.page_count = 0
+                    self.global_wait.append(self.global_wait.pop(0))
+                page1 = 0
+                random_pages = random.randint(*self.random_wait_pages)
+                for page in tqdm(range(1, page_num + 1), desc='Progress
+# ... (truncated)
+# --- End Original ---
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """Adapter: runs the original script and captures output."""
+    import io, sys, json
+
+    for func_name in ['main', 'run', 'scrape', 'fetch', 'parse', 'spider', 'crawl_sync', 'get_data']:
+        if func_name in dir():
+            func = globals()[func_name]
+            try:
+                result = func(url) if url else func()
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+                else:
+                    return [{"data": str(result)}]
+            except Exception as e:
+                return [{"error": str(e)}]
+
+    old_stdout = sys.stdout
+    sys.stdout = buffer = io.StringIO()
+    try:
+        exec(compile(open(__file__).read() if hasattr(__file__, "read") else "", "<adapted>", "exec"))
+    except:
+        pass
+    finally:
+        sys.stdout = old_stdout
+
+    output = buffer.getvalue()
+    if output:
+        try:
+            return json.loads(output)
+        except:
+            return [{"output": line} for line in output.strip().split("\\n") if line.strip()]
+
+    return [{"error": "No output captured"}]
+''',
+        "tags": ['微博', '用户', '社交'],
+        "difficulty": "medium",
+        "author": "community",
+        "source_url": "https://github.com/dataabc/weiboSpider",
+    },
+    {
+        "name": "TuShare金融数据",
+        "description": "社区爬虫 - 来自 waditu/tushare (GitHub高星项目)",
+        "category": "finance",
+        "icon": "📊",
+        "target_url": "",
+        "mode": "code_generator",
+        "code": '''# Auto-adapted from requests/httpx script
+import asyncio
+
+# --- Original Code ---
+# === tushare/stock/trading.py ===
+# -*- coding:utf-8 -*- 
+"""
+交易数据接口 
+Created on 2014/07/31
+@author: Jimmy Liu
+@group : waditu
+@contact: jimmysoa@sina.cn
+"""
+from __future__ import division
+
+import time
+import json
+import lxml.html
+from lxml import etree
+import pandas as pd
+import numpy as np
+import datetime
+from tushare.stock import cons as ct
+import re
+from pandas.compat import StringIO
+from tushare.util import dateu as du
+from tushare.util.formula import MA
+import os
+from tushare.util.conns import get_apis, close_apis
+from tushare.stock.fundamental import get_stock_basics
+try:
+    from urllib.request import urlopen, Request
+except ImportError:
+    from urllib2 import urlopen, Request
+
+
+def get_hist_data(code=None, start=None, end=None,
+                  ktype='D', retry_count=3,
+                  pause=0.001):
+    """
+        获取个股历史交易记录
+    Parameters
+    ------
+      code:string
+                  股票代码 e.g. 600848
+      start:string
+                  开始日期 format：YYYY-MM-DD 为空时取到API所提供的最早日期数据
+      end:string
+                  结束日期 format：YYYY-MM-DD 为空时取到最近一个交易日数据
+      ktype：string
+                  数据类型，D=日k线 W=周 M=月 5=5分钟 15=15分钟 30=30分钟 60=60分钟，默认为D
+      retry_count : int, 默认 3
+                 如遇网络等问题重复执行的次数 
+      pause : int, 默认 0
+                重复请求数据过程中暂停的秒数，防止请求间隔时间太短出现的问题
+    return
+    -------
+      DataFrame
+          属性:日期 ，开盘价， 最高价， 收盘价， 最低价， 成交量， 价格变动 ，涨跌幅，5日均价，10日均价，20日均价，5日均量，10日均量，20日均量，换手率
+    """
+    symbol = ct._code_to_symbol(code)
+    url = ''
+    if ktype.upper() in ct.K_LABELS:
+        url = ct.DAY_PRICE_URL%(ct.P_TYPE['http'], ct.DOMAINS['ifeng'],
+                                ct.K_TYPE[ktype.upper()], symbol)
+    elif ktype in ct.K_MIN_LABELS:
+        url = ct.DAY_PRICE_MIN_URL%(ct.P_TYPE['http'], ct.DOMAINS['ifeng'],
+                                    symbol, ktype)
+    else:
+        raise TypeError('ktype input error.')
+    
+    for _ in range(retry_count):
+        time.sleep(pause)
+        try:
+            request = Request(url)
+            lines = urlopen(request, timeout = 10).read()
+            if len(lines) < 15: #no data
+                return None
+        except Exception as e:
+            print(e)
+        else:
+            js = json.loads(lines.decode('utf-8') if ct.PY3 else lines)
+            cols = []
+            if (code in ct.INDEX_LABELS) & (ktype.upper() in ct.K_LABELS):
+                cols = ct.INX_DAY_PRICE_COLUMNS
+            else:
+                cols = ct.DAY_PRICE_COLUMNS
+            if len(js['record'][0]) == 14:
+                cols = ct.INX_DAY_PRICE_COLUMNS
+            df = pd.DataFrame(js['record'], columns=cols)
+            if ktype.upper() in ['D', 'W', 'M']:
+                df = df.applymap(lambda x: x.replace(u',', u''))
+                df[df==''] = 0
+            for col in cols[1:]:
+                df[col] = df[col].astype(float)
+            if start is not None:
+                df = df[df.date >= start]
+            if end is not None:
+                df = df[df.date <= end]
+            if (code in ct.INDEX_LABELS) & (ktype in ct.K_MIN_LABELS):
+                df = df.drop('turnover', axis=1)
+            df = df.set_index('date')
+            df = df.sort_index(ascending = False)
+            return df
+    raise IOError(ct.NETWORK_URL_ERROR_MSG)
+
+
+def _parsing_dayprice_json(types=None, page=1):
+    """
+           处理当日行情分页数据，格式为json
+     Parameters
+     ------
+        pageNum:页码
+     return
+     -------
+        DataFrame 当日所有股票交易数据(DataFrame)
+    """
+    ct._write_console()
+    request = Request(ct.SINA_DAY_PRICE_URL%(ct.P_TYPE['http'], ct.DOMAINS['vsf'],
+                                 ct.PAGES['jv'], types, page))
+    text = urlopen(request, timeout=10).read()
+    if text == 'null':
+        return None
+    reg = re.compile(r'\\,(.*?)\\:') 
+    text = reg.sub(r',"\\1":', text.decode('gbk') if ct.PY3 else text) 
+    text = text.replace('"{symbol', '{"symbol')
+    text = text.replace('{symbol', '{"symbol"')
+    if ct.PY3:
+        jstr = json.dumps(text)
+    else:
+        jstr = json.dumps(text, encoding='GBK')
+    js = json.loads(jstr)
+    df = pd.DataFrame(pd.read_json(js, dtype={'code':object}),
+                      columns=ct.DAY_TRADING_COLUMNS)
+    df = df.drop('symbol', axis=1)
+#     df = df.ix[df.volume > 0]
+    return df
+
+
+def get_tick_data(code=None, date=None, retry_count=3, pause=0.001,
+                  src='sn'):
+    """
+        获取分笔数据
+    Parameters
+    ------
+        code:string
+                  股票代码 e.g. 600848
+        date:string
+                  日期 format: YYYY-MM-DD
+        retry_count : int, 默认 3
+                  如遇网络等问题重复执行的次数
+        pause : int, 默认 0
+                 重复请求数据过程中暂停的秒数，防止请求间隔时间太短出现的问题
+        src : 数据源选择，可输入sn(新浪)、tt(腾讯)、nt(网易)，默认sn
+     return
+     -------
+        DataFrame 当日所有股票交易数据(DataFrame)
+              属性:成交时间、成交价格、价格变动，成交手、成交金额(元)，买卖类型
+    """
+    if (src.strip() not in ct.TICK_SRCS):
+        print(ct.TICK_SRC_ERROR)
+        return None
+    symbol = ct._code_to_symbol(code)
+    symbol_dgt = ct._code_to_symbol_dgt(code)
+    datestr = date.replace('-', '')
+    url = {
+            ct.TICK_SRCS[0] : ct.TICK_PRICE_URL % (ct.P_TYPE['http'], ct.DOMAINS['sf'], ct.PAGES['dl'],
+                                date, symbol),
+            ct.TICK_SRCS[1] : ct.TICK_PRICE_URL_TT % (ct.P_TYPE['http'], ct.DOMAINS['tt'], ct.PAGES['idx'],
+                                           symbol, datestr),
+            ct.TICK_SRCS[2] : ct.TICK_PRICE_URL_NT % (ct.P_TYPE['http'], ct.DOMAINS['163'], date[0:4], 
+                                         datestr, symbol_dgt)
+             }
+    for _ in range(retry_count):
+        time.sleep(pause)
+        try:
+            if src == ct.TICK_SRCS[2]:
+                df = pd.read_excel(url[src])
+                df.columns = ct.TICK_COLUMNS
+            else:
+                re = Request(url[src])
+                lines = urlopen(re, timeout=10).read()
+                lines = lines.decode('GBK') 
+                if len(lines) < 20:
+                    return None
+                df = pd.read_table(StringIO(lines), names=ct.TICK_COLUMNS,
+                                   skiprows=[0])      
+        except Exception as e:
+            print(e)
+        else:
+            return df
+    raise IOError(ct.NETWORK_URL_ERROR_MSG)
+
+
+def get_sina_dd(code=None, date=None, vol=400, retry_count=3, pause=0.001):
+    """
+        获取sina大单数据
+    Parameters
+    ------
+        code:string
+                  股票代码 e.g. 600848
+        date:string
+                  日期 format：YYYY-MM-DD
+        retry_count : int, 默认 3
+                  如遇网络等问题重复执行的次数
+        pause : int, 默认 0
+                 重复请求数据过程中暂停的秒数，防止请求间隔时间太短出现的问题
+     return
+     -------
+        DataFrame 当日所有股票交易数据(DataFrame)
+              属性:股票代码    股票名称    交易时间    价格    成交量    前一笔价格    类型（买、卖、中性盘）
+    """
+    if code is None or len(code)!=6 or date is None:
+        return None
+    symbol = ct._code_to_symbol(code)
+    vol = vol*100
+    for _ in range(retry_count):
+        time.sleep(pause)
+        try:
+            re = Request(ct.SINA_DD % (ct.P_TYPE['http'], ct.DOMAINS['vsf'], ct.PAGES['sinadd'],
+                                symbol, vol, date))
+            lines = urlopen(re, timeout=10).read()
+            lines = lines.decode('GBK') 
+            if len(lines) < 100:
+                return None
+            df = pd.read_csv(StringIO(lines), names=ct.SINA_DD_COLS,
+                               skiprows=[0])    
+            if df is not None:
+                df['code'] = df['code'].map(lambda x: x[2:])
+        except Exception as e:
+            print(e)
+        else:
+            return df
+    raise IOError(ct.NETWORK_URL_ERROR_MSG)
+
+
+def get_today_ticks(code=None, retry_count=3, pause=0.001):
+    """
+        获取当日分笔明细数据
+    Parameters
+    ------
+        code
+# ... (truncated)
+# --- End Original ---
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """Adapter: runs the original script and captures output."""
+    import io, sys, json
+
+    for func_name in ['main', 'run', 'scrape', 'fetch', 'parse', 'spider', 'crawl_sync', 'get_data']:
+        if func_name in dir():
+            func = globals()[func_name]
+            try:
+                result = func(url) if url else func()
+                if isinstance(result, list):
+                    return [r if isinstance(r, dict) else {"data": str(r)} for r in result]
+                elif isinstance(result, dict):
+                    return [result]
+                else:
+                    return [{"data": str(result)}]
+            except Exception as e:
+                return [{"error": str(e)}]
+
+    old_stdout = sys.stdout
+    sys.stdout = buffer = io.StringIO()
+    try:
+        exec(compile(open(__file__).read() if hasattr(__file__, "read") else "", "<adapted>", "exec"))
+    except:
+        pass
+    finally:
+        sys.stdout = old_stdout
+
+    output = buffer.getvalue()
+    if output:
+        try:
+            return json.loads(output)
+        except:
+            return [{"output": line} for line in output.strip().split("\\n") if line.strip()]
+
+    return [{"error": "No output captured"}]
+''',
+        "tags": ['金融', '股票', '数据', 'A股'],
+        "difficulty": "easy",
+        "author": "community",
+        "source_url": "https://github.com/waditu/tushare",
+    },
 ]
 
 # Category label mapping
