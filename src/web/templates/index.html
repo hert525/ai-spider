@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Spider - 智能爬虫平台</title>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<style>
+  body { background: #0f1117; color: #e0e0e0; }
+  .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+  .btn-primary { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); }
+  .btn-primary:hover { background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%); }
+  .code-area { background: #1a1b26; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
+  .chat-user { background: rgba(99,102,241,0.15); border-left: 3px solid #6366f1; }
+  .chat-ai { background: rgba(16,185,129,0.1); border-left: 3px solid #10b981; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-draft { background: #fbbf24; }
+  .status-tested { background: #10b981; }
+  .status-failed { background: #ef4444; }
+  .status-running { background: #3b82f6; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .result-card { transition: all 0.2s; }
+  .result-card:hover { background: rgba(255,255,255,0.08); }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<nav class="glass border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <span class="text-2xl">🕷️</span>
+    <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">AI Spider</h1>
+  </div>
+  <div class="flex items-center gap-4">
+    <span class="text-sm text-gray-400" id="projectCount">0 个项目</span>
+  </div>
+</nav>
+
+<div class="flex h-screen" style="height: calc(100vh - 52px);">
+
+  <!-- Sidebar: Project List -->
+  <div class="w-72 glass border-r border-gray-800 overflow-y-auto p-4">
+    <button onclick="showNewProject()" class="btn-primary w-full py-2 px-4 rounded-lg text-white font-medium mb-4">
+      + 新建爬虫
+    </button>
+    <div id="projectList" class="space-y-2"></div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- New Project / Empty State -->
+    <div id="emptyState" class="flex-1 flex items-center justify-center">
+      <div class="text-center">
+        <div class="text-6xl mb-4">🕷️</div>
+        <h2 class="text-2xl font-bold mb-2">AI Spider 智能爬虫平台</h2>
+        <p class="text-gray-400 mb-6">用自然语言描述你的爬取需求，AI自动生成爬虫代码</p>
+        <button onclick="showNewProject()" class="btn-primary py-3 px-8 rounded-lg text-white font-medium text-lg">
+          开始创建
+        </button>
+      </div>
+    </div>
+
+    <!-- Create Panel -->
+    <div id="createPanel" class="flex-1 p-6 overflow-y-auto hidden">
+      <div class="max-w-2xl mx-auto">
+        <h2 class="text-xl font-bold mb-4">🆕 新建爬虫</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">目标网址</label>
+            <input id="inputUrl" type="url" placeholder="https://example.com/..." 
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">描述你想爬取什么</label>
+            <textarea id="inputDesc" rows="4" placeholder="例如：爬取这个页面所有商品的名称、价格、销量和评分，翻页爬取前10页"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-indigo-500 focus:outline-none resize-none"></textarea>
+          </div>
+          <button onclick="createProject()" id="btnCreate" class="btn-primary w-full py-3 rounded-lg text-white font-medium">
+            🚀 AI 生成爬虫代码
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Detail Panel -->
+    <div id="detailPanel" class="flex-1 flex flex-col hidden">
+      <!-- Top bar -->
+      <div class="glass border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="status-dot" id="detailStatus"></span>
+          <h2 class="font-bold" id="detailName"></h2>
+          <span class="text-sm text-gray-500" id="detailVersion"></span>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="testProject()" class="bg-green-600 hover:bg-green-700 px-4 py-1.5 rounded-lg text-sm text-white">▶ 测试</button>
+          <button onclick="approveProject()" class="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded-lg text-sm text-white">✅ 上线</button>
+        </div>
+      </div>
+
+      <!-- Split: Code + Chat/Results -->
+      <div class="flex-1 flex overflow-hidden">
+        <!-- Code Editor -->
+        <div class="flex-1 flex flex-col border-r border-gray-800">
+          <div class="px-4 py-2 text-sm text-gray-400 bg-gray-900">📝 爬虫代码</div>
+          <textarea id="codeEditor" class="flex-1 code-area p-4 text-green-300 resize-none focus:outline-none w-full"></textarea>
+        </div>
+
+        <!-- Right Panel: Chat + Results -->
+        <div class="w-96 flex flex-col">
+          <!-- Test Results -->
+          <div class="flex-1 overflow-y-auto p-4 border-b border-gray-800">
+            <h3 class="text-sm text-gray-400 mb-2">📊 测试结果</h3>
+            <div id="testResults" class="space-y-2 text-sm">
+              <p class="text-gray-600">还未运行测试</p>
+            </div>
+          </div>
+
+          <!-- Chat / Feedback -->
+          <div class="h-64 flex flex-col">
+            <div id="chatHistory" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+            <div class="p-3 border-t border-gray-800">
+              <div class="flex gap-2">
+                <input id="feedbackInput" type="text" placeholder="告诉AI怎么改..."
+                  class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                  onkeydown="if(event.key==='Enter')sendFeedback()">
+                <button onclick="sendFeedback()" class="btn-primary px-4 py-2 rounded-lg text-sm text-white">发送</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentProject = null;
+
+async function api(method, path, body) {
+  const opts = { method, headers: {'Content-Type': 'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+async function loadProjects() {
+  const projects = await api('GET', '/api/projects');
+  document.getElementById('projectCount').textContent = `${projects.length} 个项目`;
+  const list = document.getElementById('projectList');
+  list.innerHTML = projects.map(p => `
+    <div class="glass p-3 rounded-lg cursor-pointer result-card" onclick="openProject('${p.id}')">
+      <div class="flex items-center gap-2">
+        <span class="status-dot status-${p.status}"></span>
+        <span class="text-sm font-medium truncate">${p.name}</span>
+      </div>
+      <p class="text-xs text-gray-500 mt-1 truncate">${p.description}</p>
+    </div>
+  `).join('');
+}
+
+function showNewProject() {
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('detailPanel').classList.add('hidden');
+  document.getElementById('createPanel').classList.remove('hidden');
+  document.getElementById('inputDesc').focus();
+}
+
+async function createProject() {
+  const btn = document.getElementById('btnCreate');
+  btn.disabled = true;
+  btn.textContent = '⏳ AI 正在生成...';
+  try {
+    const desc = document.getElementById('inputDesc').value;
+    const url = document.getElementById('inputUrl').value;
+    const proj = await api('POST', '/api/projects', { description: desc, target_url: url });
+    await loadProjects();
+    openProject(proj.id);
+  } catch(e) {
+    alert('生成失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 AI 生成爬虫代码';
+  }
+}
+
+async function openProject(id) {
+  const proj = await api('GET', `/api/projects/${id}`);
+  currentProject = proj;
+
+  document.getElementById('createPanel').classList.add('hidden');
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('detailPanel').classList.remove('hidden');
+
+  document.getElementById('detailName').textContent = proj.name;
+  document.getElementById('detailVersion').textContent = `v${proj.version}`;
+  document.getElementById('detailStatus').className = `status-dot status-${proj.status}`;
+  document.getElementById('codeEditor').value = proj.code;
+
+  // Render chat
+  const chat = document.getElementById('chatHistory');
+  chat.innerHTML = (proj.messages || []).map(m => `
+    <div class="px-3 py-2 rounded text-sm ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">
+      ${m.content}
+    </div>
+  `).join('');
+  chat.scrollTop = chat.scrollHeight;
+
+  // Render test results
+  renderTestResults(proj.test_results || []);
+}
+
+function renderTestResults(results) {
+  const el = document.getElementById('testResults');
+  if (!results.length) { el.innerHTML = '<p class="text-gray-600">还未运行测试</p>'; return; }
+  const last = results[results.length - 1];
+  let html = `<div class="text-xs text-gray-400">v${last.version} · ${last.duration_ms}ms · ${last.pages_crawled}条</div>`;
+  if (last.error) {
+    html += `<div class="bg-red-900 bg-opacity-30 rounded p-2 text-red-300 text-xs mt-2">${last.error}</div>`;
+  }
+  if (last.output && last.output.length) {
+    html += last.output.map((item, i) => `
+      <div class="result-card glass rounded p-2 mt-1">
+        <pre class="text-xs text-gray-300 whitespace-pre-wrap">${JSON.stringify(item, null, 2)}</pre>
+      </div>
+    `).join('');
+  }
+  el.innerHTML = html;
+}
+
+async function testProject() {
+  if (!currentProject) return;
+  // Save any code edits
+  const code = document.getElementById('codeEditor').value;
+  if (code !== currentProject.code) {
+    await api('POST', `/api/projects/${currentProject.id}/refine`, { feedback: '用户直接修改了代码' });
+  }
+  try {
+    document.getElementById('testResults').innerHTML = '<p class="text-yellow-400">⏳ 正在测试...</p>';
+    const result = await api('POST', `/api/projects/${currentProject.id}/test`, { max_pages: 5 });
+    await openProject(currentProject.id);
+  } catch(e) {
+    document.getElementById('testResults').innerHTML = `<p class="text-red-400">❌ ${e.message}</p>`;
+  }
+}
+
+async function sendFeedback() {
+  if (!currentProject) return;
+  const input = document.getElementById('feedbackInput');
+  const feedback = input.value.trim();
+  if (!feedback) return;
+  input.value = '';
+
+  // Show user message immediately
+  const chat = document.getElementById('chatHistory');
+  chat.innerHTML += `<div class="px-3 py-2 rounded text-sm chat-user">${feedback}</div>`;
+  chat.innerHTML += `<div class="px-3 py-2 rounded text-sm chat-ai">⏳ AI 正在修改代码...</div>`;
+  chat.scrollTop = chat.scrollHeight;
+
+  try {
+    const proj = await api('POST', `/api/projects/${currentProject.id}/refine`, { feedback });
+    await openProject(proj.id);
+  } catch(e) {
+    chat.innerHTML += `<div class="px-3 py-2 rounded text-sm bg-red-900 bg-opacity-30">❌ ${e.message}</div>`;
+  }
+}
+
+async function approveProject() {
+  if (!currentProject) return;
+  await api('POST', `/api/projects/${currentProject.id}/approve`);
+  await openProject(currentProject.id);
+  await loadProjects();
+}
+
+// Init
+loadProjects();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+</body>
+</html>
