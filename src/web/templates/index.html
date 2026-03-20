@@ -1,623 +1,802 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Spider - 智能爬虫平台</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config={darkMode:'class',theme:{extend:{colors:{dark:{50:'#f8fafc',100:'#1e293b',200:'#1a2332',300:'#151d2b',400:'#111827',500:'#0d1117',600:'#0a0e14'}}}}}</script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
     <style>
-        body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
-        .btn-primary { background: #238636; color: #fff; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
-        .btn-primary:hover { background: #2ea043; }
-        .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
-        .btn-secondary:hover { background: #30363d; }
-        .btn-danger { background: #da3633; color: #fff; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
-        .input-field { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; color: #c9d1d9; width: 100%; }
-        .input-field:focus { outline: none; border-color: #58a6ff; box-shadow: 0 0 0 3px rgba(56,139,253,0.3); }
-        .tab-active { color: #58a6ff; border-bottom: 2px solid #58a6ff; }
-        .tab-inactive { color: #8b949e; }
-        .tab-inactive:hover { color: #c9d1d9; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .badge-green { background: #238636; color: #fff; }
-        .badge-yellow { background: #9e6a03; color: #fff; }
-        .badge-red { background: #da3633; color: #fff; }
-        .badge-blue { background: #1f6feb; color: #fff; }
-        .badge-gray { background: #30363d; color: #8b949e; }
-        .code-editor { background: #0d1117; color: #c9d1d9; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; border: 1px solid #30363d; border-radius: 6px; padding: 12px; resize: vertical; min-height: 300px; width: 100%; tab-size: 4; line-height: 1.6; }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; display: flex; align-items: center; justify-content: center; }
-        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
-        .table-row:hover { background: #1c2128; }
-        .spinner { border: 3px solid #30363d; border-top: 3px solid #58a6ff; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .chat-msg { padding: 8px 12px; border-radius: 8px; margin: 4px 0; max-width: 85%; }
-        .chat-user { background: #1f6feb; color: #fff; margin-left: auto; }
-        .chat-ai { background: #21262d; color: #c9d1d9; }
+    :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #12121a;
+        --bg-card: #16161f;
+        --bg-hover: #1c1c28;
+        --bg-input: #0e0e16;
+        --border: #262630;
+        --border-light: #2a2a36;
+        --text-primary: #e8e8ed;
+        --text-secondary: #8888a0;
+        --text-muted: #55556a;
+        --accent: #6c5ce7;
+        --accent-light: #7c6ff7;
+        --accent-glow: rgba(108,92,231,0.15);
+        --green: #00d68f;
+        --green-bg: rgba(0,214,143,0.1);
+        --red: #ff4757;
+        --red-bg: rgba(255,71,87,0.1);
+        --yellow: #ffa502;
+        --yellow-bg: rgba(255,165,2,0.1);
+        --blue: #3498ff;
+        --blue-bg: rgba(52,152,255,0.1);
+        --radius: 12px;
+        --radius-sm: 8px;
+        --shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        overflow-x: hidden;
+    }
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    ::-webkit-scrollbar-thumb:hover { background:var(--text-muted); }
+
+    /* ── Header ── */
+    .header {
+        position:sticky; top:0; z-index:40;
+        background: rgba(10,10,15,0.85);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--border);
+        padding: 0 24px;
+        height: 56px;
+        display:flex; align-items:center; justify-content:space-between;
+    }
+    .header-left { display:flex; align-items:center; gap:12px; }
+    .logo {
+        width:32px; height:32px; border-radius:10px;
+        background: linear-gradient(135deg, var(--accent), #a855f7);
+        display:flex; align-items:center; justify-content:center;
+        font-size:16px; color:#fff;
+    }
+    .logo-text { font-size:16px; font-weight:700; letter-spacing:-0.5px; }
+    .header-nav { display:flex; gap:2px; background:var(--bg-secondary); border-radius:10px; padding:3px; }
+    .nav-btn {
+        padding:6px 16px; border-radius:8px; font-size:13px; font-weight:500;
+        color:var(--text-secondary); cursor:pointer; border:none; background:none;
+        transition: all 0.2s;
+    }
+    .nav-btn:hover { color:var(--text-primary); }
+    .nav-btn.active { background:var(--bg-card); color:var(--text-primary); box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+    .btn-create {
+        padding:7px 18px; border-radius:10px; font-size:13px; font-weight:600;
+        background: linear-gradient(135deg, var(--accent), #a855f7);
+        color:#fff; border:none; cursor:pointer;
+        transition: all 0.2s; display:flex; align-items:center; gap:6px;
+    }
+    .btn-create:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(108,92,231,0.4); }
+
+    /* ── Cards ── */
+    .card {
+        background:var(--bg-card); border:1px solid var(--border);
+        border-radius:var(--radius); overflow:hidden;
+        transition: all 0.2s;
+    }
+    .card:hover { border-color:var(--border-light); }
+    .card-clickable:hover { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent-glow); cursor:pointer; }
+
+    /* ── Buttons ── */
+    .btn {
+        padding:6px 14px; border-radius:var(--radius-sm); font-size:12px; font-weight:500;
+        border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary);
+        cursor:pointer; transition:all 0.15s; display:inline-flex; align-items:center; gap:4px;
+    }
+    .btn:hover { background:var(--bg-hover); color:var(--text-primary); border-color:var(--border-light); }
+    .btn-sm { padding:4px 10px; font-size:11px; border-radius:6px; }
+    .btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn-primary:hover { background:var(--accent-light); border-color:var(--accent-light); }
+    .btn-danger { color:var(--red); }
+    .btn-danger:hover { background:var(--red-bg); border-color:var(--red); }
+    .btn-ghost { border:none; background:none; }
+    .btn-ghost:hover { background:var(--bg-hover); }
+
+    /* ── Inputs ── */
+    .input {
+        background:var(--bg-input); border:1px solid var(--border);
+        border-radius:var(--radius-sm); padding:9px 14px; color:var(--text-primary);
+        font-size:13px; font-family:inherit; width:100%;
+        transition: border-color 0.2s, box-shadow 0.2s; outline:none;
+    }
+    .input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+    .input::placeholder { color:var(--text-muted); }
+    textarea.input { resize:vertical; min-height:80px; line-height:1.6; }
+    select.input { cursor:pointer; }
+
+    /* ── Badges ── */
+    .badge {
+        display:inline-flex; align-items:center; gap:4px;
+        padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600;
+        letter-spacing:0.3px;
+    }
+    .badge-dot { width:6px; height:6px; border-radius:50%; }
+    .badge-green { background:var(--green-bg); color:var(--green); }
+    .badge-green .badge-dot { background:var(--green); }
+    .badge-yellow { background:var(--yellow-bg); color:var(--yellow); }
+    .badge-yellow .badge-dot { background:var(--yellow); }
+    .badge-red { background:var(--red-bg); color:var(--red); }
+    .badge-red .badge-dot { background:var(--red); }
+    .badge-blue { background:var(--blue-bg); color:var(--blue); }
+    .badge-blue .badge-dot { background:var(--blue); }
+    .badge-gray { background:rgba(85,85,106,0.15); color:var(--text-muted); }
+    .badge-gray .badge-dot { background:var(--text-muted); }
+
+    /* ── Layout ── */
+    .container { max-width:1200px; margin:0 auto; padding:24px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media(max-width:768px){ .grid-2{grid-template-columns:1fr;} }
+    .flex-between { display:flex; align-items:center; justify-content:space-between; }
+    .flex-center { display:flex; align-items:center; }
+    .gap-1 { gap:4px; } .gap-2 { gap:8px; } .gap-3 { gap:12px; } .gap-4 { gap:16px; }
+
+    /* ── Empty State ── */
+    .empty-state { text-align:center; padding:80px 20px; }
+    .empty-icon { font-size:48px; margin-bottom:16px; opacity:0.3; }
+    .empty-title { font-size:16px; font-weight:600; color:var(--text-secondary); margin-bottom:8px; }
+    .empty-desc { font-size:13px; color:var(--text-muted); }
+
+    /* ── Project Card ── */
+    .project-card { padding:16px 20px; }
+    .project-name { font-size:14px; font-weight:600; color:var(--text-primary); }
+    .project-desc { font-size:12px; color:var(--text-secondary); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .project-meta { display:flex; align-items:center; gap:12px; margin-top:10px; font-size:11px; color:var(--text-muted); }
+    .project-url { color:var(--blue); text-decoration:none; }
+    .project-url:hover { text-decoration:underline; }
+
+    /* ── Code Editor ── */
+    .code-area {
+        background:var(--bg-input); color:#a9dc76; font-family:'JetBrains Mono','Fira Code','Consolas',monospace;
+        font-size:12.5px; line-height:1.7; border:1px solid var(--border);
+        border-radius:var(--radius-sm); padding:16px; width:100%;
+        min-height:350px; resize:vertical; tab-size:4; outline:none;
+    }
+    .code-area:focus { border-color:var(--accent); }
+
+    /* ── Chat ── */
+    .chat-box { display:flex; flex-direction:column; height:100%; }
+    .chat-messages { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
+    .chat-bubble { max-width:85%; padding:10px 14px; border-radius:14px; font-size:13px; line-height:1.5; word-break:break-word; }
+    .chat-user { background:var(--accent); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+    .chat-ai { background:var(--bg-hover); color:var(--text-primary); align-self:flex-start; border-bottom-left-radius:4px; border:1px solid var(--border); }
+    .chat-input-row { display:flex; gap:8px; padding:12px; border-top:1px solid var(--border); }
+    .chat-input-row .input { border-radius:20px; padding:8px 16px; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+        position:fixed; inset:0; z-index:100;
+        background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);
+        display:flex; align-items:center; justify-content:center;
+        opacity:0; pointer-events:none; transition:opacity 0.2s;
+    }
+    .modal-overlay.show { opacity:1; pointer-events:auto; }
+    .modal {
+        background:var(--bg-card); border:1px solid var(--border);
+        border-radius:16px; padding:28px; width:520px; max-width:92vw;
+        max-height:85vh; overflow-y:auto; box-shadow:var(--shadow);
+        transform:translateY(10px); transition:transform 0.2s;
+    }
+    .modal-overlay.show .modal { transform:translateY(0); }
+    .modal-title { font-size:18px; font-weight:700; margin-bottom:20px; }
+    .form-group { margin-bottom:16px; }
+    .form-label { font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block; text-transform:uppercase; letter-spacing:0.5px; }
+
+    /* ── Mode selector ── */
+    .mode-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .mode-card {
+        padding:14px; border-radius:var(--radius-sm); border:2px solid var(--border);
+        cursor:pointer; transition:all 0.2s; text-align:center;
+    }
+    .mode-card:hover { border-color:var(--border-light); }
+    .mode-card.selected { border-color:var(--accent); background:var(--accent-glow); }
+    .mode-icon { font-size:24px; margin-bottom:6px; }
+    .mode-title { font-size:13px; font-weight:600; }
+    .mode-desc { font-size:11px; color:var(--text-muted); margin-top:3px; }
+
+    /* ── Detail tabs ── */
+    .detail-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; }
+    .detail-tab {
+        padding:10px 16px; font-size:13px; font-weight:500; color:var(--text-muted);
+        cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s;
+    }
+    .detail-tab:hover { color:var(--text-secondary); }
+    .detail-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+    /* ── Table ── */
+    .data-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .data-table th { text-align:left; padding:10px 12px; color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
+    .data-table td { padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text-secondary); }
+    .data-table tr:hover td { background:var(--bg-hover); }
+
+    /* ── Task card ── */
+    .task-card { padding:14px 18px; }
+    .task-name { font-size:13px; font-weight:600; }
+    .task-meta { font-size:11px; color:var(--text-muted); margin-top:6px; }
+
+    /* ── Spinner ── */
+    .spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; }
+    @keyframes spin { to{transform:rotate(360deg);} }
+
+    /* ── Loading shimmer ── */
+    .shimmer { background:linear-gradient(90deg,var(--bg-card) 25%,var(--bg-hover) 50%,var(--bg-card) 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:var(--radius-sm); }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    /* ── Pagination ── */
+    .pagination { display:flex; gap:4px; justify-content:center; margin-top:16px; }
+    .page-btn { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:500; cursor:pointer; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); transition:all 0.15s; }
+    .page-btn:hover { background:var(--bg-hover); }
+    .page-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+    /* ── Deploy panel ── */
+    .deploy-panel .form-group { margin-bottom:14px; }
+
+    /* ── Transition ── */
+    .fade-in { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <header class="border-b border-gray-700 px-6 py-3 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-            <span class="text-xl">🕷️</span>
-            <h1 class="text-lg font-semibold text-white">AI Spider</h1>
-        </div>
-        <div class="flex items-center gap-4">
-            <div class="flex gap-1">
-                <button onclick="switchTab('projects')" id="tab-projects" class="px-3 py-1 text-sm tab-active cursor-pointer">项目</button>
-                <button onclick="switchTab('tasks')" id="tab-tasks" class="px-3 py-1 text-sm tab-inactive cursor-pointer">任务</button>
-                <button onclick="switchTab('data')" id="tab-data" class="px-3 py-1 text-sm tab-inactive cursor-pointer">数据</button>
-            </div>
-            <button onclick="showNewProject()" class="btn-primary text-sm">+ 新建项目</button>
-        </div>
-    </header>
 
-    <!-- Main Content -->
-    <main class="p-6 max-w-7xl mx-auto">
-        <!-- Projects Tab -->
-        <div id="view-projects">
-            <div id="project-list" class="space-y-3"></div>
-            <div id="project-empty" class="text-center py-20 text-gray-500">
-                <p class="text-4xl mb-4">🕷️</p>
-                <p>暂无项目，点击右上角"新建项目"开始</p>
+<!-- Header -->
+<header class="header">
+    <div class="header-left">
+        <div class="logo"><i class="ri-bug-line"></i></div>
+        <span class="logo-text">AI Spider</span>
+    </div>
+    <nav class="header-nav">
+        <button class="nav-btn active" onclick="switchTab('projects')" id="tab-projects"><i class="ri-folder-3-line"></i> 项目</button>
+        <button class="nav-btn" onclick="switchTab('tasks')" id="tab-tasks"><i class="ri-play-circle-line"></i> 任务</button>
+        <button class="nav-btn" onclick="switchTab('data')" id="tab-data"><i class="ri-database-2-line"></i> 数据</button>
+    </nav>
+    <button class="btn-create" onclick="showModal()"><i class="ri-add-line"></i> 新建项目</button>
+</header>
+
+<!-- Main -->
+<div class="container">
+
+    <!-- ═══ Projects View ═══ -->
+    <div id="view-projects" class="fade-in">
+        <div id="project-list" class="space-y" style="display:flex;flex-direction:column;gap:10px"></div>
+        <div id="project-empty" class="empty-state">
+            <div class="empty-icon">🕷️</div>
+            <div class="empty-title">还没有项目</div>
+            <div class="empty-desc">点击右上角「新建项目」，用自然语言描述你想抓取的数据</div>
+        </div>
+    </div>
+
+    <!-- ═══ Project Detail ═══ -->
+    <div id="view-detail" class="hidden fade-in">
+        <div class="flex-between" style="margin-bottom:16px">
+            <div class="flex-center gap-3">
+                <button class="btn btn-ghost btn-sm" onclick="backToList()"><i class="ri-arrow-left-s-line"></i> 返回</button>
+                <h2 id="detail-name" style="font-size:16px;font-weight:700"></h2>
+                <span id="detail-badge"></span>
+            </div>
+            <div class="flex-center gap-2">
+                <button class="btn btn-sm" onclick="testProject(this)"><i class="ri-play-line"></i> 测试</button>
+                <button class="btn btn-sm" onclick="saveCode()"><i class="ri-save-line"></i> 保存</button>
             </div>
         </div>
 
-        <!-- Project Detail -->
-        <div id="view-detail" class="hidden">
-            <div class="flex items-center gap-2 mb-4">
-                <button onclick="backToList()" class="btn-secondary text-sm">← 返回</button>
-                <h2 id="detail-name" class="text-lg font-semibold text-white"></h2>
-                <span id="detail-status" class="badge"></span>
+        <div class="detail-tabs">
+            <div class="detail-tab active" onclick="switchDetailTab('editor',this)"><i class="ri-code-s-slash-line"></i> 编辑器</div>
+            <div class="detail-tab" onclick="switchDetailTab('chat',this)"><i class="ri-chat-3-line"></i> 对话</div>
+            <div class="detail-tab" onclick="switchDetailTab('test',this)"><i class="ri-flask-line"></i> 测试结果</div>
+            <div class="detail-tab" onclick="switchDetailTab('deploy',this)"><i class="ri-rocket-line"></i> 部署</div>
+        </div>
+
+        <div class="grid-2">
+            <!-- Left: Editor / Extract Data -->
+            <div id="panel-editor" class="card" style="padding:0">
+                <textarea id="code-editor" class="code-area" spellcheck="false"></textarea>
+                <div id="extract-result" class="hidden" style="padding:16px">
+                    <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">提取结果</div>
+                    <pre id="extract-data" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;color:var(--green);max-height:400px;overflow:auto;font-family:monospace;white-space:pre-wrap"></pre>
+                </div>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <!-- Code Editor -->
-                <div class="card p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-medium text-white">代码编辑器</h3>
-                        <div class="flex gap-2">
-                            <button onclick="testProject()" class="btn-secondary text-xs">▶ 测试</button>
-                            <button onclick="saveCode()" class="btn-primary text-xs">💾 保存</button>
+
+            <!-- Right: Chat / Test / Deploy -->
+            <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:400px">
+                <!-- Chat -->
+                <div id="panel-chat" class="chat-box" style="display:none">
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div class="chat-input-row">
+                        <input id="chat-input" class="input" placeholder="描述修改需求..." onkeydown="if(event.key==='Enter')sendChat()">
+                        <button class="btn btn-primary" onclick="sendChat()" style="border-radius:20px;padding:8px 18px"><i class="ri-send-plane-fill"></i></button>
+                    </div>
+                </div>
+                <!-- Test -->
+                <div id="panel-test" class="hidden" style="padding:16px;overflow:auto;flex:1">
+                    <div id="test-output" style="font-size:13px;color:var(--text-muted)">暂无测试结果，点击上方"测试"按钮运行</div>
+                </div>
+                <!-- Deploy -->
+                <div id="panel-deploy" class="hidden deploy-panel" style="padding:20px;overflow:auto;flex:1">
+                    <div class="form-group">
+                        <label class="form-label">任务类型</label>
+                        <select id="deploy-type" class="input" onchange="document.getElementById('cron-row').style.display=this.value==='cron'?'block':'none'">
+                            <option value="one_time">⚡ 单次执行</option>
+                            <option value="cron">🔄 定时任务</option>
+                            <option value="continuous">♾️ 持续运行</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="cron-row" style="display:none">
+                        <label class="form-label">Cron 表达式</label>
+                        <input id="deploy-cron" class="input" placeholder="0 */6 * * *  (每6小时)">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">目标URL（每行一个）</label>
+                        <textarea id="deploy-urls" class="input" rows="3"></textarea>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                        <div class="form-group">
+                            <label class="form-label">最大页数</label>
+                            <input id="deploy-pages" type="number" class="input" value="100">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">优先级 (1-10)</label>
+                            <input id="deploy-priority" type="number" class="input" value="5" min="1" max="10">
                         </div>
                     </div>
-                    <textarea id="code-editor" class="code-editor" spellcheck="false"></textarea>
-                    <!-- Extracted Data (for smart_scraper mode) -->
-                    <div id="extracted-data-section" class="hidden mt-3">
-                        <h4 class="text-sm font-medium text-white mb-2">提取结果</h4>
-                        <pre id="extracted-data" class="code-editor" style="min-height:150px;resize:none;overflow:auto"></pre>
-                    </div>
-                </div>
-                <!-- Chat + Test Results -->
-                <div class="card p-4 flex flex-col" style="max-height:calc(100vh - 200px)">
-                    <div class="flex gap-2 mb-3">
-                        <button onclick="switchDetailTab('chat')" id="dtab-chat" class="text-sm tab-active cursor-pointer px-2 pb-1">对话</button>
-                        <button onclick="switchDetailTab('test')" id="dtab-test" class="text-sm tab-inactive cursor-pointer px-2 pb-1">测试结果</button>
-                        <button onclick="switchDetailTab('deploy')" id="dtab-deploy" class="text-sm tab-inactive cursor-pointer px-2 pb-1">部署</button>
-                    </div>
-                    <!-- Chat -->
-                    <div id="panel-chat" class="flex-1 flex flex-col min-h-0">
-                        <div id="chat-messages" class="flex-1 overflow-y-auto space-y-2 mb-3 flex flex-col"></div>
-                        <div class="flex gap-2">
-                            <input id="chat-input" class="input-field flex-1" placeholder="描述修改需求..." onkeydown="if(event.key==='Enter')sendChat()">
-                            <button onclick="sendChat()" class="btn-primary text-sm">发送</button>
-                        </div>
-                    </div>
-                    <!-- Test Results -->
-                    <div id="panel-test" class="hidden flex-1 overflow-y-auto">
-                        <div id="test-output" class="text-sm text-gray-400">暂无测试结果</div>
-                    </div>
-                    <!-- Deploy -->
-                    <div id="panel-deploy" class="hidden flex-1">
-                        <div class="space-y-3">
-                            <div>
-                                <label class="text-sm text-gray-400">任务类型</label>
-                                <select id="deploy-type" class="input-field mt-1">
-                                    <option value="one_time">单次执行</option>
-                                    <option value="cron">定时任务</option>
-                                    <option value="continuous">持续运行</option>
-                                </select>
-                            </div>
-                            <div id="cron-section" class="hidden">
-                                <label class="text-sm text-gray-400">Cron表达式</label>
-                                <input id="deploy-cron" class="input-field mt-1" placeholder="0 */6 * * *">
-                            </div>
-                            <div>
-                                <label class="text-sm text-gray-400">目标URL (每行一个)</label>
-                                <textarea id="deploy-urls" class="input-field mt-1" rows="3"></textarea>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="text-sm text-gray-400">最大页数</label>
-                                    <input id="deploy-pages" type="number" class="input-field mt-1" value="100">
-                                </div>
-                                <div>
-                                    <label class="text-sm text-gray-400">优先级 (1-10)</label>
-                                    <input id="deploy-priority" type="number" class="input-field mt-1" value="5" min="1" max="10">
-                                </div>
-                            </div>
-                            <button onclick="deployTask()" class="btn-primary w-full">🚀 部署任务</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tasks Tab -->
-        <div id="view-tasks" class="hidden">
-            <div id="task-list" class="space-y-2"></div>
-            <div id="task-empty" class="text-center py-20 text-gray-500">
-                <p>暂无任务</p>
-            </div>
-        </div>
-
-        <!-- Data Tab -->
-        <div id="view-data" class="hidden">
-            <div class="card p-4 mb-4">
-                <div class="flex items-center gap-3 mb-3">
-                    <select id="data-project-filter" class="input-field" style="width:200px" onchange="loadData()">
-                        <option value="">全部项目</option>
-                    </select>
-                    <button onclick="exportData('json')" class="btn-secondary text-sm">📥 JSON</button>
-                    <button onclick="exportData('csv')" class="btn-secondary text-sm">📥 CSV</button>
-                    <span id="data-count" class="text-sm text-gray-500 ml-auto"></span>
-                </div>
-                <div id="data-table-wrap" class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead id="data-thead" class="text-gray-400 border-b border-gray-700"></thead>
-                        <tbody id="data-tbody"></tbody>
-                    </table>
-                </div>
-                <div id="data-pagination" class="flex justify-center gap-2 mt-4"></div>
-            </div>
-        </div>
-    </main>
-
-    <!-- New Project Modal -->
-    <div id="modal-new" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
-        <div class="modal-content">
-            <h2 class="text-lg font-semibold text-white mb-4">新建项目</h2>
-            <div class="space-y-3">
-                <div>
-                    <label class="text-sm text-gray-400">模式</label>
-                    <div class="flex gap-3 mt-1">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" name="mode" value="code_generator" checked class="accent-green-500">
-                            <span class="text-sm">代码生成</span>
-                            <span class="text-xs text-gray-500">生成可编辑的爬虫代码</span>
-                        </label>
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" name="mode" value="smart_scraper" class="accent-blue-500">
-                            <span class="text-sm">智能提取</span>
-                            <span class="text-xs text-gray-500">LLM直接提取数据</span>
-                        </label>
-                    </div>
-                </div>
-                <div>
-                    <label class="text-sm text-gray-400">目标URL</label>
-                    <input id="new-url" class="input-field mt-1" placeholder="https://example.com">
-                </div>
-                <div>
-                    <label class="text-sm text-gray-400">需求描述</label>
-                    <textarea id="new-desc" class="input-field mt-1" rows="3" placeholder="描述你想爬取的数据..."></textarea>
-                </div>
-                <div>
-                    <label class="text-sm text-gray-400">项目名称 (可选)</label>
-                    <input id="new-name" class="input-field mt-1" placeholder="自动生成">
-                </div>
-                <div class="flex gap-2 justify-end">
-                    <button onclick="document.getElementById('modal-new').classList.add('hidden')" class="btn-secondary">取消</button>
-                    <button onclick="createProject()" id="btn-create" class="btn-primary">🚀 创建</button>
+                    <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;border-radius:10px;margin-top:8px" onclick="deployTask()">
+                        <i class="ri-rocket-fill"></i> 部署任务
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-    // ── State ──
-    const API = (() => {
-        const base = location.pathname.replace(/\/$/, '');
-        return (path) => `${base}${path}`.replace(/\/+/g, '/');
-    })();
-    let currentProject = null;
-    let dataPage = 1;
+    <!-- ═══ Tasks View ═══ -->
+    <div id="view-tasks" class="hidden fade-in">
+        <div id="task-list" style="display:flex;flex-direction:column;gap:10px"></div>
+        <div id="task-empty" class="empty-state">
+            <div class="empty-icon">📋</div>
+            <div class="empty-title">暂无任务</div>
+            <div class="empty-desc">在项目详情中部署任务</div>
+        </div>
+    </div>
 
-    // ── Utils ──
-    async function api(path, opts = {}) {
-        const url = API(path.startsWith('/api') ? path : `/api/v1${path}`);
-        const res = await fetch(url, {
-            headers: { 'Content-Type': 'application/json', ...opts.headers },
-            ...opts,
-        });
-        if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
-        return res.json();
-    }
-
-    function statusBadge(status) {
-        const map = {
-            draft: ['草稿', 'badge-gray'],
-            generating: ['生成中', 'badge-blue'],
-            generated: ['已生成', 'badge-green'],
-            testing: ['测试中', 'badge-yellow'],
-            tested: ['已测试', 'badge-green'],
-            failed: ['失败', 'badge-red'],
-            approved: ['已通过', 'badge-green'],
-            queued: ['排队中', 'badge-yellow'],
-            running: ['运行中', 'badge-blue'],
-            success: ['成功', 'badge-green'],
-            cancelled: ['已取消', 'badge-gray'],
-            paused: ['已暂停', 'badge-gray'],
-        };
-        const [text, cls] = map[status] || [status, 'badge-gray'];
-        return `<span class="badge ${cls}">${text}</span>`;
-    }
-
-    function timeAgo(iso) {
-        if (!iso) return '';
-        const diff = (Date.now() - new Date(iso)) / 1000;
-        if (diff < 60) return '刚刚';
-        if (diff < 3600) return `${Math.floor(diff/60)}分钟前`;
-        if (diff < 86400) return `${Math.floor(diff/3600)}小时前`;
-        return `${Math.floor(diff/86400)}天前`;
-    }
-
-    // ── Tabs ──
-    function switchTab(tab) {
-        ['projects', 'tasks', 'data'].forEach(t => {
-            document.getElementById(`view-${t}`).classList.toggle('hidden', t !== tab);
-            document.getElementById(`tab-${t}`).className = `px-3 py-1 text-sm cursor-pointer ${t === tab ? 'tab-active' : 'tab-inactive'}`;
-        });
-        document.getElementById('view-detail').classList.add('hidden');
-        if (tab === 'projects') loadProjects();
-        if (tab === 'tasks') loadTasks();
-        if (tab === 'data') loadData();
-    }
-
-    function switchDetailTab(tab) {
-        ['chat', 'test', 'deploy'].forEach(t => {
-            document.getElementById(`panel-${t}`).classList.toggle('hidden', t !== tab);
-            document.getElementById(`dtab-${t}`).className = `text-sm cursor-pointer px-2 pb-1 ${t === tab ? 'tab-active' : 'tab-inactive'}`;
-        });
-    }
-
-    // ── Projects ──
-    async function loadProjects() {
-        try {
-            const projects = await api('/projects');
-            const list = document.getElementById('project-list');
-            const empty = document.getElementById('project-empty');
-            if (!projects.length) {
-                list.innerHTML = '';
-                empty.classList.remove('hidden');
-                return;
-            }
-            empty.classList.add('hidden');
-            list.innerHTML = projects.map(p => `
-                <div class="card p-4 cursor-pointer table-row" onclick="openProject('${p.id}')">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-white font-medium">${p.name || '未命名'}</span>
-                            <span class="badge ${p.mode === 'smart_scraper' ? 'badge-blue' : 'badge-green'} ml-2 text-xs">${p.mode === 'smart_scraper' ? '智能提取' : '代码生成'}</span>
-                            ${statusBadge(p.status)}
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <span class="text-xs text-gray-500">v${p.version || 1}</span>
-                            <span class="text-xs text-gray-500">${timeAgo(p.updated_at)}</span>
-                            <button onclick="event.stopPropagation();deleteProject('${p.id}')" class="text-gray-500 hover:text-red-400 text-sm">🗑️</button>
-                        </div>
-                    </div>
-                    <p class="text-sm text-gray-500 mt-1 truncate">${p.description || ''}</p>
-                    ${p.target_url ? `<p class="text-xs text-gray-600 mt-1">🔗 ${p.target_url}</p>` : ''}
+    <!-- ═══ Data View ═══ -->
+    <div id="view-data" class="hidden fade-in">
+        <div class="card" style="padding:18px">
+            <div class="flex-between" style="margin-bottom:14px">
+                <div class="flex-center gap-3">
+                    <select id="data-project-filter" class="input" style="width:200px" onchange="loadData()">
+                        <option value="">全部项目</option>
+                    </select>
+                    <span id="data-count" style="font-size:12px;color:var(--text-muted)"></span>
                 </div>
-            `).join('');
-        } catch (e) {
-            console.error('Load projects failed:', e);
+                <div class="flex-center gap-2">
+                    <button class="btn btn-sm" onclick="exportData('json')"><i class="ri-file-code-line"></i> JSON</button>
+                    <button class="btn btn-sm" onclick="exportData('csv')"><i class="ri-file-excel-line"></i> CSV</button>
+                </div>
+            </div>
+            <div style="overflow-x:auto">
+                <table class="data-table">
+                    <thead id="data-thead"></thead>
+                    <tbody id="data-tbody"></tbody>
+                </table>
+            </div>
+            <div id="data-empty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">暂无数据</div>
+            <div id="data-pagination" class="pagination"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══ New Project Modal ═══ -->
+<div id="modal-new" class="modal-overlay" onclick="if(event.target===this)hideModal()">
+    <div class="modal">
+        <div class="modal-title">🕷️ 新建爬虫项目</div>
+        <div class="form-group">
+            <label class="form-label">爬取模式</label>
+            <div class="mode-cards">
+                <div class="mode-card selected" onclick="selectMode('code_generator',this)">
+                    <div class="mode-icon">🛠️</div>
+                    <div class="mode-title">代码生成</div>
+                    <div class="mode-desc">AI生成可编辑的爬虫代码，支持迭代优化</div>
+                </div>
+                <div class="mode-card" onclick="selectMode('smart_scraper',this)">
+                    <div class="mode-icon">✨</div>
+                    <div class="mode-title">智能提取</div>
+                    <div class="mode-desc">LLM直接提取结构化数据，一步到位</div>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">目标网址</label>
+            <input id="new-url" class="input" placeholder="https://example.com">
+        </div>
+        <div class="form-group">
+            <label class="form-label">需求描述</label>
+            <textarea id="new-desc" class="input" placeholder="描述你想抓取什么数据...&#10;例如：提取所有商品的名称、价格和图片链接"></textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">项目名称 <span style="color:var(--text-muted);font-weight:400;text-transform:none">(可选)</span></label>
+            <input id="new-name" class="input" placeholder="不填则自动生成">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px">
+            <button class="btn" onclick="hideModal()">取消</button>
+            <button class="btn btn-primary" id="btn-create" onclick="createProject()" style="padding:8px 24px;font-size:13px"><i class="ri-magic-line"></i> 创建</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── State ──
+const API_BASE = (() => {
+    const base = location.pathname.replace(/\/$/, '');
+    return (path) => `${base}${path}`.replace(/\/\//g, '/');
+})();
+let currentProject = null;
+let selectedMode = 'code_generator';
+let dataPage = 1;
+
+// ── Utils ──
+async function api(path, opts = {}) {
+    const url = API_BASE(path.startsWith('/api') ? path : `/api/v1${path}`);
+    const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...opts.headers },
+        ...opts,
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+    }
+    return res.json();
+}
+
+function badgeHTML(status) {
+    const m = {
+        draft:['草稿','gray'], generating:['生成中','blue'], generated:['已生成','green'],
+        testing:['测试中','yellow'], tested:['已测试','green'], failed:['失败','red'],
+        approved:['已通过','green'], queued:['排队中','yellow'], running:['运行中','blue'],
+        success:['成功','green'], cancelled:['已取消','gray'], paused:['暂停','gray'],
+    };
+    const [text, cls] = m[status] || [status, 'gray'];
+    return `<span class="badge badge-${cls}"><span class="badge-dot"></span>${text}</span>`;
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    const s = (Date.now() - new Date(iso)) / 1000;
+    if (s < 60) return '刚刚';
+    if (s < 3600) return `${Math.floor(s/60)}分钟前`;
+    if (s < 86400) return `${Math.floor(s/3600)}小时前`;
+    return `${Math.floor(s/86400)}天前`;
+}
+
+// ── Tabs ──
+function switchTab(tab) {
+    ['projects','tasks','data'].forEach(t => {
+        const v = document.getElementById(`view-${t}`);
+        if (v) v.classList.toggle('hidden', t !== tab);
+        const b = document.getElementById(`tab-${t}`);
+        if (b) b.className = `nav-btn${t === tab ? ' active' : ''}`;
+    });
+    document.getElementById('view-detail').classList.add('hidden');
+    if (tab === 'projects') loadProjects();
+    if (tab === 'tasks') loadTasks();
+    if (tab === 'data') loadData();
+}
+
+function switchDetailTab(tab, el) {
+    document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
+    if (el) el.classList.add('active');
+    ['editor','chat','test','deploy'].forEach(t => {
+        const p = document.getElementById(`panel-${t}`);
+        if (!p) return;
+        if (t === 'editor') { p.style.display = tab === 'editor' ? '' : 'none'; return; }
+        if (t === 'chat') { p.style.display = tab === 'chat' ? 'flex' : 'none'; return; }
+        p.classList.toggle('hidden', t !== tab);
+    });
+}
+
+// ── Modal ──
+function showModal() { document.getElementById('modal-new').classList.add('show'); }
+function hideModal() { document.getElementById('modal-new').classList.remove('show'); }
+
+function selectMode(mode, el) {
+    selectedMode = mode;
+    document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+}
+
+// ── Projects ──
+async function loadProjects() {
+    try {
+        const projects = await api('/projects');
+        const list = document.getElementById('project-list');
+        const empty = document.getElementById('project-empty');
+        if (!projects.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        list.innerHTML = projects.map(p => `
+            <div class="card card-clickable project-card" onclick="openProject('${p.id}')">
+                <div class="flex-between">
+                    <div class="flex-center gap-2">
+                        <span class="project-name">${p.name || '未命名项目'}</span>
+                        <span class="badge badge-${p.mode === 'smart_scraper' ? 'blue' : 'green'}" style="font-size:10px">
+                            ${p.mode === 'smart_scraper' ? '✨ 智能提取' : '🛠️ 代码生成'}
+                        </span>
+                        ${badgeHTML(p.status)}
+                    </div>
+                    <div class="flex-center gap-3">
+                        <span style="font-size:11px;color:var(--text-muted)">v${p.version || 1}</span>
+                        <span style="font-size:11px;color:var(--text-muted)">${timeAgo(p.updated_at)}</span>
+                        <button class="btn btn-ghost btn-sm btn-danger" onclick="event.stopPropagation();deleteProject('${p.id}')">
+                            <i class="ri-delete-bin-6-line"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="project-desc">${p.description || ''}</div>
+                ${p.target_url ? `<div class="project-meta"><i class="ri-link"></i> <a class="project-url" href="${p.target_url}" target="_blank" onclick="event.stopPropagation()">${p.target_url}</a></div>` : ''}
+            </div>
+        `).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function openProject(id) {
+    try {
+        const p = await api(`/projects/${id}`);
+        currentProject = p;
+        document.getElementById('view-projects').classList.add('hidden');
+        document.getElementById('view-detail').classList.remove('hidden');
+        document.getElementById('detail-name').textContent = p.name || '未命名';
+        document.getElementById('detail-badge').innerHTML = badgeHTML(p.status);
+
+        const editor = document.getElementById('code-editor');
+        const extractDiv = document.getElementById('extract-result');
+
+        if (p.mode === 'smart_scraper') {
+            editor.style.display = 'none';
+            extractDiv.classList.remove('hidden');
+            let data = p.extracted_data;
+            if (typeof data === 'string') try { data = JSON.parse(data); } catch {}
+            document.getElementById('extract-data').textContent = JSON.stringify(data, null, 2);
+        } else {
+            editor.style.display = '';
+            extractDiv.classList.add('hidden');
+            editor.value = p.code || '# 等待生成...';
         }
-    }
 
-    async function openProject(id) {
-        try {
-            const p = await api(`/projects/${id}`);
-            currentProject = p;
-            document.getElementById('view-projects').classList.add('hidden');
-            document.getElementById('view-detail').classList.remove('hidden');
-            document.getElementById('detail-name').textContent = p.name || '未命名';
-            document.getElementById('detail-status').innerHTML = statusBadge(p.status).replace(/<\/?span[^>]*>/g, '');
-            
-            const editor = document.getElementById('code-editor');
-            const extractedSection = document.getElementById('extracted-data-section');
-            
-            if (p.mode === 'smart_scraper') {
-                editor.parentElement.querySelector('h3').textContent = '提取结果';
-                editor.classList.add('hidden');
-                extractedSection.classList.remove('hidden');
-                let data = p.extracted_data;
-                if (typeof data === 'string') try { data = JSON.parse(data); } catch {}
-                document.getElementById('extracted-data').textContent = JSON.stringify(data, null, 2);
-            } else {
-                editor.classList.remove('hidden');
-                extractedSection.classList.add('hidden');
-                editor.parentElement.querySelector('h3').textContent = '代码编辑器';
-                editor.value = p.code || '# 等待生成...';
-            }
-
-            // Load messages
-            const chatDiv = document.getElementById('chat-messages');
-            let messages = p.messages;
-            if (typeof messages === 'string') try { messages = JSON.parse(messages); } catch { messages = []; }
-            chatDiv.innerHTML = (messages || []).map(m =>
-                `<div class="chat-msg ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">${m.content}</div>`
-            ).join('');
-            chatDiv.scrollTop = chatDiv.scrollHeight;
-
-            // Deploy URLs
-            document.getElementById('deploy-urls').value = p.target_url || '';
-
-            switchDetailTab('chat');
-        } catch (e) {
-            alert('加载项目失败: ' + e.message);
-        }
-    }
-
-    function backToList() {
-        document.getElementById('view-detail').classList.add('hidden');
-        document.getElementById('view-projects').classList.remove('hidden');
-        currentProject = null;
-        loadProjects();
-    }
-
-    function showNewProject() {
-        document.getElementById('modal-new').classList.remove('hidden');
-    }
-
-    async function createProject() {
-        const btn = document.getElementById('btn-create');
-        const mode = document.querySelector('input[name="mode"]:checked').value;
-        const url = document.getElementById('new-url').value.trim();
-        const desc = document.getElementById('new-desc').value.trim();
-        const name = document.getElementById('new-name').value.trim();
-
-        if (!desc) return alert('请输入需求描述');
-        if (!url) return alert('请输入目标URL');
-
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> 生成中...';
-
-        try {
-            const p = await api('/projects', {
-                method: 'POST',
-                body: JSON.stringify({ description: desc, target_url: url, name, mode }),
-            });
-            document.getElementById('modal-new').classList.add('hidden');
-            document.getElementById('new-url').value = '';
-            document.getElementById('new-desc').value = '';
-            document.getElementById('new-name').value = '';
-            openProject(p.id);
-        } catch (e) {
-            alert('创建失败: ' + e.message);
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '🚀 创建';
-        }
-    }
-
-    async function deleteProject(id) {
-        if (!confirm('确定删除此项目？')) return;
-        await api(`/projects/${id}`, { method: 'DELETE' });
-        loadProjects();
-    }
-
-    async function saveCode() {
-        if (!currentProject) return;
-        const code = document.getElementById('code-editor').value;
-        await api(`/projects/${currentProject.id}/code`, {
-            method: 'PUT',
-            body: JSON.stringify({ code }),
-        });
-        alert('已保存');
-    }
-
-    async function testProject() {
-        if (!currentProject) return;
-        const testBtn = event.target;
-        testBtn.disabled = true;
-        testBtn.textContent = '⏳ 测试中...';
-
-        // Save code first
-        if (currentProject.mode !== 'smart_scraper') {
-            const code = document.getElementById('code-editor').value;
-            await api(`/projects/${currentProject.id}/code`, {
-                method: 'PUT',
-                body: JSON.stringify({ code }),
-            });
-        }
-
-        try {
-            const result = await api(`/projects/${currentProject.id}/test`, {
-                method: 'POST',
-                body: JSON.stringify({ target_url: currentProject.target_url }),
-            });
-            switchDetailTab('test');
-            const output = document.getElementById('test-output');
-            if (result.error) {
-                output.innerHTML = `<div class="text-red-400 mb-2">❌ 错误</div><pre class="text-xs text-gray-400 whitespace-pre-wrap">${result.error}</pre>`;
-            } else {
-                const data = result.output || [];
-                output.innerHTML = `<div class="text-green-400 mb-2">✅ 成功 (${data.length}条, ${result.duration_ms}ms)</div>
-                    <pre class="text-xs text-gray-400 whitespace-pre-wrap" style="max-height:400px;overflow:auto">${JSON.stringify(data, null, 2)}</pre>`;
-            }
-        } catch (e) {
-            switchDetailTab('test');
-            document.getElementById('test-output').innerHTML = `<div class="text-red-400">❌ ${e.message}</div>`;
-        } finally {
-            testBtn.disabled = false;
-            testBtn.textContent = '▶ 测试';
-        }
-    }
-
-    async function sendChat() {
-        if (!currentProject) return;
-        const input = document.getElementById('chat-input');
-        const msg = input.value.trim();
-        if (!msg) return;
-        input.value = '';
-
+        // Chat messages
         const chatDiv = document.getElementById('chat-messages');
-        chatDiv.innerHTML += `<div class="chat-msg chat-user">${msg}</div>`;
-        chatDiv.innerHTML += `<div class="chat-msg chat-ai" id="chat-pending"><span class="spinner"></span> 思考中...</div>`;
+        let msgs = p.messages;
+        if (typeof msgs === 'string') try { msgs = JSON.parse(msgs); } catch { msgs = []; }
+        chatDiv.innerHTML = (msgs || []).map(m =>
+            `<div class="chat-bubble ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">${m.content}</div>`
+        ).join('');
         chatDiv.scrollTop = chatDiv.scrollHeight;
 
-        try {
-            const result = await api(`/projects/${currentProject.id}/refine`, {
-                method: 'POST',
-                body: JSON.stringify({ feedback: msg }),
-            });
-            document.getElementById('chat-pending').innerHTML = `已修改代码 v${result.version || '?'}`;
-            if (result.code) {
-                document.getElementById('code-editor').value = result.code;
-            }
-            currentProject = result;
-        } catch (e) {
-            document.getElementById('chat-pending').innerHTML = `❌ ${e.message}`;
-        }
-    }
+        document.getElementById('deploy-urls').value = p.target_url || '';
+        switchDetailTab('editor', document.querySelector('.detail-tab'));
+    } catch (e) { alert('加载失败: ' + e.message); }
+}
 
-    async function deployTask() {
-        if (!currentProject) return;
-        const type = document.getElementById('deploy-type').value;
-        const urls = document.getElementById('deploy-urls').value.trim().split('\n').filter(Boolean);
-        const maxPages = parseInt(document.getElementById('deploy-pages').value) || 100;
-        const priority = parseInt(document.getElementById('deploy-priority').value) || 5;
-        const cron = document.getElementById('deploy-cron')?.value || '';
+function backToList() {
+    document.getElementById('view-detail').classList.add('hidden');
+    document.getElementById('view-projects').classList.remove('hidden');
+    currentProject = null;
+    loadProjects();
+}
 
-        try {
-            await api('/tasks', {
-                method: 'POST',
-                body: JSON.stringify({
-                    project_id: currentProject.id,
-                    target_urls: urls,
-                    task_type: type,
-                    cron_expr: cron,
-                    max_pages: maxPages,
-                    priority,
-                }),
-            });
-            alert('任务已创建');
-            switchTab('tasks');
-        } catch (e) {
-            alert('部署失败: ' + e.message);
-        }
-    }
+async function createProject() {
+    const btn = document.getElementById('btn-create');
+    const url = document.getElementById('new-url').value.trim();
+    const desc = document.getElementById('new-desc').value.trim();
+    const name = document.getElementById('new-name').value.trim();
+    if (!desc) return alert('请输入需求描述');
+    if (!url) return alert('请输入目标URL');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 生成中...';
+    try {
+        const p = await api('/projects', {
+            method: 'POST',
+            body: JSON.stringify({ description: desc, target_url: url, name, mode: selectedMode }),
+        });
+        hideModal();
+        ['new-url','new-desc','new-name'].forEach(id => document.getElementById(id).value = '');
+        openProject(p.id);
+    } catch (e) { alert('创建失败: ' + e.message); }
+    finally { btn.disabled = false; btn.innerHTML = '<i class="ri-magic-line"></i> 创建'; }
+}
 
-    // Deploy type toggle
-    document.getElementById('deploy-type')?.addEventListener('change', (e) => {
-        document.getElementById('cron-section').classList.toggle('hidden', e.target.value !== 'cron');
+async function deleteProject(id) {
+    if (!confirm('确定删除此项目？')) return;
+    await api(`/projects/${id}`, { method: 'DELETE' });
+    loadProjects();
+}
+
+async function saveCode() {
+    if (!currentProject) return;
+    await api(`/projects/${currentProject.id}/code`, {
+        method: 'PUT',
+        body: JSON.stringify({ code: document.getElementById('code-editor').value }),
     });
+    showToast('已保存');
+}
 
-    // ── Tasks ──
-    async function loadTasks() {
-        try {
-            const tasks = await api('/tasks');
-            const list = document.getElementById('task-list');
-            const empty = document.getElementById('task-empty');
-            if (!tasks.length) {
-                list.innerHTML = '';
-                empty.classList.remove('hidden');
-                return;
-            }
-            empty.classList.add('hidden');
-            list.innerHTML = tasks.map(t => {
-                let urls = t.target_urls;
-                if (typeof urls === 'string') try { urls = JSON.parse(urls); } catch { urls = []; }
-                return `
-                <div class="card p-3">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <span class="text-white text-sm">${t.name || t.id}</span>
-                            ${statusBadge(t.status)}
-                            <span class="badge badge-gray text-xs">${t.task_type}</span>
-                        </div>
-                        <div class="flex gap-2">
-                            ${t.status === 'failed' || t.status === 'cancelled' ? `<button onclick="retryTask('${t.id}')" class="btn-secondary text-xs">🔄</button>` : ''}
-                            ${t.status === 'running' || t.status === 'queued' ? `<button onclick="cancelTask('${t.id}')" class="btn-secondary text-xs">⏹️</button>` : ''}
-                            <button onclick="deleteTask('${t.id}')" class="text-gray-500 hover:text-red-400 text-xs">🗑️</button>
-                        </div>
+async function testProject(btn) {
+    if (!currentProject) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 测试中...';
+    if (currentProject.mode !== 'smart_scraper') {
+        await api(`/projects/${currentProject.id}/code`, {
+            method: 'PUT',
+            body: JSON.stringify({ code: document.getElementById('code-editor').value }),
+        });
+    }
+    try {
+        const result = await api(`/projects/${currentProject.id}/test`, {
+            method: 'POST',
+            body: JSON.stringify({ target_url: currentProject.target_url }),
+        });
+        switchDetailTab('test', document.querySelectorAll('.detail-tab')[2]);
+        const out = document.getElementById('test-output');
+        if (result.error) {
+            out.innerHTML = `<div style="color:var(--red);margin-bottom:8px;font-weight:600">❌ 错误</div><pre style="font-size:12px;color:var(--text-muted);white-space:pre-wrap">${result.error}</pre>`;
+        } else {
+            const data = result.output || [];
+            out.innerHTML = `<div style="color:var(--green);margin-bottom:8px;font-weight:600">✅ 成功 · ${data.length} 条 · ${result.duration_ms}ms</div>
+                <pre style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;max-height:400px;overflow:auto;background:var(--bg-input);padding:14px;border-radius:8px;border:1px solid var(--border)">${JSON.stringify(data, null, 2)}</pre>`;
+        }
+    } catch (e) {
+        switchDetailTab('test', document.querySelectorAll('.detail-tab')[2]);
+        document.getElementById('test-output').innerHTML = `<div style="color:var(--red)">❌ ${e.message}</div>`;
+    } finally { btn.disabled = false; btn.innerHTML = '<i class="ri-play-line"></i> 测试'; }
+}
+
+async function sendChat() {
+    if (!currentProject) return;
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    const chatDiv = document.getElementById('chat-messages');
+    chatDiv.innerHTML += `<div class="chat-bubble chat-user">${msg}</div>`;
+    const pendingId = 'p' + Date.now();
+    chatDiv.innerHTML += `<div class="chat-bubble chat-ai" id="${pendingId}"><span class="spinner"></span> 思考中...</div>`;
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+    try {
+        const result = await api(`/projects/${currentProject.id}/refine`, {
+            method: 'POST',
+            body: JSON.stringify({ feedback: msg }),
+        });
+        document.getElementById(pendingId).textContent = `✅ 已更新代码 v${result.version || '?'}`;
+        if (result.code) document.getElementById('code-editor').value = result.code;
+        currentProject = result;
+    } catch (e) { document.getElementById(pendingId).innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
+}
+
+async function deployTask() {
+    if (!currentProject) return;
+    const type = document.getElementById('deploy-type').value;
+    const urls = document.getElementById('deploy-urls').value.trim().split('\n').filter(Boolean);
+    const maxPages = parseInt(document.getElementById('deploy-pages').value) || 100;
+    const priority = parseInt(document.getElementById('deploy-priority').value) || 5;
+    const cron = document.getElementById('deploy-cron')?.value || '';
+    try {
+        await api('/tasks', {
+            method: 'POST',
+            body: JSON.stringify({ project_id: currentProject.id, target_urls: urls, task_type: type, cron_expr: cron, max_pages: maxPages, priority }),
+        });
+        showToast('任务已创建');
+        switchTab('tasks');
+    } catch (e) { alert('部署失败: ' + e.message); }
+}
+
+// ── Tasks ──
+async function loadTasks() {
+    try {
+        const tasks = await api('/tasks');
+        const list = document.getElementById('task-list');
+        const empty = document.getElementById('task-empty');
+        if (!tasks.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        list.innerHTML = tasks.map(t => {
+            let urls = t.target_urls;
+            if (typeof urls === 'string') try { urls = JSON.parse(urls); } catch { urls = []; }
+            return `
+            <div class="card task-card">
+                <div class="flex-between">
+                    <div class="flex-center gap-2">
+                        <span class="task-name">${t.name || t.id.slice(0,8)}</span>
+                        ${badgeHTML(t.status)}
+                        <span class="badge badge-gray">${t.task_type === 'cron' ? '🔄 定时' : t.task_type === 'continuous' ? '♾️ 持续' : '⚡ 单次'}</span>
                     </div>
-                    <p class="text-xs text-gray-600 mt-1">${(Array.isArray(urls) ? urls : []).join(', ')}</p>
-                </div>`;
-            }).join('');
-        } catch (e) {
-            console.error(e);
+                    <div class="flex-center gap-2">
+                        ${['failed','cancelled'].includes(t.status) ? `<button class="btn btn-sm" onclick="retryTask('${t.id}')"><i class="ri-restart-line"></i></button>` : ''}
+                        ${['running','queued'].includes(t.status) ? `<button class="btn btn-sm" onclick="cancelTask('${t.id}')"><i class="ri-stop-line"></i></button>` : ''}
+                        <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')"><i class="ri-delete-bin-6-line"></i></button>
+                    </div>
+                </div>
+                <div class="task-meta">${(Array.isArray(urls) ? urls : []).join(' · ')}</div>
+            </div>`;
+        }).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function retryTask(id) { await api(`/tasks/${id}/retry`, { method:'POST' }); loadTasks(); }
+async function cancelTask(id) { await api(`/tasks/${id}/cancel`, { method:'POST' }); loadTasks(); }
+async function deleteTask(id) { if (confirm('确定删除？')) { await api(`/tasks/${id}`, { method:'DELETE' }); loadTasks(); } }
+
+// ── Data ──
+async function loadData() {
+    const pid = document.getElementById('data-project-filter').value;
+    try {
+        const r = await api(`/data?project_id=${pid}&page=${dataPage}&page_size=20`);
+        document.getElementById('data-count').textContent = `共 ${r.total} 条`;
+        const items = r.items || [];
+        if (!items.length) {
+            document.getElementById('data-thead').innerHTML = '';
+            document.getElementById('data-tbody').innerHTML = '';
+            document.getElementById('data-empty').classList.remove('hidden');
+            document.getElementById('data-pagination').innerHTML = '';
+            return;
         }
-    }
-
-    async function retryTask(id) { await api(`/tasks/${id}/retry`, { method: 'POST' }); loadTasks(); }
-    async function cancelTask(id) { await api(`/tasks/${id}/cancel`, { method: 'POST' }); loadTasks(); }
-    async function deleteTask(id) { if (confirm('确定删除？')) { await api(`/tasks/${id}`, { method: 'DELETE' }); loadTasks(); } }
-
-    // ── Data ──
-    async function loadData() {
-        const projectId = document.getElementById('data-project-filter').value;
-        try {
-            const result = await api(`/data?project_id=${projectId}&page=${dataPage}&page_size=20`);
-            document.getElementById('data-count').textContent = `共 ${result.total} 条`;
-            
-            const items = result.items || [];
-            if (!items.length) {
-                document.getElementById('data-thead').innerHTML = '';
-                document.getElementById('data-tbody').innerHTML = '<tr><td class="text-center py-8 text-gray-500" colspan="99">暂无数据</td></tr>';
-                document.getElementById('data-pagination').innerHTML = '';
-                return;
-            }
-
-            // Build table from first item's data keys
-            let firstData = items[0].data;
-            if (typeof firstData === 'string') try { firstData = JSON.parse(firstData); } catch {}
-            const keys = typeof firstData === 'object' ? Object.keys(firstData) : ['data'];
-
-            document.getElementById('data-thead').innerHTML = '<tr>' + keys.map(k => `<th class="text-left p-2">${k}</th>`).join('') + '</tr>';
-            document.getElementById('data-tbody').innerHTML = items.map(item => {
-                let d = item.data;
-                if (typeof d === 'string') try { d = JSON.parse(d); } catch {}
-                return '<tr class="border-b border-gray-800 table-row">' + keys.map(k => {
-                    let v = typeof d === 'object' ? (d[k] ?? '') : d;
-                    if (typeof v === 'object') v = JSON.stringify(v);
-                    if (typeof v === 'string' && v.length > 80) v = v.slice(0, 80) + '...';
-                    return `<td class="p-2 text-sm">${v}</td>`;
-                }).join('') + '</tr>';
-            }).join('');
-
-            // Pagination
-            const totalPages = result.total_pages || 1;
-            let pag = '';
-            for (let i = 1; i <= Math.min(totalPages, 10); i++) {
-                pag += `<button onclick="dataPage=${i};loadData()" class="${i === dataPage ? 'btn-primary' : 'btn-secondary'} text-xs">${i}</button>`;
-            }
-            document.getElementById('data-pagination').innerHTML = pag;
-        } catch (e) {
-            console.error(e);
+        document.getElementById('data-empty').classList.add('hidden');
+        let first = items[0].data;
+        if (typeof first === 'string') try { first = JSON.parse(first); } catch {}
+        const keys = typeof first === 'object' ? Object.keys(first) : ['data'];
+        document.getElementById('data-thead').innerHTML = '<tr>' + keys.map(k => `<th>${k}</th>`).join('') + '</tr>';
+        document.getElementById('data-tbody').innerHTML = items.map(item => {
+            let d = item.data;
+            if (typeof d === 'string') try { d = JSON.parse(d); } catch {}
+            return '<tr>' + keys.map(k => {
+                let v = typeof d === 'object' ? (d[k] ?? '') : d;
+                if (typeof v === 'object') v = JSON.stringify(v);
+                if (typeof v === 'string' && v.length > 80) v = v.slice(0, 80) + '…';
+                return `<td>${v}</td>`;
+            }).join('') + '</tr>';
+        }).join('');
+        const tp = r.total_pages || 1;
+        let pag = '';
+        for (let i = 1; i <= Math.min(tp, 10); i++) {
+            pag += `<button class="page-btn${i === dataPage ? ' active' : ''}" onclick="dataPage=${i};loadData()">${i}</button>`;
         }
-    }
+        document.getElementById('data-pagination').innerHTML = pag;
+    } catch (e) { console.error(e); }
+}
 
-    function exportData(format) {
-        const projectId = document.getElementById('data-project-filter').value;
-        window.open(API(`/api/v1/data/export/${format}?project_id=${projectId}`));
-    }
+function exportData(fmt) {
+    const pid = document.getElementById('data-project-filter').value;
+    window.open(API_BASE(`/api/v1/data/export/${fmt}?project_id=${pid}`));
+}
 
-    // ── Init ──
-    async function init() {
-        loadProjects();
-        // Populate project filter for data tab
-        try {
-            const projects = await api('/projects');
-            const sel = document.getElementById('data-project-filter');
-            projects.forEach(p => {
-                sel.innerHTML += `<option value="${p.id}">${p.name || p.id}</option>`;
-            });
-        } catch {}
-    }
+// ── Toast ──
+function showToast(msg) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {
+        position:'fixed', bottom:'24px', left:'50%', transform:'translateX(-50%)',
+        background:'var(--green)', color:'#fff', padding:'8px 20px', borderRadius:'8px',
+        fontSize:'13px', fontWeight:'600', zIndex:'200', boxShadow:'0 4px 16px rgba(0,0,0,0.3)',
+    });
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2000);
+}
 
-    init();
-    </script>
+// ── Init ──
+async function init() {
+    loadProjects();
+    try {
+        const ps = await api('/projects');
+        const sel = document.getElementById('data-project-filter');
+        ps.forEach(p => { sel.innerHTML += `<option value="${p.id}">${p.name || p.id}</option>`; });
+    } catch {}
+}
+init();
+</script>
 </body>
 </html>

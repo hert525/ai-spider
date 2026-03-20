@@ -1,81 +1,222 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Spider - 管理后台</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
     <style>
-        body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; }
-        .btn-primary { background: #238636; color: #fff; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
-        .btn-primary:hover { background: #2ea043; }
-        .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 16px; font-size: 14px; cursor: pointer; }
-        .btn-secondary:hover { background: #30363d; }
-        .input-field { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; color: #c9d1d9; width: 100%; }
-        .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; text-align: center; }
-        .stat-number { font-size: 28px; font-weight: 700; color: #58a6ff; }
-        .stat-label { font-size: 13px; color: #8b949e; margin-top: 4px; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
-        .badge-green { background: #238636; color: #fff; }
-        .badge-yellow { background: #9e6a03; color: #fff; }
-        .badge-red { background: #da3633; color: #fff; }
-        .badge-blue { background: #1f6feb; color: #fff; }
-        .badge-gray { background: #30363d; color: #8b949e; }
-        .table-row:hover { background: #1c2128; }
-        .nav-item { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .nav-item:hover { background: #21262d; }
-        .nav-active { background: #21262d; color: #58a6ff; }
-        .log-line { font-family: monospace; font-size: 12px; line-height: 1.8; color: #8b949e; }
-        .log-line:hover { color: #c9d1d9; background: #1c2128; }
+    :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #12121a;
+        --bg-card: #16161f;
+        --bg-hover: #1c1c28;
+        --bg-input: #0e0e16;
+        --border: #262630;
+        --border-light: #2a2a36;
+        --text-primary: #e8e8ed;
+        --text-secondary: #8888a0;
+        --text-muted: #55556a;
+        --accent: #6c5ce7;
+        --accent-light: #7c6ff7;
+        --accent-glow: rgba(108,92,231,0.15);
+        --green: #00d68f;
+        --green-bg: rgba(0,214,143,0.1);
+        --red: #ff4757;
+        --red-bg: rgba(255,71,87,0.1);
+        --yellow: #ffa502;
+        --yellow-bg: rgba(255,165,2,0.1);
+        --blue: #3498ff;
+        --blue-bg: rgba(52,152,255,0.1);
+        --radius: 12px;
+        --radius-sm: 8px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',-apple-system,sans-serif; background:var(--bg-primary); color:var(--text-primary); }
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+    .layout { display:flex; min-height:100vh; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+        width:220px; background:var(--bg-secondary); border-right:1px solid var(--border);
+        padding:20px 12px; display:flex; flex-direction:column; position:sticky; top:0; height:100vh;
+    }
+    .sidebar-logo { display:flex; align-items:center; gap:10px; padding:0 8px; margin-bottom:28px; }
+    .sidebar-logo-icon {
+        width:34px; height:34px; border-radius:10px;
+        background:linear-gradient(135deg,var(--accent),#a855f7);
+        display:flex; align-items:center; justify-content:center; font-size:16px; color:#fff;
+    }
+    .sidebar-logo-text { font-size:14px; font-weight:700; }
+    .sidebar-label { font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; padding:0 12px; margin:20px 0 8px; }
+    .sidebar-item {
+        display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm);
+        font-size:13px; color:var(--text-secondary); cursor:pointer; transition:all 0.15s;
+        text-decoration:none; margin-bottom:2px;
+    }
+    .sidebar-item:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .sidebar-item.active { background:var(--accent-glow); color:var(--accent-light); }
+    .sidebar-item i { font-size:16px; width:20px; text-align:center; }
+    .sidebar-footer { margin-top:auto; padding:12px; border-top:1px solid var(--border); }
+    .sidebar-footer a { font-size:12px; color:var(--text-muted); text-decoration:none; display:flex; align-items:center; gap:6px; }
+    .sidebar-footer a:hover { color:var(--text-secondary); }
+
+    /* ── Main ── */
+    .main { flex:1; padding:24px 32px; overflow-y:auto; }
+    .page-title { font-size:22px; font-weight:700; margin-bottom:20px; }
+
+    /* ── Stat Cards ── */
+    .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+    .stat-card {
+        background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+        padding:18px 20px; position:relative; overflow:hidden;
+    }
+    .stat-card::after {
+        content:''; position:absolute; top:0; right:0; width:80px; height:80px;
+        border-radius:50%; opacity:0.06; transform:translate(20px,-20px);
+    }
+    .stat-card:nth-child(1)::after { background:var(--accent); }
+    .stat-card:nth-child(2)::after { background:var(--green); }
+    .stat-card:nth-child(3)::after { background:var(--blue); }
+    .stat-card:nth-child(4)::after { background:var(--yellow); }
+    .stat-label { font-size:12px; color:var(--text-muted); font-weight:500; margin-bottom:8px; }
+    .stat-value { font-size:28px; font-weight:700; letter-spacing:-1px; }
+    .stat-sub { font-size:11px; color:var(--text-muted); margin-top:4px; }
+
+    /* ── Card ── */
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); }
+    .card-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+    .card-title { font-size:14px; font-weight:600; }
+    .card-body { padding:16px 20px; }
+
+    /* ── Table ── */
+    .tbl { width:100%; border-collapse:collapse; font-size:13px; }
+    .tbl th { text-align:left; padding:10px 14px; color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
+    .tbl td { padding:10px 14px; border-bottom:1px solid rgba(38,38,48,0.5); color:var(--text-secondary); }
+    .tbl tr:hover td { background:var(--bg-hover); }
+
+    /* ── Badge ── */
+    .badge { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+    .badge-dot { width:6px; height:6px; border-radius:50%; }
+    .badge-green { background:var(--green-bg); color:var(--green); }
+    .badge-green .badge-dot { background:var(--green); }
+    .badge-yellow { background:var(--yellow-bg); color:var(--yellow); }
+    .badge-yellow .badge-dot { background:var(--yellow); }
+    .badge-red { background:var(--red-bg); color:var(--red); }
+    .badge-red .badge-dot { background:var(--red); }
+    .badge-blue { background:var(--blue-bg); color:var(--blue); }
+    .badge-blue .badge-dot { background:var(--blue); }
+    .badge-gray { background:rgba(85,85,106,0.15); color:var(--text-muted); }
+
+    /* ── Buttons ── */
+    .btn { padding:5px 12px; border-radius:6px; font-size:11px; font-weight:500; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer; transition:all 0.15s; display:inline-flex; align-items:center; gap:4px; }
+    .btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .btn-danger { color:var(--red); }
+    .btn-danger:hover { background:var(--red-bg); border-color:var(--red); }
+
+    /* ── Worker Card ── */
+    .worker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+    .worker-card { padding:18px 20px; }
+    .worker-name { font-size:14px; font-weight:600; }
+    .worker-meta { font-size:11px; color:var(--text-muted); margin-top:4px; }
+    .progress-bar { height:6px; background:var(--bg-input); border-radius:3px; margin-top:8px; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:3px; transition:width 0.3s; }
+
+    /* ── Logs ── */
+    .log-view {
+        background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm);
+        padding:16px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px;
+        line-height:1.8; max-height:500px; overflow:auto; color:var(--text-secondary);
+    }
+    .log-info { color:var(--blue); }
+    .log-warn { color:var(--yellow); }
+    .log-error { color:var(--red); }
+    .log-time { color:var(--text-muted); }
+
+    .hidden { display:none!important; }
+    .input { background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px; color:var(--text-primary); font-size:13px; font-family:inherit; outline:none; }
+    .input:focus { border-color:var(--accent); }
+
+    @media(max-width:900px) { .stat-grid{grid-template-columns:repeat(2,1fr);} .sidebar{display:none;} }
     </style>
 </head>
 <body>
-    <div class="flex min-h-screen">
-        <!-- Sidebar -->
-        <aside class="w-56 border-r border-gray-700 p-4 flex flex-col">
-            <div class="flex items-center gap-2 mb-6">
-                <span class="text-xl">🕷️</span>
-                <h1 class="text-lg font-semibold text-white">管理后台</h1>
+
+<div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="sidebar-logo-icon"><i class="ri-bug-line"></i></div>
+            <div>
+                <div class="sidebar-logo-text">AI Spider</div>
+                <div style="font-size:10px;color:var(--text-muted)">管理后台</div>
             </div>
-            <nav class="space-y-1 flex-1">
-                <div onclick="showSection('dashboard')" class="nav-item nav-active" id="nav-dashboard">📊 仪表盘</div>
-                <div onclick="showSection('tasks')" class="nav-item" id="nav-tasks">📋 任务管理</div>
-                <div onclick="showSection('workers')" class="nav-item" id="nav-workers">⚙️ Worker</div>
-                <div onclick="showSection('logs')" class="nav-item" id="nav-logs">📝 系统日志</div>
-                <div onclick="showSection('settings')" class="nav-item" id="nav-settings">🔧 设置</div>
-            </nav>
-            <a href="/" class="text-sm text-gray-500 hover:text-gray-300 mt-4">← 返回用户端</a>
-        </aside>
+        </div>
 
-        <!-- Main -->
-        <main class="flex-1 p-6 overflow-y-auto">
-            <!-- Dashboard -->
-            <section id="sec-dashboard">
-                <h2 class="text-xl font-semibold text-white mb-4">仪表盘</h2>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div class="stat-card"><div class="stat-number" id="s-projects">-</div><div class="stat-label">项目总数</div></div>
-                    <div class="stat-card"><div class="stat-number" id="s-tasks">-</div><div class="stat-label">任务总数</div></div>
-                    <div class="stat-card"><div class="stat-number" id="s-workers">-</div><div class="stat-label">在线Worker</div></div>
-                    <div class="stat-card"><div class="stat-number" id="s-data">-</div><div class="stat-label">数据条数</div></div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="card p-4">
-                        <h3 class="text-sm font-medium text-white mb-3">任务状态分布</h3>
-                        <div id="task-status-chart" class="space-y-2"></div>
-                    </div>
-                    <div class="card p-4">
-                        <h3 class="text-sm font-medium text-white mb-3">最近任务</h3>
-                        <div id="recent-tasks" class="space-y-2 text-sm"></div>
-                    </div>
-                </div>
-            </section>
+        <div class="sidebar-label">概览</div>
+        <a class="sidebar-item active" onclick="showPage('dashboard',this)"><i class="ri-dashboard-3-line"></i> 仪表盘</a>
 
-            <!-- Tasks -->
-            <section id="sec-tasks" class="hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold text-white">任务管理</h2>
-                    <select id="task-filter" class="input-field" style="width:150px" onchange="loadAdminTasks()">
+        <div class="sidebar-label">管理</div>
+        <a class="sidebar-item" onclick="showPage('tasks',this)"><i class="ri-play-circle-line"></i> 任务管理</a>
+        <a class="sidebar-item" onclick="showPage('workers',this)"><i class="ri-server-line"></i> Worker 节点</a>
+        <a class="sidebar-item" onclick="showPage('logs',this)"><i class="ri-file-list-3-line"></i> 系统日志</a>
+
+        <div class="sidebar-label">设置</div>
+        <a class="sidebar-item" onclick="showPage('settings',this)"><i class="ri-settings-3-line"></i> 系统设置</a>
+
+        <div class="sidebar-footer">
+            <a href="/" target="_blank"><i class="ri-external-link-line"></i> 用户端</a>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+
+        <!-- ═══ Dashboard ═══ -->
+        <div id="page-dashboard">
+            <div class="page-title">📊 仪表盘</div>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-label">项目总数</div>
+                    <div class="stat-value" id="s-projects">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">任务总数</div>
+                    <div class="stat-value" id="s-tasks">-</div>
+                    <div class="stat-sub" id="s-tasks-sub"></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Worker 节点</div>
+                    <div class="stat-value" id="s-workers">-</div>
+                    <div class="stat-sub" id="s-workers-sub"></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">数据总量</div>
+                    <div class="stat-value" id="s-data">-</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">最近任务</span>
+                </div>
+                <table class="tbl">
+                    <thead><tr><th>ID</th><th>状态</th><th>类型</th><th>创建时间</th></tr></thead>
+                    <tbody id="dash-tasks"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ═══ Tasks ═══ -->
+        <div id="page-tasks" class="hidden">
+            <div class="page-title" style="display:flex;align-items:center;justify-content:space-between">
+                <span>📋 任务管理</span>
+                <div style="display:flex;gap:8px">
+                    <select id="task-filter" class="input" style="width:130px;font-size:12px" onchange="loadAdminTasks()">
                         <option value="">全部状态</option>
                         <option value="queued">排队中</option>
                         <option value="running">运行中</option>
@@ -84,182 +225,249 @@
                         <option value="cancelled">已取消</option>
                     </select>
                 </div>
-                <div class="card">
-                    <table class="w-full text-sm">
-                        <thead class="text-gray-400 border-b border-gray-700">
-                            <tr><th class="p-3 text-left">任务</th><th class="p-3 text-left">类型</th><th class="p-3 text-left">状态</th><th class="p-3 text-left">Worker</th><th class="p-3 text-left">创建时间</th><th class="p-3 text-left">操作</th></tr>
-                        </thead>
-                        <tbody id="admin-task-tbody"></tbody>
-                    </table>
+            </div>
+            <div class="card">
+                <table class="tbl">
+                    <thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th><th>操作</th></tr></thead>
+                    <tbody id="admin-tasks"></tbody>
+                </table>
+                <div id="admin-tasks-empty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">暂无任务</div>
+            </div>
+        </div>
+
+        <!-- ═══ Workers ═══ -->
+        <div id="page-workers" class="hidden">
+            <div class="page-title">🖥️ Worker 节点</div>
+            <div id="worker-list" class="worker-grid"></div>
+            <div id="worker-empty" style="text-align:center;padding:60px;color:var(--text-muted);font-size:13px">
+                <i class="ri-server-line" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3"></i>
+                暂无 Worker 注册
+            </div>
+        </div>
+
+        <!-- ═══ Logs ═══ -->
+        <div id="page-logs" class="hidden">
+            <div class="page-title" style="display:flex;align-items:center;justify-content:space-between">
+                <span>📝 系统日志</span>
+                <div style="display:flex;gap:8px">
+                    <select id="log-level" class="input" style="width:100px;font-size:12px" onchange="loadLogs()">
+                        <option value="">全部</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARN</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                    <button class="btn" onclick="loadLogs()"><i class="ri-refresh-line"></i> 刷新</button>
                 </div>
-            </section>
+            </div>
+            <div class="log-view" id="log-content">加载中...</div>
+        </div>
 
-            <!-- Workers -->
-            <section id="sec-workers" class="hidden">
-                <h2 class="text-xl font-semibold text-white mb-4">Worker 监控</h2>
-                <div id="worker-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-                <p id="no-workers" class="text-gray-500 text-center py-10 hidden">暂无注册的Worker</p>
-            </section>
-
-            <!-- Logs -->
-            <section id="sec-logs" class="hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-xl font-semibold text-white">系统日志</h2>
-                    <button onclick="loadLogs()" class="btn-secondary text-sm">🔄 刷新</button>
+        <!-- ═══ Settings ═══ -->
+        <div id="page-settings" class="hidden">
+            <div class="page-title">⚙️ 系统设置</div>
+            <div class="card" style="max-width:600px">
+                <div class="card-body">
+                    <div style="margin-bottom:16px">
+                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">LLM 模型</label>
+                        <input class="input" style="width:100%" id="set-model" placeholder="deepseek/deepseek-chat">
+                    </div>
+                    <div style="margin-bottom:16px">
+                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">Redis URL</label>
+                        <input class="input" style="width:100%" id="set-redis" placeholder="redis://127.0.0.1:6379/2">
+                    </div>
+                    <div style="margin-bottom:16px">
+                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">User-Agent</label>
+                        <input class="input" style="width:100%" id="set-ua">
+                    </div>
+                    <div style="margin-bottom:20px">
+                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">最大并发</label>
+                        <input class="input" style="width:120px" id="set-conc" type="number" value="5">
+                    </div>
+                    <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:8px 20px" onclick="saveSettings()">
+                        <i class="ri-save-line"></i> 保存设置
+                    </button>
                 </div>
-                <div class="card p-4 max-h-[70vh] overflow-y-auto" id="log-container"></div>
-            </section>
+            </div>
+        </div>
 
-            <!-- Settings -->
-            <section id="sec-settings" class="hidden">
-                <h2 class="text-xl font-semibold text-white mb-4">系统设置</h2>
-                <div class="card p-4 space-y-3" id="settings-content"></div>
-            </section>
-        </main>
     </div>
+</div>
 
-    <script>
-    const API = (path) => {
-        const base = location.pathname.replace(/\/admin\/?$/, '');
-        return `${base}${path}`.replace(/\/+/g, '/');
-    };
+<script>
+const API_BASE = (() => {
+    let base = location.pathname.replace(/\/admin\/?$/, '').replace(/\/$/, '');
+    return (path) => `${base}${path}`.replace(/\/\//g, '/');
+})();
 
-    function statusBadge(s) {
-        const m = { queued:['排队','badge-yellow'], running:['运行','badge-blue'], success:['成功','badge-green'], failed:['失败','badge-red'], cancelled:['取消','badge-gray'], paused:['暂停','badge-gray'] };
-        const [t,c] = m[s] || [s,'badge-gray'];
-        return `<span class="badge ${c}">${t}</span>`;
-    }
+async function api(path, opts = {}) {
+    const url = API_BASE(path);
+    const res = await fetch(url, { headers:{'Content-Type':'application/json',...opts.headers}, ...opts });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+}
 
-    function showSection(name) {
-        ['dashboard','tasks','workers','logs','settings'].forEach(s => {
-            document.getElementById(`sec-${s}`).classList.toggle('hidden', s !== name);
-            document.getElementById(`nav-${s}`).classList.toggle('nav-active', s === name);
-        });
-        if (name === 'dashboard') loadDashboard();
-        if (name === 'tasks') loadAdminTasks();
-        if (name === 'workers') loadWorkers();
-        if (name === 'logs') loadLogs();
-        if (name === 'settings') loadSettings();
-    }
+function badge(status) {
+    const m = { draft:['草稿','gray'], generating:['生成中','blue'], generated:['已生成','green'], testing:['测试中','yellow'], tested:['已测试','green'], failed:['失败','red'], queued:['排队中','yellow'], running:['运行中','blue'], success:['成功','green'], cancelled:['已取消','gray'], paused:['暂停','gray'] };
+    const [t,c] = m[status] || [status,'gray'];
+    return `<span class="badge badge-${c}"><span class="badge-dot"></span>${t}</span>`;
+}
 
-    async function loadDashboard() {
+function timeAgo(iso) {
+    if (!iso) return '-';
+    const s=(Date.now()-new Date(iso))/1000;
+    if(s<60)return'刚刚';if(s<3600)return`${Math.floor(s/60)}分钟前`;if(s<86400)return`${Math.floor(s/3600)}小时前`;return`${Math.floor(s/86400)}天前`;
+}
+
+function showPage(page, el) {
+    ['dashboard','tasks','workers','logs','settings'].forEach(p => {
+        const d = document.getElementById(`page-${p}`);
+        if (d) d.classList.toggle('hidden', p !== page);
+    });
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    if (el) el.classList.add('active');
+    if (page === 'dashboard') loadDashboard();
+    if (page === 'tasks') loadAdminTasks();
+    if (page === 'workers') loadWorkers();
+    if (page === 'logs') loadLogs();
+    if (page === 'settings') loadSettings();
+}
+
+async function loadDashboard() {
+    try {
+        const [projects, tasks, workers] = await Promise.all([
+            api('/api/v1/projects'),
+            api('/api/v1/tasks'),
+            api('/api/v1/workers'),
+        ]);
+        document.getElementById('s-projects').textContent = projects.length;
+        document.getElementById('s-tasks').textContent = tasks.length;
+        const running = tasks.filter(t => t.status === 'running').length;
+        document.getElementById('s-tasks-sub').textContent = running ? `${running} 运行中` : '';
+        document.getElementById('s-workers').textContent = workers.length;
+        const online = workers.filter(w => w.status === 'online').length;
+        document.getElementById('s-workers-sub').textContent = online ? `${online} 在线` : '';
+
+        // Data count
         try {
-            const [stats, dash] = await Promise.all([
-                fetch(API('/api/v1/system/stats')).then(r => r.json()),
-                fetch(API('/admin/api/dashboard')).then(r => r.json()),
-            ]);
-            document.getElementById('s-projects').textContent = stats.projects || 0;
-            document.getElementById('s-data').textContent = stats.data_records || 0;
+            const data = await api('/api/v1/data?page_size=1');
+            document.getElementById('s-data').textContent = data.total || 0;
+        } catch { document.getElementById('s-data').textContent = '0'; }
 
-            const ts = stats.tasks?.by_status || {};
-            const total = Object.values(ts).reduce((a,b) => a+b, 0);
-            document.getElementById('s-tasks').textContent = total;
-            document.getElementById('s-workers').textContent = stats.workers?.online || 0;
+        // Recent tasks
+        const recent = tasks.slice(0, 8);
+        document.getElementById('dash-tasks').innerHTML = recent.length ?
+            recent.map(t => `<tr><td style="font-family:monospace;font-size:12px">${t.id.slice(0,10)}</td><td>${badge(t.status)}</td><td>${t.task_type}</td><td style="font-size:12px;color:var(--text-muted)">${timeAgo(t.created_at)}</td></tr>`).join('') :
+            '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted)">暂无任务</td></tr>';
+    } catch (e) { console.error(e); }
+}
 
-            // Status chart
-            const chart = document.getElementById('task-status-chart');
-            chart.innerHTML = Object.entries(ts).map(([k,v]) => {
-                const pct = total ? Math.round(v/total*100) : 0;
-                return `<div class="flex items-center gap-2">
-                    <span class="text-xs w-14 text-gray-400">${k}</span>
-                    <div class="flex-1 h-4 bg-gray-800 rounded overflow-hidden">
-                        <div class="h-full ${k==='success'?'bg-green-600':k==='failed'?'bg-red-600':k==='running'?'bg-blue-600':'bg-gray-600'}" style="width:${pct}%"></div>
+async function loadAdminTasks() {
+    try {
+        const filter = document.getElementById('task-filter').value;
+        let tasks = await api('/api/v1/tasks');
+        if (filter) tasks = tasks.filter(t => t.status === filter);
+        const tbody = document.getElementById('admin-tasks');
+        const empty = document.getElementById('admin-tasks-empty');
+        if (!tasks.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+        tbody.innerHTML = tasks.map(t => `
+            <tr>
+                <td style="font-family:monospace;font-size:12px">${t.id.slice(0,10)}</td>
+                <td style="font-size:12px">${t.project_id ? t.project_id.slice(0,8) : '-'}</td>
+                <td>${badge(t.status)}</td>
+                <td>${t.task_type}</td>
+                <td style="font-size:12px;color:var(--text-muted)">${timeAgo(t.created_at)}</td>
+                <td>
+                    <div style="display:flex;gap:4px">
+                        ${['failed','cancelled'].includes(t.status)?`<button class="btn" onclick="retryTask('${t.id}')"><i class="ri-restart-line"></i></button>`:''}
+                        ${['running','queued'].includes(t.status)?`<button class="btn" onclick="cancelTask('${t.id}')"><i class="ri-stop-line"></i></button>`:''}
+                        <button class="btn btn-danger" onclick="deleteTask('${t.id}')"><i class="ri-delete-bin-6-line"></i></button>
                     </div>
-                    <span class="text-xs text-gray-500 w-10 text-right">${v}</span>
-                </div>`;
-            }).join('');
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) { console.error(e); }
+}
 
-            // Recent tasks
-            const tasks = await fetch(API('/admin/api/tasks?limit=5')).then(r => r.json());
-            document.getElementById('recent-tasks').innerHTML = tasks.slice(0,5).map(t =>
-                `<div class="flex items-center justify-between py-1 border-b border-gray-800">
-                    <span class="text-gray-300">${t.name || t.id}</span>
-                    ${statusBadge(t.status)}
-                </div>`
-            ).join('') || '<p class="text-gray-500">暂无任务</p>';
-        } catch (e) { console.error(e); }
-    }
+async function retryTask(id) { await api(`/api/v1/tasks/${id}/retry`,{method:'POST'}); loadAdminTasks(); }
+async function cancelTask(id) { await api(`/api/v1/tasks/${id}/cancel`,{method:'POST'}); loadAdminTasks(); }
+async function deleteTask(id) { if(confirm('确定删除？')){await api(`/api/v1/tasks/${id}`,{method:'DELETE'}); loadAdminTasks();} }
 
-    async function loadAdminTasks() {
-        const status = document.getElementById('task-filter').value;
-        try {
-            const tasks = await fetch(API(`/admin/api/tasks?status=${status}&limit=50`)).then(r => r.json());
-            document.getElementById('admin-task-tbody').innerHTML = tasks.map(t => `
-                <tr class="border-b border-gray-800 table-row">
-                    <td class="p-3">${t.name || t.id}</td>
-                    <td class="p-3"><span class="badge badge-gray">${t.task_type}</span></td>
-                    <td class="p-3">${statusBadge(t.status)}</td>
-                    <td class="p-3 text-gray-500">${t.worker_id || '-'}</td>
-                    <td class="p-3 text-gray-500 text-xs">${t.created_at?.slice(0,16) || ''}</td>
-                    <td class="p-3">
-                        <div class="flex gap-1">
-                            ${t.status==='failed'?`<button onclick="retryTask('${t.id}')" class="btn-secondary text-xs">🔄</button>`:''}
-                            ${t.status==='running'?`<button onclick="pauseTask('${t.id}')" class="btn-secondary text-xs">⏸️</button>`:''}
-                            ${t.status==='paused'?`<button onclick="resumeTask('${t.id}')" class="btn-secondary text-xs">▶</button>`:''}
-                            <button onclick="deleteAdminTask('${t.id}')" class="text-gray-500 hover:text-red-400 text-xs">🗑️</button>
-                        </div>
-                    </td>
-                </tr>
-            `).join('') || '<tr><td colspan="6" class="text-center py-8 text-gray-500">暂无任务</td></tr>';
-        } catch (e) { console.error(e); }
-    }
-
-    async function retryTask(id) { await fetch(API(`/api/v1/tasks/${id}/retry`), {method:'POST'}); loadAdminTasks(); }
-    async function pauseTask(id) { await fetch(API(`/api/v1/tasks/${id}/pause`), {method:'POST'}); loadAdminTasks(); }
-    async function resumeTask(id) { await fetch(API(`/api/v1/tasks/${id}/retry`), {method:'POST'}); loadAdminTasks(); }
-    async function deleteAdminTask(id) { if(confirm('确定？')) { await fetch(API(`/api/v1/tasks/${id}`), {method:'DELETE'}); loadAdminTasks(); } }
-
-    async function loadWorkers() {
-        try {
-            const workers = await fetch(API('/admin/api/workers')).then(r => r.json());
-            if (!workers.length) {
-                document.getElementById('worker-cards').innerHTML = '';
-                document.getElementById('no-workers').classList.remove('hidden');
-                return;
-            }
-            document.getElementById('no-workers').classList.add('hidden');
-            document.getElementById('worker-cards').innerHTML = workers.map(w => {
-                const isOnline = w.status === 'online' || w.status === 'busy';
-                return `<div class="card p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-white font-medium">${w.id}</span>
-                        <span class="badge ${isOnline ? 'badge-green' : 'badge-red'}">${w.status}</span>
+async function loadWorkers() {
+    try {
+        const workers = await api('/api/v1/workers');
+        const list = document.getElementById('worker-list');
+        const empty = document.getElementById('worker-empty');
+        if (!workers.length) { list.innerHTML = ''; empty.style.display = ''; return; }
+        empty.style.display = 'none';
+        list.innerHTML = workers.map(w => {
+            const cpu = w.cpu_percent || 0;
+            const cpuColor = cpu > 80 ? 'var(--red)' : cpu > 50 ? 'var(--yellow)' : 'var(--green)';
+            return `
+            <div class="card worker-card">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div>
+                        <span class="worker-name">${w.hostname || w.id}</span>
+                        <span class="badge badge-${w.status === 'online' ? 'green' : 'red'}" style="margin-left:8px">
+                            <span class="badge-dot"></span>${w.status === 'online' ? '在线' : '离线'}
+                        </span>
                     </div>
-                    <div class="text-xs text-gray-500 space-y-1">
-                        <div>主机: ${w.hostname || '-'} (${w.ip || '-'})</div>
-                        <div>CPU: ${w.cpu_percent}% | 内存: ${w.memory_mb}MB</div>
-                        <div>活跃: ${w.active_jobs} | 完成: ${w.total_completed} | 失败: ${w.total_failed}</div>
-                        <div>心跳: ${w.last_heartbeat?.slice(11,19) || '-'}</div>
+                    <button class="btn btn-danger" style="font-size:10px" onclick="removeWorker('${w.id}')"><i class="ri-close-line"></i></button>
+                </div>
+                <div class="worker-meta">${w.ip || ''} · 并发 ${w.max_concurrency || '-'} · 活跃 ${w.active_jobs || 0}</div>
+                <div style="margin-top:12px">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
+                        <span>CPU</span><span>${cpu.toFixed(1)}%</span>
                     </div>
-                </div>`;
-            }).join('');
-        } catch (e) { console.error(e); }
-    }
+                    <div class="progress-bar"><div class="progress-fill" style="width:${cpu}%;background:${cpuColor}"></div></div>
+                </div>
+                <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--text-muted)">
+                    <span>内存 ${(w.memory_mb || 0).toFixed(0)}MB</span>
+                    <span>完成 ${w.total_completed || 0}</span>
+                    <span>失败 ${w.total_failed || 0}</span>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) { console.error(e); }
+}
 
-    async function loadLogs() {
-        try {
-            const data = await fetch(API('/admin/api/logs?limit=200')).then(r => r.json());
-            document.getElementById('log-container').innerHTML = (data.lines || []).map(l =>
-                `<div class="log-line">${l}</div>`
-            ).join('') || '<p class="text-gray-500">暂无日志</p>';
-            const container = document.getElementById('log-container');
-            container.scrollTop = container.scrollHeight;
-        } catch (e) { console.error(e); }
-    }
+async function removeWorker(id) {
+    if (!confirm('移除此Worker？')) return;
+    await api(`/api/v1/workers/${id}`, { method: 'DELETE' });
+    loadWorkers();
+}
 
-    async function loadSettings() {
-        try {
-            const s = await fetch(API('/api/v1/system/settings')).then(r => r.json());
-            document.getElementById('settings-content').innerHTML = Object.entries(s).map(([k,v]) =>
-                `<div class="flex items-center justify-between py-2 border-b border-gray-800">
-                    <span class="text-gray-400 text-sm">${k}</span>
-                    <span class="text-white text-sm font-mono">${v}</span>
-                </div>`
-            ).join('');
-        } catch (e) { console.error(e); }
+async function loadLogs() {
+    const level = document.getElementById('log-level').value;
+    try {
+        const logs = await api(`/api/v1/system/logs?level=${level}&limit=100`);
+        const el = document.getElementById('log-content');
+        if (!logs.length) { el.innerHTML = '<span style="color:var(--text-muted)">暂无日志</span>'; return; }
+        el.innerHTML = logs.map(l => {
+            const cls = l.level === 'ERROR' ? 'log-error' : l.level === 'WARNING' ? 'log-warn' : 'log-info';
+            return `<div><span class="log-time">${l.time || ''}</span> <span class="${cls}">[${l.level}]</span> ${l.message}</div>`;
+        }).join('');
+        el.scrollTop = el.scrollHeight;
+    } catch {
+        document.getElementById('log-content').innerHTML = '<span style="color:var(--text-muted)">日志接口暂不可用</span>';
     }
+}
 
-    loadDashboard();
-    </script>
+async function loadSettings() {
+    try {
+        const info = await api('/api/v1/system/info');
+        document.getElementById('set-model').value = info.llm_model || '';
+        document.getElementById('set-redis').value = info.redis_url || '';
+        document.getElementById('set-ua').value = info.user_agent || '';
+        document.getElementById('set-conc').value = info.max_concurrency || 5;
+    } catch {}
+}
+
+function saveSettings() {
+    alert('设置保存功能开发中');
+}
+
+loadDashboard();
+</script>
 </body>
 </html>
