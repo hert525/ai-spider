@@ -294,27 +294,13 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <!-- Proxy Tab -->
     <div id="tab-proxy" class="hidden">
       <div class="form-group">
-        <label style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="proxy-enabled"> 启用代理
-        </label>
-      </div>
-      <div class="form-group">
-        <label>代理模式</label>
-        <select class="form-input" id="proxy-mode" onchange="updateProxyFields()">
-          <option value="single">单个代理</option>
-          <option value="pool">代理池（轮询）</option>
-          <option value="random_pool">代理池（随机）</option>
-          <option value="rotating">旋转API</option>
+        <label>选择代理池</label>
+        <select class="form-input" id="proxy-pool-select">
+          <option value="">不使用代理（直连）</option>
         </select>
+        <div id="proxy-pool-info" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
       </div>
-      <div class="form-group">
-        <label>协议</label>
-        <select class="form-input" id="proxy-protocol">
-          <option value="http">HTTP</option>
-          <option value="socks5">SOCKS5</option>
-        </select>
-      </div>
-      <div id="proxy-fields"></div>
+      <div id="no-proxy-hint" class="hidden" style="padding:16px;color:var(--text-muted);text-align:center">暂无可用代理，请联系管理员</div>
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn btn-primary" onclick="saveProxy()"><i class="ri-save-line"></i> 保存配置</button>
         <button class="btn" onclick="testProxy()"><i class="ri-speed-line"></i> 测试代理</button>
@@ -596,10 +582,7 @@ async function openProject(id) {
     // proxy
     let proxyCfg = currentProject.proxy_config || {};
     if (typeof proxyCfg === 'string') { try { proxyCfg = JSON.parse(proxyCfg); } catch(e) { proxyCfg = {}; } currentProject.proxy_config = proxyCfg; }
-    document.getElementById('proxy-enabled').checked = !!proxyCfg.enabled;
-    document.getElementById('proxy-mode').value = proxyCfg.mode || 'single';
-    document.getElementById('proxy-protocol').value = proxyCfg.protocol || 'http';
-    updateProxyFields();
+    loadAvailableProxies(proxyCfg.proxy_pool_id || '');
     switchDetailTab('editor');
     switchPage('detail');
   } catch(e) { toast(e.message,'error'); }
@@ -730,38 +713,45 @@ async function saveSink() {
 }
 
 // Proxy
-function updateProxyFields() {
-  const mode = document.getElementById('proxy-mode').value;
-  const pc = currentProject?.proxy_config || {};
-  const container = document.getElementById('proxy-fields');
-  if (mode === 'single') {
-    container.innerHTML = `<div class="form-group"><label>代理地址</label><input class="form-input" id="proxy-url" value="${esc(pc.proxy_url||'')}" placeholder="http://user:pass@host:port"></div>`;
-  } else if (mode === 'pool' || mode === 'random_pool') {
-    const list = (pc.proxy_list || []).join('\n');
-    container.innerHTML = `<div class="form-group"><label>代理列表（每行一个）</label><textarea class="form-input" id="proxy-list" rows="5" placeholder="http://proxy1:8080\nhttp://proxy2:8080">${esc(list)}</textarea></div>`;
-  } else if (mode === 'rotating') {
-    container.innerHTML = `<div class="form-group"><label>旋转API地址</label><input class="form-input" id="proxy-rotating-api" value="${esc(pc.rotating_api||'')}" placeholder="https://api.provider.com/get_proxy"></div>`;
-  }
+async function loadAvailableProxies(selectedId) {
+  const select = document.getElementById('proxy-pool-select');
+  const hint = document.getElementById('no-proxy-hint');
+  const info = document.getElementById('proxy-pool-info');
+  try {
+    const pools = await api('GET', '/api/v1/proxies/available');
+    select.innerHTML = '<option value="">不使用代理（直连）</option>';
+    if (!pools || !pools.length) {
+      hint.classList.remove('hidden');
+      info.innerHTML = '';
+      return;
+    }
+    hint.classList.add('hidden');
+    const modeLabels = {single:'单个',pool:'代理池',rotating:'旋转API'};
+    pools.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${p.name} (${(p.proxy_type||'http').toUpperCase()} / ${modeLabels[p.mode]||p.mode})`;
+      select.appendChild(opt);
+    });
+    if (selectedId) select.value = selectedId;
+    // Show info for selected
+    select.onchange = () => {
+      const pool = pools.find(p=>p.id===select.value);
+      if (pool) {
+        const proxies = Array.isArray(pool.proxies)?pool.proxies:[];
+        info.innerHTML = `类型: ${(pool.proxy_type||'http').toUpperCase()} | 模式: ${modeLabels[pool.mode]||pool.mode} | 代理数: ${proxies.length}`;
+      } else { info.innerHTML = ''; }
+    };
+    select.onchange();
+  } catch(e) { hint.classList.remove('hidden'); }
 }
 
 async function saveProxy() {
   if (!currentProject) return;
-  const proxy_config = {
-    enabled: document.getElementById('proxy-enabled').checked,
-    mode: document.getElementById('proxy-mode').value,
-    protocol: document.getElementById('proxy-protocol').value,
-  };
-  const mode = proxy_config.mode;
-  if (mode === 'single') {
-    proxy_config.proxy_url = document.getElementById('proxy-url')?.value || '';
-  } else if (mode === 'pool' || mode === 'random_pool') {
-    proxy_config.proxy_list = (document.getElementById('proxy-list')?.value || '').split('\n').map(s=>s.trim()).filter(Boolean);
-  } else if (mode === 'rotating') {
-    proxy_config.rotating_api = document.getElementById('proxy-rotating-api')?.value || '';
-  }
+  const proxy_pool_id = document.getElementById('proxy-pool-select').value;
   try {
-    const res = await api('PUT', `/api/v1/projects/${currentProject.id}/proxy`, { proxy_config });
-    currentProject.proxy_config = proxy_config;
+    const res = await api('PUT', `/api/v1/projects/${currentProject.id}/proxy`, { proxy_pool_id });
+    currentProject.proxy_config = { proxy_pool_id };
     toast('代理配置已保存');
   } catch(e) { toast(e.message,'error'); }
 }

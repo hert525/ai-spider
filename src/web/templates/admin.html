@@ -141,6 +141,7 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div class="nav-item" data-page="users" onclick="switchPage('users')">👥 用户管理</div>
       <div class="nav-item" data-page="tasks" onclick="switchPage('tasks')">📋 任务管理</div>
       <div class="nav-item" data-page="workers" onclick="switchPage('workers')">🖥️ Worker节点</div>
+      <div class="nav-item" data-page="proxies" onclick="switchPage('proxies')">📡 代理管理</div>
       <div class="nav-item" data-page="logs" onclick="switchPage('logs')">📜 系统日志</div>
       <div class="nav-item" data-page="settings" onclick="switchPage('settings')">⚙️ 系统设置</div>
     </div>
@@ -205,6 +206,45 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
     <div class="page" id="page-workers">
       <div class="page-title">Worker节点</div>
       <div class="worker-grid" id="workers-grid"></div>
+    </div>
+
+    <!-- Proxies -->
+    <div class="page" id="page-proxies">
+      <div class="page-title">📡 代理管理</div>
+      <div class="toolbar">
+        <button class="btn btn-sm btn-primary" onclick="showCreateProxy()">+ 创建代理池</button>
+      </div>
+      <div id="proxy-pools-grid" class="worker-grid"></div>
+
+      <!-- Create/Edit Proxy Modal -->
+      <div id="proxy-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:560px;max-width:90vw;max-height:90vh;overflow-y:auto">
+          <h3 id="proxy-modal-title" style="margin-bottom:20px">创建代理池</h3>
+          <input type="hidden" id="proxy-edit-id">
+          <div class="form-group"><label>名称</label><input class="form-input" id="pp-name" placeholder="代理池名称" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)"></div>
+          <div class="form-group"><label>描述</label><input class="form-input" id="pp-desc" placeholder="描述" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)"></div>
+          <div class="form-group"><label>类型</label><select id="pp-type" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)"><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></div>
+          <div class="form-group"><label>模式</label><select id="pp-mode" onchange="updateProxyModal()" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)"><option value="single">单个代理</option><option value="pool">代理池（轮询）</option><option value="rotating">旋转API</option></select></div>
+          <div id="pp-proxies-wrap" class="form-group"><label>代理列表（每行一个）</label><textarea id="pp-proxies" rows="4" placeholder="http://user:pass@host:port" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:monospace"></textarea></div>
+          <div id="pp-rotating-wrap" class="form-group hidden"><label>旋转API地址</label><input id="pp-rotating-api" placeholder="https://api.provider.com/get" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)"></div>
+          <div class="form-group"><label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="pp-public"> 公开（所有用户可用）</label></div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary" onclick="saveProxyPool()">保存</button>
+            <button class="btn btn-outline" onclick="hideProxyModal()">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Permissions Modal -->
+      <div id="perm-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:500px;max-width:90vw;max-height:90vh;overflow-y:auto">
+          <h3 style="margin-bottom:16px">权限管理 — <span id="perm-pool-name"></span></h3>
+          <input type="hidden" id="perm-pool-id">
+          <div class="form-group"><label>添加用户</label><div style="display:flex;gap:8px"><select id="perm-user-select" style="flex:1;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary)"></select><button class="btn btn-sm btn-primary" onclick="grantPermission()">授权</button></div></div>
+          <div id="perm-list" style="margin-top:12px"></div>
+          <div style="margin-top:16px"><button class="btn btn-outline" onclick="hidePermModal()">关闭</button></div>
+        </div>
+      </div>
     </div>
 
     <!-- Logs -->
@@ -332,7 +372,7 @@ function switchPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
-  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, logs:loadLogs};
+  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs};
   if (loaders[name]) loaders[name]();
 }
 
@@ -519,6 +559,161 @@ function filterLogs() {
 // --- Settings ---
 function saveSettings() {
   toast('功能开发中，敬请期待','info');
+}
+
+// --- Proxy Pools ---
+async function loadProxies() {
+  const grid = document.getElementById('proxy-pools-grid');
+  try {
+    const pools = await api('/api/v1/admin/proxies');
+    if (!pools || !pools.length) { grid.innerHTML='<div style="color:var(--text-muted)">暂无代理池，点击上方按钮创建</div>'; return; }
+    grid.innerHTML = pools.map(p => {
+      const proxies = Array.isArray(p.proxies) ? p.proxies : [];
+      const modeLabel = {single:'单个',pool:'代理池',rotating:'旋转API'}[p.mode]||p.mode;
+      const statusBg = p.status==='active' ? 'badge-green' : 'badge-red';
+      return `<div class="worker-card">
+        <h3 style="justify-content:space-between">${p.name} <span class="badge ${statusBg}">${p.status}</span></h3>
+        <div class="worker-meta"><span>类型: ${(p.proxy_type||'http').toUpperCase()}</span><span>模式: ${modeLabel}</span></div>
+        <div class="worker-meta"><span>代理数: ${proxies.length}</span><span>${p.is_public?'🌐 公开':'🔒 授权'}</span></div>
+        <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="editProxy('${p.id}')">编辑</button>
+          <button class="btn btn-sm btn-primary" onclick="testProxyPool('${p.id}')">测试</button>
+          <button class="btn btn-sm btn-warn" onclick="managePerms('${p.id}','${p.name.replace(/'/g,"\\'")}')">权限</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteProxyPool('${p.id}')">删除</button>
+        </div>
+        <div id="proxy-test-${p.id}" style="margin-top:8px;font-size:12px"></div>
+      </div>`;
+    }).join('');
+  } catch(e) { grid.innerHTML='<div style="color:var(--text-muted)">加载失败</div>'; }
+}
+
+function showCreateProxy() {
+  document.getElementById('proxy-edit-id').value = '';
+  document.getElementById('proxy-modal-title').textContent = '创建代理池';
+  document.getElementById('pp-name').value = '';
+  document.getElementById('pp-desc').value = '';
+  document.getElementById('pp-type').value = 'http';
+  document.getElementById('pp-mode').value = 'single';
+  document.getElementById('pp-proxies').value = '';
+  document.getElementById('pp-rotating-api').value = '';
+  document.getElementById('pp-public').checked = false;
+  updateProxyModal();
+  document.getElementById('proxy-modal').classList.remove('hidden');
+}
+
+async function editProxy(id) {
+  const pool = await api('/api/v1/admin/proxies/'+id);
+  if (!pool) return toast('未找到','error');
+  document.getElementById('proxy-edit-id').value = id;
+  document.getElementById('proxy-modal-title').textContent = '编辑代理池';
+  document.getElementById('pp-name').value = pool.name||'';
+  document.getElementById('pp-desc').value = pool.description||'';
+  document.getElementById('pp-type').value = pool.proxy_type||'http';
+  document.getElementById('pp-mode').value = pool.mode||'single';
+  const proxies = Array.isArray(pool.proxies)?pool.proxies:[];
+  document.getElementById('pp-proxies').value = proxies.join('\n');
+  document.getElementById('pp-rotating-api').value = pool.rotating_api||'';
+  document.getElementById('pp-public').checked = !!pool.is_public;
+  updateProxyModal();
+  document.getElementById('proxy-modal').classList.remove('hidden');
+}
+
+function updateProxyModal() {
+  const mode = document.getElementById('pp-mode').value;
+  document.getElementById('pp-proxies-wrap').classList.toggle('hidden', mode==='rotating');
+  document.getElementById('pp-rotating-wrap').classList.toggle('hidden', mode!=='rotating');
+}
+
+function hideProxyModal() { document.getElementById('proxy-modal').classList.add('hidden'); }
+
+async function saveProxyPool() {
+  const id = document.getElementById('proxy-edit-id').value;
+  const mode = document.getElementById('pp-mode').value;
+  const body = {
+    name: document.getElementById('pp-name').value.trim(),
+    description: document.getElementById('pp-desc').value.trim(),
+    proxy_type: document.getElementById('pp-type').value,
+    mode,
+    proxies: mode!=='rotating' ? document.getElementById('pp-proxies').value.split('\n').map(s=>s.trim()).filter(Boolean) : [],
+    rotating_api: mode==='rotating' ? document.getElementById('pp-rotating-api').value.trim() : '',
+    is_public: document.getElementById('pp-public').checked ? 1 : 0,
+  };
+  if (!body.name) return toast('请输入名称','warn');
+  try {
+    if (id) {
+      await api('/api/v1/admin/proxies/'+id, {method:'PUT', body:JSON.stringify(body)});
+    } else {
+      await api('/api/v1/admin/proxies', {method:'POST', body:JSON.stringify(body)});
+    }
+    toast('保存成功','success');
+    hideProxyModal();
+    loadProxies();
+  } catch(e) { toast('保存失败: '+e.message,'error'); }
+}
+
+async function deleteProxyPool(id) {
+  if (!confirm('确认删除该代理池?')) return;
+  try { await api('/api/v1/admin/proxies/'+id, {method:'DELETE'}); toast('已删除','success'); loadProxies(); } catch(e) { toast('删除失败','error'); }
+}
+
+async function testProxyPool(id) {
+  const el = document.getElementById('proxy-test-'+id);
+  el.innerHTML = '<span style="color:var(--text-muted)">测试中...</span>';
+  try {
+    const r = await api('/api/v1/admin/proxies/'+id+'/test', {method:'POST'});
+    if (r && r.ok) {
+      el.innerHTML = `<span style="color:var(--green)">✅ IP: ${r.ip||'-'} | 延迟: ${r.latency_ms||0}ms</span>`;
+    } else {
+      el.innerHTML = `<span style="color:var(--red)">❌ ${(r&&r.error)||'测试失败'}</span>`;
+    }
+  } catch(e) { el.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
+}
+
+// Permission management
+async function managePerms(poolId, poolName) {
+  document.getElementById('perm-pool-id').value = poolId;
+  document.getElementById('perm-pool-name').textContent = poolName;
+  // Load users for select
+  try {
+    const users = await api('/api/v1/admin/users');
+    const list = Array.isArray(users)?users:[];
+    document.getElementById('perm-user-select').innerHTML = list.map(u=>`<option value="${u.id}">${u.email||u.username} (${u.role})</option>`).join('');
+  } catch(e){}
+  await loadPerms(poolId);
+  document.getElementById('perm-modal').classList.remove('hidden');
+}
+
+function hidePermModal() { document.getElementById('perm-modal').classList.add('hidden'); }
+
+async function loadPerms(poolId) {
+  const el = document.getElementById('perm-list');
+  try {
+    const perms = await api('/api/v1/admin/proxies/'+poolId+'/permissions');
+    if (!perms || !perms.length) { el.innerHTML='<div style="color:var(--text-muted);font-size:13px">暂无授权用户</div>'; return; }
+    el.innerHTML = perms.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${p.email||p.username||p.user_id}</span>
+      <button class="btn btn-sm btn-danger" onclick="revokePermission('${poolId}','${p.user_id}')">移除</button>
+    </div>`).join('');
+  } catch(e) { el.innerHTML='<div style="color:var(--text-muted)">加载失败</div>'; }
+}
+
+async function grantPermission() {
+  const poolId = document.getElementById('perm-pool-id').value;
+  const userId = document.getElementById('perm-user-select').value;
+  if (!userId) return toast('请选择用户','warn');
+  try {
+    await api('/api/v1/admin/proxies/'+poolId+'/grant', {method:'POST', body:JSON.stringify({user_id:userId})});
+    toast('已授权','success');
+    loadPerms(poolId);
+  } catch(e) { toast('授权失败','error'); }
+}
+
+async function revokePermission(poolId, userId) {
+  try {
+    await api('/api/v1/admin/proxies/'+poolId+'/revoke/'+userId, {method:'DELETE'});
+    toast('已撤销','success');
+    loadPerms(poolId);
+  } catch(e) { toast('撤销失败','error'); }
 }
 
 // --- Init ---

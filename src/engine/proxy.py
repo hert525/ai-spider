@@ -10,6 +10,22 @@ from loguru import logger
 class ProxyManager:
     """Manages proxy rotation and selection."""
 
+    @classmethod
+    async def from_pool_id(cls, pool_id: str) -> ProxyManager:
+        """Load proxy config from database by pool id."""
+        from src.core.database import db
+        pool = await db.get("proxy_pools", pool_id)
+        if not pool or pool.get("status") != "active":
+            return cls({})
+        return cls({
+            "enabled": True,
+            "mode": pool["mode"],
+            "proxy_url": pool["proxies"][0] if pool.get("proxies") else "",
+            "proxy_list": pool.get("proxies", []),
+            "rotating_api": pool.get("rotating_api", ""),
+            "protocol": pool.get("proxy_type", "http"),
+        })
+
     def __init__(self, config: dict | None = None):
         config = config or {}
         self.enabled = config.get("enabled", False)

@@ -24,11 +24,28 @@ def _resolve_proxy_config(proj: dict) -> dict | None:
             pc = {}
     if pc and pc.get("enabled"):
         return pc
+    # Check if proxy_pool_id is set
+    pool_id = pc.get("proxy_pool_id") if isinstance(pc, dict) else None
+    if pool_id:
+        # Will be resolved async in caller
+        return {"proxy_pool_id": pool_id}
     # Fallback to global default
     from src.core.config import settings
     if settings.default_proxy:
         return {"enabled": True, "mode": "single", "proxy_url": settings.default_proxy}
     return None
+
+
+async def _resolve_proxy_manager(proj: dict):
+    """Get ProxyManager, supporting pool_id resolution."""
+    from src.engine.proxy import ProxyManager
+    pc = _resolve_proxy_config(proj)
+    if not pc:
+        return ProxyManager()
+    pool_id = pc.get("proxy_pool_id")
+    if pool_id:
+        return await ProxyManager.from_pool_id(pool_id)
+    return ProxyManager(pc)
 
 
 class CreateProjectReq(BaseModel):
@@ -46,7 +63,7 @@ class UpdateSinkReq(BaseModel):
 
 
 class UpdateProxyReq(BaseModel):
-    proxy_config: dict
+    proxy_pool_id: str = ""
 
 
 class RefineReq(BaseModel):
@@ -317,15 +334,29 @@ async def update_sink(pid: str, req: UpdateSinkReq, user: dict = Depends(get_cur
 
 @router.put("/projects/{pid}/proxy")
 async def update_proxy(pid: str, req: UpdateProxyReq, user: dict = Depends(get_current_user)):
-    """Update proxy configuration for a project."""
+    """Update proxy configuration for a project (by proxy_pool_id)."""
     proj = await db.get("projects", pid)
     if not proj:
         raise HTTPException(404, "Project not found")
     if user.get("role") != "admin" and proj.get("user_id") != user["id"]:
         raise HTTPException(403, "Not your project")
 
+    # Validate user has permission to use this proxy pool
+    if req.proxy_pool_id:
+        pool = await db.get("proxy_pools", req.proxy_pool_id)
+        if not pool:
+            raise HTTPException(404, "Proxy pool not found")
+        if not pool.get("is_public"):
+            perms = await db.query(
+                "SELECT id FROM proxy_permissions WHERE user_id = ? AND proxy_pool_id = ?",
+                [user["id"], req.proxy_pool_id],
+            )
+            if not perms and user.get("role") != "admin":
+                raise HTTPException(403, "No permission to use this proxy pool")
+
+    proxy_config = {"proxy_pool_id": req.proxy_pool_id} if req.proxy_pool_id else {}
     await db.update("projects", pid, {
-        "proxy_config": req.proxy_config,
+        "proxy_config": proxy_config,
         "updated_at": datetime.now().isoformat(),
     })
     return await db.get("projects", pid)
@@ -338,12 +369,10 @@ async def test_proxy(pid: str, user: dict = Depends(get_current_user)):
     if not proj:
         raise HTTPException(404, "Project not found")
 
-    proxy_cfg = _resolve_proxy_config(proj)
-    if not proxy_cfg:
+    pm = await _resolve_proxy_manager(proj)
+    if not pm.enabled:
         return {"ok": False, "error": "No proxy configured", "ip": None}
 
-    from src.engine.proxy import ProxyManager
-    pm = ProxyManager(proxy_cfg)
     proxy_url = await pm.get_proxy_url()
     if not proxy_url:
         return {"ok": False, "error": "Could not get proxy URL", "ip": None}
@@ -358,3 +387,21 @@ async def test_proxy(pid: str, user: dict = Depends(get_current_user)):
             return {"ok": True, "error": "", "ip": data.get("origin", ""), "proxy": proxy_url}
     except Exception as e:
         return {"ok": False, "error": str(e), "ip": None, "proxy": proxy_url}
+
+
+@router.get("/proxies/available")
+async def list_available_proxies(user: dict = Depends(get_current_user)):
+    """List proxy pools available to the current user."""
+    if user.get("role") == "admin":
+        # Admin sees all active pools
+        pools = await db.list("proxy_pools", where={"status": "active"})
+    else:
+        # Public pools + explicitly granted
+        pools = await db.query(
+            """SELECT DISTINCT pp.* FROM proxy_pools pp
+               LEFT JOIN proxy_permissions perm ON pp.id = perm.proxy_pool_id AND perm.user_id = ?
+               WHERE pp.status = 'active' AND (pp.is_public = 1 OR perm.user_id IS NOT NULL)
+               ORDER BY pp.created_at DESC""",
+            [user["id"]],
+        )
+    return pools

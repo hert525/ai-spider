@@ -11,11 +11,25 @@ from src.engine.proxy import ProxyManager
 class FetchNode(BaseNode):
     """Fetch a URL and store raw HTML in state."""
 
-    def __init__(self, use_browser: bool = False, proxy_config: dict | None = None):
+    def __init__(self, use_browser: bool = False, proxy_config: dict | None = None, proxy_pool_id: str = ""):
         super().__init__("FetchNode")
         self.use_browser = use_browser
         self.proxy_config = proxy_config
-        self._proxy_manager = ProxyManager(proxy_config) if proxy_config else self._make_default_proxy_manager()
+        self.proxy_pool_id = proxy_pool_id
+        self._proxy_manager: ProxyManager | None = None
+        if proxy_config and not proxy_pool_id:
+            self._proxy_manager = ProxyManager(proxy_config)
+        elif not proxy_pool_id:
+            self._proxy_manager = self._make_default_proxy_manager()
+
+    async def _get_proxy_manager(self) -> ProxyManager:
+        if self._proxy_manager is not None:
+            return self._proxy_manager
+        if self.proxy_pool_id:
+            self._proxy_manager = await ProxyManager.from_pool_id(self.proxy_pool_id)
+            return self._proxy_manager
+        self._proxy_manager = ProxyManager()
+        return self._proxy_manager
 
     @staticmethod
     def _make_default_proxy_manager() -> ProxyManager:
@@ -51,7 +65,8 @@ class FetchNode(BaseNode):
 
     async def _fetch_httpx(self, url: str) -> str:
         headers = {"User-Agent": settings.user_agent}
-        proxies = await self._proxy_manager.get_httpx_proxies_async()
+        pm = await self._get_proxy_manager()
+        proxies = await pm.get_httpx_proxies_async()
         if proxies:
             self.logger.info(f"Using proxy for httpx request")
         try:
@@ -72,7 +87,7 @@ class FetchNode(BaseNode):
     async def _fetch_browser(self, url: str) -> str:
         try:
             from playwright.async_api import async_playwright
-            proxy = await self._proxy_manager.get_playwright_proxy_async()
+            proxy = await (await self._get_proxy_manager()).get_playwright_proxy_async()
             if proxy:
                 self.logger.info(f"Using proxy for playwright")
             launch_args = {
@@ -91,7 +106,7 @@ class FetchNode(BaseNode):
         except ImportError:
             self.logger.warning("Playwright not available, falling back to httpx")
             headers = {"User-Agent": settings.user_agent}
-            proxies = await self._proxy_manager.get_httpx_proxies_async()
+            proxies = await (await self._get_proxy_manager()).get_httpx_proxies_async()
             async with httpx.AsyncClient(
                 follow_redirects=True,
                 timeout=30,

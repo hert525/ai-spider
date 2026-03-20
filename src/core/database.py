@@ -109,6 +109,30 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_data_project ON data_records(project_id);
 CREATE INDEX IF NOT EXISTS idx_data_task ON data_records(task_id);
+
+CREATE TABLE IF NOT EXISTS proxy_pools (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    proxy_type TEXT DEFAULT 'http',
+    mode TEXT DEFAULT 'single',
+    proxies TEXT DEFAULT '[]',
+    rotating_api TEXT DEFAULT '',
+    test_url TEXT DEFAULT 'https://httpbin.org/ip',
+    is_public INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS proxy_permissions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    proxy_pool_id TEXT NOT NULL,
+    granted_by TEXT DEFAULT '',
+    created_at TEXT DEFAULT '',
+    UNIQUE(user_id, proxy_pool_id)
+);
 """
 
 # JSON fields that need serialization
@@ -118,6 +142,7 @@ _JSON_FIELDS = {
     "workers": ["tags"],
     "data_records": ["data"],
     "task_runs": [],
+    "proxy_pools": ["proxies"],
 }
 
 
