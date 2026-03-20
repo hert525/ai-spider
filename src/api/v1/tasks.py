@@ -1,6 +1,7 @@
 """Tasks API."""
 from __future__ import annotations
 
+import aiosqlite
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
@@ -10,6 +11,19 @@ from src.core.auth import get_current_user
 from src.scheduler.task_manager import task_manager
 
 router = APIRouter()
+
+
+async def _verify_task_owner(task_id: str, user_id: str):
+    async with aiosqlite.connect("data/spider.db") as db_conn:
+        db_conn.row_factory = aiosqlite.Row
+        cursor = await db_conn.execute(
+            "SELECT user_id FROM tasks WHERE id = ?", [task_id]
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Task not found")
+        if row["user_id"] != user_id:
+            raise HTTPException(403, "Not your task")
 
 
 class CreateTaskReq(BaseModel):
@@ -83,7 +97,8 @@ async def get_task_runs(tid: str, user: dict = Depends(get_current_user)):
 
 
 @router.post("/tasks/{tid}/cancel")
-async def cancel_task(tid: str):
+async def cancel_task(tid: str, user: dict = Depends(get_current_user)):
+    await _verify_task_owner(tid, user["id"])
     ok = await task_manager.cancel_task(tid)
     if not ok:
         raise HTTPException(404)
@@ -91,7 +106,8 @@ async def cancel_task(tid: str):
 
 
 @router.post("/tasks/{tid}/retry")
-async def retry_task(tid: str):
+async def retry_task(tid: str, user: dict = Depends(get_current_user)):
+    await _verify_task_owner(tid, user["id"])
     ok = await task_manager.retry_task(tid)
     if not ok:
         raise HTTPException(404)
@@ -99,13 +115,15 @@ async def retry_task(tid: str):
 
 
 @router.post("/tasks/{tid}/pause")
-async def pause_task(tid: str):
+async def pause_task(tid: str, user: dict = Depends(get_current_user)):
+    await _verify_task_owner(tid, user["id"])
     await task_manager.update_task(tid, status=TaskStatus.PAUSED)
     return {"ok": True}
 
 
 @router.delete("/tasks/{tid}")
-async def delete_task(tid: str):
+async def delete_task(tid: str, user: dict = Depends(get_current_user)):
+    await _verify_task_owner(tid, user["id"])
     if not await task_manager.delete_task(tid):
         raise HTTPException(404)
     return {"ok": True}

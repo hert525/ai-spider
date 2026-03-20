@@ -18,7 +18,7 @@ class DataDeduplicator:
         else:
             data = {k: v for k, v in item.items() if not k.startswith("_")}
         raw = json.dumps(data, sort_keys=True, ensure_ascii=False)
-        return hashlib.md5(raw.encode()).hexdigest()
+        return hashlib.sha256(raw.encode()).hexdigest()
 
     @staticmethod
     def deduplicate(items: list[dict], keys: list[str] | None = None) -> list[dict]:

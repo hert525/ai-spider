@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -30,7 +30,8 @@ async def _get_task_data(task_id: str, user: dict, limit: int = 0) -> tuple[list
     sql = "SELECT * FROM data_records WHERE task_id = ? ORDER BY created_at DESC"
     params = [task_id]
     if limit > 0:
-        sql += f" LIMIT {limit}"
+        sql += " LIMIT ?"
+        params.append(limit)
     rows = await db.query(sql, params)
 
     # Parse JSON data field
@@ -93,7 +94,7 @@ async def export_task(
     """Export task data as CSV, JSON, or Excel."""
     rows, project_name = await _get_task_data(task_id, user)
     flat = _rows_to_flat(rows)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     base_name = f"{project_name}_{task_id}_{ts}"
 
     if format == "json":
@@ -166,7 +167,7 @@ async def export_project(
         result.append(d)
 
     flat = _rows_to_flat(result)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     base_name = f"{project_name}_{project_id}_{ts}"
 
     if format == "json":

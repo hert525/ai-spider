@@ -61,7 +61,10 @@ async def lifespan(app: FastAPI):
     await settings_manager.init()
     from src.scheduler.queue import task_queue
     from src.scheduler.cron_scheduler import cron_scheduler
-    await task_queue.connect()
+    try:
+        await task_queue.connect()
+    except Exception as e:
+        logger.warning(f"Redis connection failed: {e}. Task queue disabled.")
     await cron_scheduler.start()
     logger.info("AI Spider started")
     yield
@@ -237,13 +240,19 @@ async def admin_logs(limit: int = 100):
 @app.websocket("/ws/{api_key}")
 async def websocket_endpoint(websocket: WebSocket, api_key: str):
     """WebSocket endpoint for real-time updates."""
+    await websocket.accept()
     users = await db.query("SELECT * FROM users WHERE api_key = ?", [api_key])
     if not users:
-        await websocket.close(code=4001)
+        await websocket.close(code=4001, reason="Invalid API key")
         return
 
     is_admin = users[0].get("role") == "admin"
-    await ws_manager.connect(websocket, api_key, is_admin)
+    # Already accepted above, just register
+    if api_key not in ws_manager._connections:
+        ws_manager._connections[api_key] = set()
+    ws_manager._connections[api_key].add(websocket)
+    if is_admin:
+        ws_manager._admin_connections.add(websocket)
     try:
         while True:
             data_msg = await websocket.receive_text()

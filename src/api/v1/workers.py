@@ -1,9 +1,9 @@
 """Worker management API endpoints — database-backed."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from loguru import logger
 
@@ -13,6 +13,20 @@ from src.core.models import DataRecord, Worker, WorkerStatus, _uid
 from src.core.settings_manager import settings_manager
 
 router = APIRouter(prefix="/workers", tags=["workers"])
+
+
+async def verify_worker_token(request: Request):
+    """Verify worker token from X-Worker-Token header."""
+    token = request.headers.get("X-Worker-Token", "")
+    if not token:
+        raise HTTPException(401, "Worker token required")
+    import aiosqlite
+    async with aiosqlite.connect("data/spider.db") as db_conn:
+        db_conn.row_factory = aiosqlite.Row
+        cursor = await db_conn.execute("SELECT id FROM workers WHERE token = ?", [token])
+        if not await cursor.fetchone():
+            raise HTTPException(401, "Invalid worker token")
+    return {"token": token}
 
 
 # ── Request models ──
@@ -71,7 +85,7 @@ def _mark_offline_if_stale(w: dict, threshold: int = 60) -> dict:
     if lh:
         try:
             dt = datetime.fromisoformat(lh)
-            delta = (datetime.now() - dt).total_seconds()
+            delta = (datetime.now(timezone.utc) - dt).total_seconds()
             if delta > threshold:
                 w["status"] = "offline"
         except Exception:
@@ -110,7 +124,7 @@ async def get_worker(worker_id: str):
 
 @router.post("/register")
 async def register_worker(req: WorkerRegisterReq):
-    now = datetime.now().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     existing = await db.get("workers", req.worker_id)
     if existing:
         await db.update("workers", req.worker_id, {
@@ -143,7 +157,7 @@ async def worker_heartbeat(worker_id: str, req: WorkerHeartbeatReq):
     existing = await db.get("workers", worker_id)
     if not existing:
         return {"error": "not registered"}
-    now = datetime.now().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     # Preserve disabled/draining status
     status = req.status
     if existing.get("status") in ("disabled", "draining"):
@@ -260,7 +274,7 @@ async def disable_worker(worker_id: str):
         raise HTTPException(404, "Worker not found")
     await db.update("workers", worker_id, {
         "status": "disabled",
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"ok": True, "status": "disabled"}
 
@@ -272,7 +286,7 @@ async def enable_worker(worker_id: str):
         raise HTTPException(404, "Worker not found")
     await db.update("workers", worker_id, {
         "status": "online",
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"ok": True, "status": "online"}
 
@@ -284,7 +298,7 @@ async def drain_worker(worker_id: str):
         raise HTTPException(404, "Worker not found")
     await db.update("workers", worker_id, {
         "status": "draining",
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"ok": True, "status": "draining"}
 

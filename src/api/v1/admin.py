@@ -92,7 +92,7 @@ class UpdateQuotaReq(BaseModel):
     max_concurrent_tasks: int | None = None
 
 
-@router.put("/admin/users/{user_id}/quota")
+@router.put("/users/{user_id}/quota")
 async def update_user_quota(user_id: str, req: UpdateQuotaReq, user: dict = Depends(require_admin)):
     target = await db.get("users", user_id)
     if not target:
@@ -105,7 +105,7 @@ async def update_user_quota(user_id: str, req: UpdateQuotaReq, user: dict = Depe
     if req.max_concurrent_tasks is not None:
         update["max_concurrent_tasks"] = req.max_concurrent_tasks
     if update:
-        from datetime import datetime
-        update["updated_at"] = datetime.now().isoformat()
+        from datetime import datetime, timezone
+        update["updated_at"] = datetime.now(timezone.utc).isoformat()
         await db.update("users", user_id, update)
     return {"ok": True}

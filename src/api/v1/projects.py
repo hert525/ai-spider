@@ -1,7 +1,9 @@
 """Projects API - CRUD + AI generation."""
+from __future__ import annotations
+
 import json
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime, timezone
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel
 from typing import Optional
 from loguru import logger
@@ -116,7 +118,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                     {"role": "user", "content": req.description},
                     {"role": "assistant", "content": f"已提取 {len(extracted) if isinstance(extracted, list) else 1} 条数据"},
                 ], ensure_ascii=False),
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             })
         else:
             from src.engine.graphs import CodeGeneratorGraph
@@ -131,7 +133,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                     {"role": "user", "content": req.description},
                     {"role": "assistant", "content": f"已生成爬虫代码（验证状态: {v_status}）"},
                 ], ensure_ascii=False),
-                "updated_at": datetime.now().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             })
     except Exception as e:
         logger.error(f"Generation failed: {e}")
@@ -141,7 +143,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                 {"role": "user", "content": req.description},
                 {"role": "assistant", "content": f"生成失败: {str(e)}"},
             ], ensure_ascii=False),
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         })
 
     # WS push: project created
@@ -179,6 +181,27 @@ async def delete_project(pid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+@router.put("/projects/{pid}")
+async def update_project(pid: str, body: dict = Body(...), user: dict = Depends(get_current_user)):
+    """更新项目配置"""
+    allowed_fields = ["name", "description", "target_url", "prompt", "mode", "cron_expr",
+                      "proxy_pool_id", "sink_type", "sink_config", "stealth_level", "enable_screenshot"]
+    updates = {k: v for k, v in body.items() if k in allowed_fields}
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+
+    import aiosqlite
+    async with aiosqlite.connect("data/spider.db") as db_conn:
+        await db_conn.execute(
+            f"UPDATE projects SET {set_clause}, updated_at = ? WHERE id = ? AND user_id = ?",
+            [*updates.values(), datetime.now(timezone.utc).isoformat(), pid, user["id"]]
+        )
+        await db_conn.commit()
+    return {"ok": True}
+
+
 @router.put("/projects/{pid}/code")
 async def update_code(pid: str, req: dict, user: dict = Depends(get_current_user)):
     """Manually update project code."""
@@ -188,7 +211,7 @@ async def update_code(pid: str, req: dict, user: dict = Depends(get_current_user
     await db.update("projects", pid, {
         "code": req.get("code", ""),
         "version": proj.get("version", 1) + 1,
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return await db.get("projects", pid)
 
@@ -241,7 +264,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
     await db.update("projects", pid, {
         "status": new_status,
         "test_results": json.dumps(test_results, ensure_ascii=False),
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
 
     # WS push: test complete
@@ -310,7 +333,7 @@ async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_curr
         "version": proj.get("version", 1) + 1,
         "status": ProjectStatus.DRAFT,
         "messages": json.dumps(messages, ensure_ascii=False),
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
 
     return await db.get("projects", pid)
@@ -327,7 +350,7 @@ async def update_sink(pid: str, req: UpdateSinkReq, user: dict = Depends(get_cur
 
     await db.update("projects", pid, {
         "sink_config": req.sink_config,
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return await db.get("projects", pid)
 
@@ -357,7 +380,7 @@ async def update_proxy(pid: str, req: UpdateProxyReq, user: dict = Depends(get_c
     proxy_config = {"proxy_pool_id": req.proxy_pool_id} if req.proxy_pool_id else {}
     await db.update("projects", pid, {
         "proxy_config": proxy_config,
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     })
     return await db.get("projects", pid)
 

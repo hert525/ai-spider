@@ -24,13 +24,14 @@ class QuotaManager:
 
     async def check_daily_quota(self, user_id: str) -> dict:
         """Check user's daily task quota."""
-        from datetime import date
+        from datetime import date, timedelta
         from src.core.database import db
 
-        today = date.today().isoformat()
+        today = date.today()
+        next_day = today + timedelta(days=1)
         rows = await db.query(
-            "SELECT COUNT(*) as cnt FROM tasks WHERE user_id = ? AND created_at LIKE ?",
-            [user_id, f"{today}%"],
+            "SELECT COUNT(*) as cnt FROM tasks WHERE user_id = ? AND created_at >= ? AND created_at < ?",
+            [user_id, f"{today.isoformat()}T00:00:00", f"{next_day.isoformat()}T00:00:00"],
         )
         used = rows[0]["cnt"] if rows else 0
 

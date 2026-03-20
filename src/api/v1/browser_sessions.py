@@ -214,7 +214,7 @@ async def list_task_screenshots(task_id: str, user: dict = Depends(get_current_u
 
 
 @router.get("/screenshots/{filename}")
-async def get_screenshot(filename: str):
+async def get_screenshot(filename: str, user: dict = Depends(get_current_user)):
     """Serve a screenshot file."""
     filepath = SCREENSHOT_DIR / filename
     if not filepath.exists():

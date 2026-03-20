@@ -1,5 +1,7 @@
 """Pydantic models for the application."""
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -63,8 +65,8 @@ class Project(BaseModel):
     version: int = 1
     messages: list[dict] = []
     test_results: list[dict] = []
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 # ── Task ──
@@ -85,8 +87,8 @@ class Task(BaseModel):
     retry_count: int = 0
     max_retries: int = 3
     worker_id: Optional[str] = None
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class TaskRun(BaseModel):
@@ -97,7 +99,7 @@ class TaskRun(BaseModel):
     items_count: int = 0
     pages_crawled: int = 0
     error: str = ""
-    started_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    started_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     finished_at: str = ""
     duration_ms: int = 0
 
@@ -120,9 +122,9 @@ class Worker(BaseModel):
     os_info: str = ""
     tags: list[str] = []
     current_tasks: list[str] = []
-    last_heartbeat: str = Field(default_factory=lambda: datetime.now().isoformat())
-    registered_at: str = Field(default_factory=lambda: datetime.now().isoformat())
-    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    last_heartbeat: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    registered_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 # ── Test result ──
@@ -141,4 +143,4 @@ class DataRecord(BaseModel):
     task_id: str = ""
     task_run_id: str = ""
     data: dict = {}
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

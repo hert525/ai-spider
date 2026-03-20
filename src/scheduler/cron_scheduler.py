@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from loguru import logger
 
@@ -46,7 +46,7 @@ class CronScheduler:
             "SELECT * FROM tasks WHERE task_type='cron' AND status NOT IN ('running', 'cancelled')"
         )
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         for task in cron_tasks:
             cron_expr = task.get("cron_expr", "")
             if not cron_expr:
@@ -69,7 +69,7 @@ class CronScheduler:
         Supports: * */N N N,M N-M
         """
         if now is None:
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
 
         parts = cron_expr.strip().split()
         if len(parts) != 5:
@@ -107,8 +107,13 @@ class CronScheduler:
         return value == int(item)
 
     def _calc_next_run(self, cron_expr: str, now: datetime) -> str:
-        """Calculate approximate next run time (best effort)."""
-        # Simple: just return empty, the scheduler checks every minute anyway
+        """Calculate approximate next run time by scanning forward minute-by-minute."""
+        candidate = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        # Scan up to 48 hours ahead
+        for _ in range(48 * 60):
+            if self._is_due(cron_expr, candidate):
+                return candidate.isoformat()
+            candidate += timedelta(minutes=1)
         return ""
 
 

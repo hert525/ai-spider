@@ -94,6 +94,7 @@ async def apply_stealth(context_or_page, level: str = "medium"):
                                g: Math.floor(Math.random() * 10) - 5,
                                b: Math.floor(Math.random() * 10) - 5 };
                 const width = canvas.width, height = canvas.height;
+                if (width === 0 || height === 0) return;
                 const imageData = getImageData.apply(context, [0, 0, width, height]);
                 for (let i = 0; i < imageData.data.length; i += 4) {
                     imageData.data[i] += shift.r;
@@ -101,6 +102,18 @@ async def apply_stealth(context_or_page, level: str = "medium"):
                     imageData.data[i+2] += shift.b;
                 }
                 context.putImageData(imageData, 0, 0);
+            };
+
+            HTMLCanvasElement.prototype.toDataURL = function() {
+                const context = this.getContext('2d');
+                if (context) noisify(this, context);
+                return toDataURL.apply(this, arguments);
+            };
+
+            HTMLCanvasElement.prototype.toBlob = function() {
+                const context = this.getContext('2d');
+                if (context) noisify(this, context);
+                return toBlob.apply(this, arguments);
             };
         }
         """

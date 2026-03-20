@@ -84,7 +84,8 @@ DEFAULT_CONFIGS = [
 class SettingsManager:
     """Centralized settings manager."""
 
-    _cache: dict[str, str] = {}
+    def __init__(self):
+        self._cache: dict[str, str] = {}
 
     async def init(self):
         """Initialize default configs if not exists."""
@@ -119,10 +120,10 @@ class SettingsManager:
             return default
 
     async def set(self, key: str, value: str, updated_by: str = ""):
-        from datetime import datetime
+        from datetime import datetime, timezone
         await db.execute(
             "UPDATE system_config SET value = ?, updated_at = ?, updated_by = ? WHERE key = ?",
-            [value, datetime.now().isoformat(), updated_by, key]
+            [value, datetime.now(timezone.utc).isoformat(), updated_by, key]
         )
         self._cache[key] = value
 
@@ -144,7 +145,7 @@ class SettingsManager:
 
     async def reset_keys(self, keys: list[str] | None = None):
         """Reset specified keys (or all) to default values."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         defaults = {c["key"]: c["value"] for c in DEFAULT_CONFIGS}
         if not keys:
             keys = list(defaults.keys())
@@ -152,7 +153,7 @@ class SettingsManager:
             if key in defaults:
                 await db.execute(
                     "UPDATE system_config SET value = ?, updated_at = ? WHERE key = ?",
-                    [defaults[key], datetime.now().isoformat(), key]
+                    [defaults[key], datetime.now(timezone.utc).isoformat(), key]
                 )
         await self._refresh_cache()
 
@@ -163,8 +164,8 @@ class SettingsManager:
 
     async def import_configs(self, data: dict[str, str], updated_by: str = ""):
         """Import config from key-value dict."""
-        from datetime import datetime
-        now = datetime.now().isoformat()
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
         for key, value in data.items():
             existing = await db.query("SELECT key FROM system_config WHERE key = ?", [key])
             if existing:

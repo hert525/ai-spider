@@ -2326,7 +2326,7 @@ async def crawl(url: str, config: dict) -> list[dict]:
         "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
         "mode": "code_generator",
         "code": '''import httpx
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 async def crawl(url: str, config: dict) -> list[dict]:
     """财经日历/经济数据（东财数据中心）"""
@@ -2337,8 +2337,8 @@ async def crawl(url: str, config: dict) -> list[dict]:
     proxy = config.get("proxy")
     proxies = {"http://": proxy, "https://": proxy} if proxy else None
     # 默认查最近7天
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_date = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
     params = {
         "reportName": "RPT_ECONOMICVALUE_HKCAL",
         "columns": "ALL",
@@ -3779,7 +3779,7 @@ import shutil
 import sys
 import asyncio
 import aiohttp
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from time import sleep
 
 from absl import app, flags
@@ -3932,7 +3932,7 @@ class Spider:
         try:
             since_date = datetime_util.str_to_time(
                 self.user_config['since_date'])
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             if since_date <= now:
                 # Async fetch page num
                 user_uri = self.user_config['user_uri']

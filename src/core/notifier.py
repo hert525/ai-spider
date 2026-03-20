@@ -1,9 +1,10 @@
 """Notification system — email, webhook, telegram."""
 from __future__ import annotations
 
+import asyncio
 import json
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
 
 import httpx
@@ -49,7 +50,7 @@ class Notifier:
                 "data": json.dumps(data, ensure_ascii=False, default=str),
                 "status": status,
                 "error": error,
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             })
         except Exception as e:
             logger.error(f"Failed to log notification: {e}")
@@ -86,9 +87,12 @@ class Notifier:
         msg["From"] = smtp_user
         msg["To"] = to_email
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
+        await asyncio.to_thread(self._send_email_sync, msg, smtp_host, smtp_port, smtp_user, smtp_pass)
+
+    def _send_email_sync(self, msg, host, port, user, passwd):
+        with smtplib.SMTP(host, port) as server:
             server.starttls()
-            server.login(smtp_user, smtp_pass)
+            server.login(user, passwd)
             server.send_message(msg)
 
     async def _send_telegram(self, event: str, data: dict):
