@@ -13,6 +13,7 @@ async def run_code_in_sandbox(
     target_url: str = "",
     html: str = "",
     timeout: int | None = None,
+    proxy_config: dict | None = None,
 ) -> dict:
     """Execute crawler code in a restricted sandbox.
     
@@ -71,6 +72,16 @@ async def run_code_in_sandbox(
             "max_pages": settings.sandbox_max_pages,
             "delay": settings.default_delay,
         }
+
+        # Inject proxy into config if available
+        if proxy_config and proxy_config.get("enabled"):
+            from src.engine.proxy import ProxyManager
+            pm = ProxyManager(proxy_config)
+            proxy_url = pm.get_proxy()
+            if proxy_url:
+                config["proxy"] = proxy_url
+        elif settings.default_proxy:
+            config["proxy"] = settings.default_proxy
 
         result = await asyncio.wait_for(
             crawl_fn(target_url, config),

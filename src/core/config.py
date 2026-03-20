@@ -31,6 +31,7 @@ class Settings(BaseModel):
         "USER_AGENT",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     ))
+    default_proxy: str = Field(default_factory=lambda: os.getenv("DEFAULT_PROXY", ""))
 
     def get_llm_model(self) -> str:
         """Return model string with provider prefix for litellm."""

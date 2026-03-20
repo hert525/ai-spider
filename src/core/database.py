@@ -113,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_data_task ON data_records(task_id);
 
 # JSON fields that need serialization
 _JSON_FIELDS = {
-    "projects": ["extracted_data", "messages", "test_results", "sink_config"],
+    "projects": ["extracted_data", "messages", "test_results", "sink_config", "proxy_config"],
     "tasks": ["target_urls"],
     "workers": ["tags"],
     "data_records": ["data"],
@@ -144,6 +144,13 @@ async def init_db():
         await db.execute("ALTER TABLE projects ADD COLUMN use_browser INTEGER DEFAULT 0")
         await db.commit()
         logger.info("Added column projects.use_browser")
+    except Exception:
+        pass
+    # Add proxy_config to projects
+    try:
+        await db.execute("ALTER TABLE projects ADD COLUMN proxy_config TEXT DEFAULT '{}'")
+        await db.commit()
+        logger.info("Added column projects.proxy_config")
     except Exception:
         pass
     await db.close()

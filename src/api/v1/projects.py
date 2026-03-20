@@ -13,6 +13,24 @@ from src.core.auth import get_current_user
 router = APIRouter()
 
 
+def _resolve_proxy_config(proj: dict) -> dict | None:
+    """Get effective proxy config: project-level or global default."""
+    pc = proj.get("proxy_config", {})
+    if isinstance(pc, str):
+        import json as _json
+        try:
+            pc = _json.loads(pc)
+        except Exception:
+            pc = {}
+    if pc and pc.get("enabled"):
+        return pc
+    # Fallback to global default
+    from src.core.config import settings
+    if settings.default_proxy:
+        return {"enabled": True, "mode": "single", "proxy_url": settings.default_proxy}
+    return None
+
+
 class CreateProjectReq(BaseModel):
     description: str
     target_url: str = ""
@@ -20,10 +38,15 @@ class CreateProjectReq(BaseModel):
     mode: str = "code_generator"  # "smart_scraper" or "code_generator"
     sink_config: dict = {}
     use_browser: bool = False
+    proxy_config: dict = {}
 
 
 class UpdateSinkReq(BaseModel):
     sink_config: dict
+
+
+class UpdateProxyReq(BaseModel):
+    proxy_config: dict
 
 
 class RefineReq(BaseModel):
@@ -58,13 +81,15 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
     project_data = project.model_dump()
     project_data["user_id"] = user["id"]
     project_data["sink_config"] = req.sink_config
+    project_data["proxy_config"] = req.proxy_config
     project_data["use_browser"] = 1 if req.use_browser else 0
     await db.insert("projects", project_data)
     
     try:
+        proxy_cfg = _resolve_proxy_config(project_data)
         if mode == ProjectMode.SMART_SCRAPER:
             from src.engine.graphs import SmartScraperGraph
-            graph = SmartScraperGraph(use_browser=req.use_browser)
+            graph = SmartScraperGraph(use_browser=req.use_browser, proxy_config=proxy_cfg)
             state = await graph.run(req.target_url, req.description)
             extracted = state.get("extracted_data", [])
             await db.update("projects", project.id, {
@@ -78,7 +103,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
             })
         else:
             from src.engine.graphs import CodeGeneratorGraph
-            graph = CodeGeneratorGraph(use_browser=req.use_browser)
+            graph = CodeGeneratorGraph(use_browser=req.use_browser, proxy_config=proxy_cfg)
             state = await graph.run(req.target_url, req.description)
             code = state.get("generated_code", "")
             v_status = state.get("validation_status", "unknown")
@@ -168,7 +193,8 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
     if mode == "smart_scraper":
         # Re-run LLM extraction
         from src.engine.graphs.smart_scraper import SmartScraperGraph
-        graph = SmartScraperGraph(use_browser=bool(proj.get("use_browser")))
+        proxy_cfg = _resolve_proxy_config(proj)
+        graph = SmartScraperGraph(use_browser=bool(proj.get("use_browser")), proxy_config=proxy_cfg)
         state = await graph.run(url=url, description=proj.get("description", ""))
         extracted = state.get("extracted_data", [])
         result = {
@@ -179,7 +205,8 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
         }
     else:
         from src.engine.sandbox import run_code_in_sandbox
-        result = await run_code_in_sandbox(proj["code"], url)
+        proxy_cfg = _resolve_proxy_config(proj)
+        result = await run_code_in_sandbox(proj["code"], url, proxy_config=proxy_cfg)
     
     # Update test results
     test_results = proj.get("test_results", [])
@@ -286,3 +313,48 @@ async def update_sink(pid: str, req: UpdateSinkReq, user: dict = Depends(get_cur
         "updated_at": datetime.now().isoformat(),
     })
     return await db.get("projects", pid)
+
+
+@router.put("/projects/{pid}/proxy")
+async def update_proxy(pid: str, req: UpdateProxyReq, user: dict = Depends(get_current_user)):
+    """Update proxy configuration for a project."""
+    proj = await db.get("projects", pid)
+    if not proj:
+        raise HTTPException(404, "Project not found")
+    if user.get("role") != "admin" and proj.get("user_id") != user["id"]:
+        raise HTTPException(403, "Not your project")
+
+    await db.update("projects", pid, {
+        "proxy_config": req.proxy_config,
+        "updated_at": datetime.now().isoformat(),
+    })
+    return await db.get("projects", pid)
+
+
+@router.post("/projects/{pid}/test-proxy")
+async def test_proxy(pid: str, user: dict = Depends(get_current_user)):
+    """Test proxy configuration by accessing httpbin.org/ip."""
+    proj = await db.get("projects", pid)
+    if not proj:
+        raise HTTPException(404, "Project not found")
+
+    proxy_cfg = _resolve_proxy_config(proj)
+    if not proxy_cfg:
+        return {"ok": False, "error": "No proxy configured", "ip": None}
+
+    from src.engine.proxy import ProxyManager
+    pm = ProxyManager(proxy_cfg)
+    proxy_url = await pm.get_proxy_url()
+    if not proxy_url:
+        return {"ok": False, "error": "Could not get proxy URL", "ip": None}
+
+    try:
+        import httpx as _httpx
+        proxies = {"http://": proxy_url, "https://": proxy_url}
+        async with _httpx.AsyncClient(proxies=proxies, timeout=15) as client:
+            resp = await client.get("https://httpbin.org/ip")
+            resp.raise_for_status()
+            data = resp.json()
+            return {"ok": True, "error": "", "ip": data.get("origin", ""), "proxy": proxy_url}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "ip": None, "proxy": proxy_url}

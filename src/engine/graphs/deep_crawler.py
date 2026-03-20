@@ -1,4 +1,6 @@
 """DeepCrawler graph - BFS/DFS deep crawling."""
+from __future__ import annotations
+
 import asyncio
 from urllib.parse import urljoin, urlparse
 from loguru import logger
@@ -9,11 +11,11 @@ from src.core.config import settings
 class DeepCrawlerGraph:
     """Deep crawl a site using BFS/DFS, extracting data from each page."""
 
-    def __init__(self, max_pages: int = 10, mode: str = "bfs", use_browser: bool = False):
+    def __init__(self, max_pages: int = 10, mode: str = "bfs", use_browser: bool = False, proxy_config: dict | None = None):
         self.max_pages = max_pages
         self.mode = mode  # "bfs" or "dfs"
         self.use_browser = use_browser
-        self.fetch_node = FetchNode(use_browser=use_browser)
+        self.fetch_node = FetchNode(use_browser=use_browser, proxy_config=proxy_config)
         self.parse_node = ParseNode()
         self.extract_node = ExtractNode()
 

@@ -230,6 +230,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">编辑器</div>
       <div class="detail-tab" data-tab="test" onclick="switchDetailTab('test')">测试</div>
       <div class="detail-tab" data-tab="sink" onclick="switchDetailTab('sink')">Sink配置</div>
+      <div class="detail-tab" data-tab="proxy" onclick="switchDetailTab('proxy')">代理配置</div>
       <div class="detail-tab" data-tab="deploy" onclick="switchDetailTab('deploy')">部署</div>
     </div>
 
@@ -288,6 +289,37 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <div id="sink-fields"></div>
       <button class="btn btn-primary" onclick="saveSink()" style="margin-top:12px"><i class="ri-save-line"></i> 保存配置</button>
+    </div>
+
+    <!-- Proxy Tab -->
+    <div id="tab-proxy" class="hidden">
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="proxy-enabled"> 启用代理
+        </label>
+      </div>
+      <div class="form-group">
+        <label>代理模式</label>
+        <select class="form-input" id="proxy-mode" onchange="updateProxyFields()">
+          <option value="single">单个代理</option>
+          <option value="pool">代理池（轮询）</option>
+          <option value="random_pool">代理池（随机）</option>
+          <option value="rotating">旋转API</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>协议</label>
+        <select class="form-input" id="proxy-protocol">
+          <option value="http">HTTP</option>
+          <option value="socks5">SOCKS5</option>
+        </select>
+      </div>
+      <div id="proxy-fields"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-primary" onclick="saveProxy()"><i class="ri-save-line"></i> 保存配置</button>
+        <button class="btn" onclick="testProxy()"><i class="ri-speed-line"></i> 测试代理</button>
+      </div>
+      <div id="proxy-test-result" style="margin-top:8px"></div>
     </div>
 
     <!-- Deploy Tab -->
@@ -561,13 +593,20 @@ async function openProject(id) {
       document.getElementById('sink-type').value = currentProject.sink_config.sink_type;
     }
     updateSinkFields();
+    // proxy
+    let proxyCfg = currentProject.proxy_config || {};
+    if (typeof proxyCfg === 'string') { try { proxyCfg = JSON.parse(proxyCfg); } catch(e) { proxyCfg = {}; } currentProject.proxy_config = proxyCfg; }
+    document.getElementById('proxy-enabled').checked = !!proxyCfg.enabled;
+    document.getElementById('proxy-mode').value = proxyCfg.mode || 'single';
+    document.getElementById('proxy-protocol').value = proxyCfg.protocol || 'http';
+    updateProxyFields();
     switchDetailTab('editor');
     switchPage('detail');
   } catch(e) { toast(e.message,'error'); }
 }
 
 function switchDetailTab(tab) {
-  ['editor','test','sink','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
+  ['editor','test','sink','proxy','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
   document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
 }
 
@@ -688,6 +727,57 @@ async function saveSink() {
     await api('PUT', `/api/v1/projects/${currentProject.id}/sink`, { sink_config });
     toast('Sink 配置已保存');
   } catch(e) { toast(e.message,'error'); }
+}
+
+// Proxy
+function updateProxyFields() {
+  const mode = document.getElementById('proxy-mode').value;
+  const pc = currentProject?.proxy_config || {};
+  const container = document.getElementById('proxy-fields');
+  if (mode === 'single') {
+    container.innerHTML = `<div class="form-group"><label>代理地址</label><input class="form-input" id="proxy-url" value="${esc(pc.proxy_url||'')}" placeholder="http://user:pass@host:port"></div>`;
+  } else if (mode === 'pool' || mode === 'random_pool') {
+    const list = (pc.proxy_list || []).join('\n');
+    container.innerHTML = `<div class="form-group"><label>代理列表（每行一个）</label><textarea class="form-input" id="proxy-list" rows="5" placeholder="http://proxy1:8080\nhttp://proxy2:8080">${esc(list)}</textarea></div>`;
+  } else if (mode === 'rotating') {
+    container.innerHTML = `<div class="form-group"><label>旋转API地址</label><input class="form-input" id="proxy-rotating-api" value="${esc(pc.rotating_api||'')}" placeholder="https://api.provider.com/get_proxy"></div>`;
+  }
+}
+
+async function saveProxy() {
+  if (!currentProject) return;
+  const proxy_config = {
+    enabled: document.getElementById('proxy-enabled').checked,
+    mode: document.getElementById('proxy-mode').value,
+    protocol: document.getElementById('proxy-protocol').value,
+  };
+  const mode = proxy_config.mode;
+  if (mode === 'single') {
+    proxy_config.proxy_url = document.getElementById('proxy-url')?.value || '';
+  } else if (mode === 'pool' || mode === 'random_pool') {
+    proxy_config.proxy_list = (document.getElementById('proxy-list')?.value || '').split('\n').map(s=>s.trim()).filter(Boolean);
+  } else if (mode === 'rotating') {
+    proxy_config.rotating_api = document.getElementById('proxy-rotating-api')?.value || '';
+  }
+  try {
+    const res = await api('PUT', `/api/v1/projects/${currentProject.id}/proxy`, { proxy_config });
+    currentProject.proxy_config = proxy_config;
+    toast('代理配置已保存');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function testProxy() {
+  if (!currentProject) return;
+  const el = document.getElementById('proxy-test-result');
+  el.innerHTML = '<span style="color:var(--text-muted)">测试中...</span>';
+  try {
+    const res = await api('POST', `/api/v1/projects/${currentProject.id}/test-proxy`);
+    if (res.ok) {
+      el.innerHTML = `<span style="color:var(--accent)">✅ 代理正常，IP: ${esc(res.ip)}</span>`;
+    } else {
+      el.innerHTML = `<span style="color:#e74c3c">❌ ${esc(res.error)}</span>`;
+    }
+  } catch(e) { el.innerHTML = `<span style="color:#e74c3c">❌ ${esc(e.message)}</span>`; }
 }
 
 // Deploy

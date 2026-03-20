@@ -169,10 +169,12 @@ class WorkerProcess:
 
         from src.engine.sandbox import run_code_in_sandbox
 
+        proxy_config = task.get("proxy_config")
+
         all_items: list[dict] = []
         total_pages = 0
         for url in target_urls:
-            result = await run_code_in_sandbox(code, url, timeout=timeout)
+            result = await run_code_in_sandbox(code, url, timeout=timeout, proxy_config=proxy_config)
             output = result.get("output", [])
             if output:
                 all_items.extend(output)
