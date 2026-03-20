@@ -125,6 +125,19 @@ CREATE TABLE IF NOT EXISTS proxy_pools (
     updated_at TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS system_config (
+    key TEXT PRIMARY KEY,
+    value TEXT DEFAULT '',
+    category TEXT DEFAULT 'general',
+    label TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    field_type TEXT DEFAULT 'text',
+    options TEXT DEFAULT '[]',
+    sort_order INTEGER DEFAULT 0,
+    updated_at TEXT DEFAULT '',
+    updated_by TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS proxy_permissions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -299,6 +312,14 @@ class DB:
             await db.commit()
         finally:
             await db.close()
+
+    async def execute(self, sql: str, params: list | None = None):
+        conn = await get_db()
+        try:
+            await conn.execute(sql, params or [])
+            await conn.commit()
+        finally:
+            await conn.close()
 
     async def query(self, sql: str, params: list | None = None) -> list[dict]:
         db = await get_db()

@@ -18,6 +18,7 @@ from src.core.logging import setup_logging
 from src.core.database import init_db, db
 from src.api.v1 import projects, tasks, workers, data, system, auth, admin
 from src.api.v1.proxy_admin import router as proxy_admin_router
+from src.api.v1.settings import router as settings_router
 from src.api.ws import ws_manager
 
 # Configure logging before anything else
@@ -27,6 +28,8 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    from src.core.settings_manager import settings_manager
+    await settings_manager.init()
     from src.scheduler.queue import task_queue
     from src.scheduler.cron_scheduler import cron_scheduler
     await task_queue.connect()
@@ -49,6 +52,7 @@ app.include_router(data.router, prefix="/api/v1", tags=["data"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(proxy_admin_router, prefix="/api/v1")
+app.include_router(settings_router, prefix="/api/v1")
 
 # Also mount under /api/ for backward compat
 app.include_router(projects.router, prefix="/api", tags=["projects-compat"], include_in_schema=False)

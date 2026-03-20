@@ -96,8 +96,31 @@ tr:hover td{background:var(--bg-hover)}
 .log-INFO{color:var(--blue)}.log-WARN{color:var(--yellow)}.log-ERROR{color:var(--red)}.log-DEBUG{color:var(--text-muted)}
 
 /* Settings */
-.settings-form{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;max-width:600px}
-.settings-form .form-group{margin-bottom:20px}
+.settings-layout{display:flex;gap:0;min-height:calc(100vh - 140px)}
+.settings-sidebar{width:200px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px 0 0 12px;padding:8px 0;flex-shrink:0}
+.settings-cat{padding:11px 20px;font-size:13px;color:var(--text-secondary);cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+.settings-cat:hover{background:var(--bg-hover);color:var(--text-primary)}
+.settings-cat.active{color:var(--accent-light);background:var(--bg-hover);border-left-color:var(--accent)}
+.settings-content{flex:1;background:var(--bg-card);border:1px solid var(--border);border-left:none;border-radius:0 12px 12px 0;padding:28px 32px;max-width:720px}
+.setting-item{padding:18px 0;border-bottom:1px solid var(--border)}
+.setting-item:last-child{border-bottom:none}
+.setting-label{font-size:14px;font-weight:500;color:var(--text-primary);margin-bottom:4px}
+.setting-desc{font-size:12px;color:var(--text-muted);margin-bottom:10px}
+.setting-control input[type=text],.setting-control input[type=number],.setting-control input[type=password],.setting-control textarea,.setting-control select{width:100%;max-width:400px;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none;font-family:inherit}
+.setting-control input:focus,.setting-control textarea:focus,.setting-control select:focus{border-color:var(--accent)}
+.setting-control textarea{min-height:72px;resize:vertical}
+.setting-control select{appearance:auto}
+.toggle-wrap{display:flex;align-items:center;gap:10px}
+.toggle{position:relative;width:44px;height:24px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;inset:0;background:var(--border);border-radius:12px;transition:.2s}
+.toggle .slider:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.slider{background:var(--accent)}
+.toggle input:checked+.slider:before{transform:translateX(20px)}
+.toggle-label{font-size:13px;color:var(--text-secondary)}
+.pwd-wrap{position:relative;display:inline-block;width:100%;max-width:400px}
+.pwd-wrap input{width:100%;padding-right:36px}
+.pwd-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-muted);font-size:14px;background:none;border:none;padding:0}
 
 /* Info card */
 .info-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:20px}
@@ -262,12 +285,26 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
     <!-- Settings -->
     <div class="page" id="page-settings">
       <div class="page-title">系统设置</div>
-      <div class="settings-form">
-        <div class="form-group"><label>LLM 模型</label><input type="text" id="set-model" placeholder="gpt-4"></div>
-        <div class="form-group"><label>Redis URL</label><input type="text" id="set-redis" placeholder="redis://localhost:6379"></div>
-        <div class="form-group"><label>User-Agent</label><input type="text" id="set-ua" placeholder="AI-Spider/1.0"></div>
-        <div class="form-group"><label>最大并发</label><input type="text" id="set-concurrency" placeholder="10"></div>
-        <button class="btn btn-primary" style="width:auto" onclick="saveSettings()">保存设置</button>
+      <div class="settings-layout">
+        <div class="settings-sidebar">
+          <div class="settings-cat active" data-cat="general" onclick="switchSettingsCat('general')">🏠 基本设置</div>
+          <div class="settings-cat" data-cat="ai" onclick="switchSettingsCat('ai')">🤖 AI/LLM</div>
+          <div class="settings-cat" data-cat="crawler" onclick="switchSettingsCat('crawler')">🕷️ 爬虫设置</div>
+          <div class="settings-cat" data-cat="sandbox" onclick="switchSettingsCat('sandbox')">🔒 沙箱设置</div>
+          <div class="settings-cat" data-cat="worker" onclick="switchSettingsCat('worker')">⚙️ Worker</div>
+          <div class="settings-cat" data-cat="storage" onclick="switchSettingsCat('storage')">💾 存储设置</div>
+          <div class="settings-cat" data-cat="security" onclick="switchSettingsCat('security')">🛡️ 安全设置</div>
+          <div class="settings-cat" data-cat="notification" onclick="switchSettingsCat('notification')">🔔 通知设置</div>
+        </div>
+        <div class="settings-content">
+          <div id="settings-items"></div>
+          <div style="margin-top:24px;display:flex;gap:12px">
+            <button class="btn btn-primary" style="width:auto" onclick="saveSettings()">💾 保存设置</button>
+            <button class="btn btn-outline" style="width:auto" onclick="resetCurrentCategory()">↩️ 重置本分类</button>
+            <button class="btn btn-outline" style="width:auto" onclick="exportSettings()">📤 导出</button>
+            <button class="btn btn-outline" style="width:auto" onclick="importSettings()">📥 导入</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -372,7 +409,7 @@ function switchPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
-  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs};
+  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings};
   if (loaders[name]) loaders[name]();
 }
 
@@ -557,8 +594,121 @@ function filterLogs() {
 }
 
 // --- Settings ---
-function saveSettings() {
-  toast('功能开发中，敬请期待','info');
+// --- Settings ---
+let _settingsData = {};
+let _currentCat = 'general';
+
+async function loadSettings() {
+  try {
+    _settingsData = await api('/api/v1/admin/settings') || {};
+    renderSettingsItems();
+  } catch(e) { toast('加载设置失败: '+e.message,'error'); }
+}
+
+function switchSettingsCat(cat) {
+  _currentCat = cat;
+  document.querySelectorAll('.settings-cat').forEach(el => el.classList.toggle('active', el.dataset.cat === cat));
+  renderSettingsItems();
+}
+
+function renderSettingsItems() {
+  const items = _settingsData[_currentCat] || [];
+  const container = document.getElementById('settings-items');
+  if (!items.length) { container.innerHTML = '<div style="color:var(--text-muted);padding:20px">暂无配置项</div>'; return; }
+  container.innerHTML = items.map(item => {
+    const ctrl = renderControl(item);
+    return `<div class="setting-item"><div class="setting-label">${esc(item.label||item.key)}</div><div class="setting-desc">${esc(item.description||'')}</div><div class="setting-control">${ctrl}</div></div>`;
+  }).join('');
+}
+
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+function renderControl(item) {
+  const k = item.key, v = item.value||'', ft = item.field_type||'text';
+  if (ft === 'boolean') {
+    const checked = v.toLowerCase()==='true' ? 'checked' : '';
+    return `<div class="toggle-wrap"><label class="toggle"><input type="checkbox" data-key="${k}" ${checked}><span class="slider"></span></label><span class="toggle-label">${v.toLowerCase()==='true'?'启用':'禁用'}</span></div>`;
+  }
+  if (ft === 'select') {
+    let opts = [];
+    try { opts = JSON.parse(item.options||'[]'); } catch(e) {}
+    const optHtml = opts.map(o => `<option value="${esc(o)}" ${o===v?'selected':''}>${esc(o)}</option>`).join('');
+    return `<select data-key="${k}">${optHtml}</select>`;
+  }
+  if (ft === 'textarea') {
+    return `<textarea data-key="${k}">${esc(v)}</textarea>`;
+  }
+  if (ft === 'password') {
+    return `<div class="pwd-wrap"><input type="password" data-key="${k}" value="${esc(v)}"><button class="pwd-toggle" onclick="togglePwd(this)" type="button">👁</button></div>`;
+  }
+  if (ft === 'number') {
+    return `<input type="number" data-key="${k}" value="${esc(v)}" step="any">`;
+  }
+  return `<input type="text" data-key="${k}" value="${esc(v)}">`;
+}
+
+function togglePwd(btn) {
+  const inp = btn.previousElementSibling;
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+  else { inp.type = 'password'; btn.textContent = '👁'; }
+}
+
+async function saveSettings() {
+  const els = document.querySelectorAll('#settings-items [data-key]');
+  const configs = [];
+  els.forEach(el => {
+    const key = el.dataset.key;
+    let value;
+    if (el.type === 'checkbox') value = el.checked ? 'true' : 'false';
+    else value = el.value;
+    configs.push({key, value});
+  });
+  if (!configs.length) return;
+  try {
+    await api('/api/v1/admin/settings', {method:'PUT', body: JSON.stringify({configs})});
+    toast('设置已保存','success');
+    await loadSettings();
+  } catch(e) { toast('保存失败: '+e.message,'error'); }
+}
+
+async function resetCurrentCategory() {
+  if (!confirm('确定要将当前分类的设置重置为默认值？')) return;
+  const keys = (_settingsData[_currentCat]||[]).map(i => i.key);
+  try {
+    await api('/api/v1/admin/settings/reset', {method:'POST', body: JSON.stringify({keys})});
+    toast('已重置','success');
+    await loadSettings();
+  } catch(e) { toast('重置失败: '+e.message,'error'); }
+}
+
+async function exportSettings() {
+  try {
+    const res = await api('/api/v1/admin/settings/export', {method:'POST'});
+    const blob = new Blob([JSON.stringify(res.data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ai-spider-settings.json';
+    a.click();
+    toast('导出成功','success');
+  } catch(e) { toast('导出失败: '+e.message,'error'); }
+}
+
+function importSettings() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await api('/api/v1/admin/settings/import', {method:'POST', body: JSON.stringify({data})});
+      toast('导入成功','success');
+      await loadSettings();
+    } catch(e) { toast('导入失败: '+e.message,'error'); }
+  };
+  input.click();
 }
 
 // --- Proxy Pools ---
