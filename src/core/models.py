@@ -45,6 +45,9 @@ class WorkerStatus(str, Enum):
     ONLINE = "online"
     OFFLINE = "offline"
     BUSY = "busy"
+    DISABLED = "disabled"
+    DRAINING = "draining"
+    ERROR = "error"
 
 
 # ── Project ──
@@ -111,9 +114,15 @@ class Worker(BaseModel):
     total_failed: int = 0
     cpu_percent: float = 0
     memory_mb: float = 0
+    memory_total_mb: float = 0
+    disk_percent: float = 0
+    python_version: str = ""
+    os_info: str = ""
     tags: list[str] = []
+    current_tasks: list[str] = []
     last_heartbeat: str = Field(default_factory=lambda: datetime.now().isoformat())
     registered_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 # ── Test result ──

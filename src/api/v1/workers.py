@@ -1,7 +1,6 @@
-"""Worker management API endpoints."""
+"""Worker management API endpoints — database-backed."""
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
@@ -10,13 +9,13 @@ from loguru import logger
 
 from src.scheduler.task_manager import task_manager
 from src.core.database import db
-from src.core.models import DataRecord, _uid
+from src.core.models import DataRecord, Worker, WorkerStatus, _uid
+from src.core.settings_manager import settings_manager
 
 router = APIRouter(prefix="/workers", tags=["workers"])
 
-# In-memory worker registry
-_workers: dict[str, dict] = {}
 
+# ── Request models ──
 
 class WorkerRegisterReq(BaseModel):
     worker_id: str
@@ -30,7 +29,12 @@ class WorkerHeartbeatReq(BaseModel):
     status: str = "online"
     cpu_percent: float = 0
     memory_mb: float = 0
+    memory_total_mb: float = 0
+    disk_percent: float = 0
+    python_version: str = ""
+    os_info: str = ""
     active_jobs: int = 0
+    current_tasks: list[str] = []
     total_completed: int = 0
     total_failed: int = 0
 
@@ -45,65 +49,135 @@ class WorkerReportReq(BaseModel):
     error: str = ""
 
 
+# ── Helpers ──
+
+def _offline_threshold() -> int:
+    return 60
+
+
+async def _offline_threshold_async() -> int:
+    try:
+        val = await settings_manager.get("worker_offline_threshold", "60")
+        return int(val)
+    except Exception:
+        return 60
+
+
+def _mark_offline_if_stale(w: dict, threshold: int = 60) -> dict:
+    """Mark worker offline if heartbeat is stale (unless disabled)."""
+    if w.get("status") in ("disabled",):
+        return w
+    lh = w.get("last_heartbeat", "")
+    if lh:
+        try:
+            dt = datetime.fromisoformat(lh)
+            delta = (datetime.now() - dt).total_seconds()
+            if delta > threshold:
+                w["status"] = "offline"
+        except Exception:
+            pass
+    else:
+        w["status"] = "offline"
+    return w
+
+
+# ── Endpoints ──
+
 @router.get("")
 async def list_workers():
-    now = datetime.now()
-    result = []
-    for wid, w in _workers.items():
-        if (now - w.get("last_heartbeat", now)).total_seconds() > 60:
-            w["status"] = "offline"
-        result.append(w)
-    return result
+    rows = await db.list("workers", order="registered_at DESC", limit=500)
+    threshold = await _offline_threshold_async()
+    for w in rows:
+        _mark_offline_if_stale(w, threshold)
+    return rows
+
+
+@router.get("/{worker_id}")
+async def get_worker(worker_id: str):
+    w = await db.get("workers", worker_id)
+    if not w:
+        raise HTTPException(404, "Worker not found")
+    threshold = await _offline_threshold_async()
+    _mark_offline_if_stale(w, threshold)
+    # Attach recent task runs
+    runs = await db.query(
+        "SELECT * FROM task_runs WHERE worker_id = ? ORDER BY started_at DESC LIMIT 20",
+        [worker_id],
+    )
+    w["recent_runs"] = runs
+    return w
 
 
 @router.post("/register")
 async def register_worker(req: WorkerRegisterReq):
-    w = {
-        "id": req.worker_id,
-        "hostname": req.hostname,
-        "ip": req.ip,
-        "status": "online",
-        "max_concurrency": req.max_concurrency,
-        "active_jobs": 0,
-        "total_completed": 0,
-        "total_failed": 0,
-        "cpu_percent": 0,
-        "memory_mb": 0,
-        "tags": req.tags,
-        "last_heartbeat": datetime.now(),
-        "registered_at": datetime.now(),
-    }
-    _workers[req.worker_id] = w
-    return w
+    now = datetime.now().isoformat()
+    existing = await db.get("workers", req.worker_id)
+    if existing:
+        await db.update("workers", req.worker_id, {
+            "hostname": req.hostname or existing.get("hostname", ""),
+            "ip": req.ip or existing.get("ip", ""),
+            "status": "online",
+            "max_concurrency": req.max_concurrency,
+            "tags": req.tags,
+            "last_heartbeat": now,
+            "updated_at": now,
+        })
+    else:
+        w = Worker(
+            id=req.worker_id,
+            hostname=req.hostname,
+            ip=req.ip,
+            max_concurrency=req.max_concurrency,
+            tags=req.tags,
+            status=WorkerStatus.ONLINE,
+            last_heartbeat=now,
+            registered_at=now,
+            updated_at=now,
+        )
+        await db.insert("workers", w.model_dump())
+    return await db.get("workers", req.worker_id)
 
 
 @router.post("/{worker_id}/heartbeat")
 async def worker_heartbeat(worker_id: str, req: WorkerHeartbeatReq):
-    w = _workers.get(worker_id)
-    if not w:
+    existing = await db.get("workers", worker_id)
+    if not existing:
         return {"error": "not registered"}
-    w.update({
-        "status": req.status,
+    now = datetime.now().isoformat()
+    # Preserve disabled/draining status
+    status = req.status
+    if existing.get("status") in ("disabled", "draining"):
+        status = existing["status"]
+    await db.update("workers", worker_id, {
+        "status": status,
         "cpu_percent": req.cpu_percent,
         "memory_mb": req.memory_mb,
+        "memory_total_mb": req.memory_total_mb,
+        "disk_percent": req.disk_percent,
+        "python_version": req.python_version,
+        "os_info": req.os_info,
         "active_jobs": req.active_jobs,
+        "current_tasks": req.current_tasks,
         "total_completed": req.total_completed,
         "total_failed": req.total_failed,
-        "last_heartbeat": datetime.now(),
+        "last_heartbeat": now,
+        "updated_at": now,
     })
-    return w
+    return await db.get("workers", worker_id)
 
 
 @router.post("/{worker_id}/poll")
 async def worker_poll(worker_id: str):
     """Worker pulls a task from the queue."""
-    if worker_id not in _workers:
+    w = await db.get("workers", worker_id)
+    if not w:
         raise HTTPException(404, "Worker not registered")
+    if w.get("status") in ("disabled", "draining"):
+        raise HTTPException(403, "Worker is disabled or draining")
 
     assignment = await task_manager.assign_task(worker_id)
     if not assignment:
         raise HTTPException(404, "No tasks available")
-
     return assignment
 
 
@@ -111,7 +185,6 @@ async def worker_poll(worker_id: str):
 async def worker_report(worker_id: str, req: WorkerReportReq):
     """Worker reports task completion or failure."""
     if req.status == "success":
-        # Store data records if items provided
         if req.items:
             task_data = await db.get("tasks", req.task_id)
             project_id = task_data["project_id"] if task_data else ""
@@ -133,15 +206,7 @@ async def worker_report(worker_id: str, req: WorkerReportReq):
     else:
         await task_manager.fail_task(req.task_id, req.run_id, req.error)
 
-    # Update worker stats in memory
-    w = _workers.get(worker_id)
-    if w:
-        if req.status == "success":
-            w["total_completed"] = w.get("total_completed", 0) + 1
-        else:
-            w["total_failed"] = w.get("total_failed", 0) + 1
-
-    # WebSocket push: notify task owner and admins
+    # WebSocket push
     try:
         from src.api.ws import ws_manager
         task_data = await db.get("tasks", req.task_id)
@@ -170,15 +235,72 @@ async def worker_report(worker_id: str, req: WorkerReportReq):
 
 @router.delete("/{worker_id}")
 async def remove_worker(worker_id: str):
-    _workers.pop(worker_id, None)
+    deleted = await db.delete("workers", worker_id)
+    if not deleted:
+        raise HTTPException(404, "Worker not found")
     return {"ok": True}
 
 
+@router.put("/{worker_id}/disable")
+async def disable_worker(worker_id: str):
+    w = await db.get("workers", worker_id)
+    if not w:
+        raise HTTPException(404, "Worker not found")
+    await db.update("workers", worker_id, {
+        "status": "disabled",
+        "updated_at": datetime.now().isoformat(),
+    })
+    return {"ok": True, "status": "disabled"}
+
+
+@router.put("/{worker_id}/enable")
+async def enable_worker(worker_id: str):
+    w = await db.get("workers", worker_id)
+    if not w:
+        raise HTTPException(404, "Worker not found")
+    await db.update("workers", worker_id, {
+        "status": "online",
+        "updated_at": datetime.now().isoformat(),
+    })
+    return {"ok": True, "status": "online"}
+
+
+@router.post("/{worker_id}/drain")
+async def drain_worker(worker_id: str):
+    w = await db.get("workers", worker_id)
+    if not w:
+        raise HTTPException(404, "Worker not found")
+    await db.update("workers", worker_id, {
+        "status": "draining",
+        "updated_at": datetime.now().isoformat(),
+    })
+    return {"ok": True, "status": "draining"}
+
+
 def get_stats():
-    workers = list(_workers.values())
-    online = sum(1 for w in workers if w.get("status") == "online")
+    """Sync stats helper for dashboard (called from sync context)."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            return {"total": 0, "online": 0, "offline": 0}
+    except RuntimeError:
+        pass
+    return {"total": 0, "online": 0, "offline": 0}
+
+
+async def get_stats_async() -> dict:
+    rows = await db.list("workers", order="registered_at DESC", limit=500)
+    threshold = await _offline_threshold_async()
+    for w in rows:
+        _mark_offline_if_stale(w, threshold)
+    online = sum(1 for w in rows if w.get("status") == "online")
+    disabled = sum(1 for w in rows if w.get("status") == "disabled")
+    draining = sum(1 for w in rows if w.get("status") == "draining")
     return {
-        "total": len(workers),
+        "total": len(rows),
         "online": online,
-        "offline": len(workers) - online,
+        "offline": len(rows) - online - disabled - draining,
+        "disabled": disabled,
+        "draining": draining,
     }

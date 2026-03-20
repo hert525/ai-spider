@@ -15,10 +15,19 @@ except ImportError:
 
 
 def _get_system_info() -> dict:
-    info: dict = {"cpu_percent": 0.0, "memory_mb": 0.0}
+    info: dict = {"cpu_percent": 0.0, "memory_mb": 0.0, "memory_total_mb": 0.0, "disk_percent": 0.0}
     if psutil:
         info["cpu_percent"] = psutil.cpu_percent(interval=0.1)
-        info["memory_mb"] = psutil.virtual_memory().used / (1024 * 1024)
+        proc_mem = psutil.Process().memory_info().rss / (1024 * 1024)
+        info["memory_mb"] = proc_mem
+        try:
+            info["memory_total_mb"] = psutil.virtual_memory().total / (1024 * 1024)
+        except Exception:
+            pass
+        try:
+            info["disk_percent"] = psutil.disk_usage('/').percent
+        except Exception:
+            pass
     else:
         try:
             load = os.getloadavg()
@@ -47,6 +56,7 @@ class WorkerProcess:
         self.total_failed = 0
         self._running = False
         self._client = None
+        self._running_task_ids: set[str] = set()
 
     async def _get_client(self):
         import httpx
@@ -92,7 +102,12 @@ class WorkerProcess:
                     "status": "busy" if self.active_jobs >= self.max_concurrency else "online",
                     "cpu_percent": info["cpu_percent"],
                     "memory_mb": info["memory_mb"],
+                    "memory_total_mb": info.get("memory_total_mb", 0),
+                    "disk_percent": info.get("disk_percent", 0),
+                    "python_version": platform.python_version(),
+                    "os_info": f"{platform.system()} {platform.release()}",
                     "active_jobs": self.active_jobs,
+                    "current_tasks": list(getattr(self, '_running_task_ids', set())),
                     "total_completed": self.total_completed,
                     "total_failed": self.total_failed,
                 }
@@ -126,6 +141,7 @@ class WorkerProcess:
                     await asyncio.sleep(3)
                     continue
                 self.active_jobs += 1
+                self._running_task_ids.add(task.get("task_id", ""))
                 asyncio.create_task(self._execute_task(task))
             except Exception as e:
                 logger.error(f"Poll error: {e}")
@@ -161,6 +177,7 @@ class WorkerProcess:
             self.total_failed += 1
         finally:
             self.active_jobs -= 1
+            self._running_task_ids.discard(task_id)
 
     async def _run_code(self, task: dict, target_urls: list[str], timeout: int) -> tuple[list[dict], int]:
         code = task.get("code", "")

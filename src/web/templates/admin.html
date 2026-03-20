@@ -84,10 +84,25 @@ tr:hover td{background:var(--bg-hover)}
 .toolbar select:focus,.toolbar input:focus{border-color:var(--accent)}
 
 /* Worker cards */
-.worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
-.worker-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.worker-stats-bar{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:20px}
+.worker-stats-bar .stat-card{text-align:center}
+.worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+.worker-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:opacity .3s}
+.worker-card.offline{opacity:.6}
+.worker-card.disabled{opacity:.4}
 .worker-card h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.worker-meta{font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:flex;justify-content:space-between}
+.worker-card .w-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.worker-card .w-info{font-size:13px;color:var(--text-secondary);margin-bottom:4px}
+.worker-card .w-separator{border:none;border-top:1px solid var(--border);margin:10px 0}
+.worker-card .w-bar{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px}
+.worker-card .w-bar-label{width:36px;text-align:right;color:var(--text-secondary)}
+.worker-card .w-bar-track{flex:1;height:8px;background:var(--bg-input);border-radius:4px;overflow:hidden}
+.worker-card .w-bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.worker-card .w-bar-val{width:80px;font-size:12px;color:var(--text-secondary)}
+.w-bar-fill.green{background:#22c55e}.w-bar-fill.yellow{background:#eab308}.w-bar-fill.red{background:#ef4444}
+.worker-card .w-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.worker-card .w-tasks-detail{margin-top:10px;font-size:12px;color:var(--text-muted);background:var(--bg-input);border-radius:8px;padding:10px;display:none}
+.worker-card .w-tasks-detail.open{display:block}
 .progress-bar{height:6px;background:var(--bg-input);border-radius:3px;margin-top:4px;overflow:hidden}
 .progress-bar .fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
 
@@ -227,7 +242,8 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 
     <!-- Workers -->
     <div class="page" id="page-workers">
-      <div class="page-title">Worker节点</div>
+      <div class="page-title">🖥️ Worker节点</div>
+      <div class="worker-stats-bar" id="worker-stats-bar"></div>
       <div class="worker-grid" id="workers-grid"></div>
     </div>
 
@@ -542,32 +558,130 @@ async function batchTaskAction(action) {
 }
 
 // --- Workers ---
+let _workerRefreshTimer = null;
+function _barColor(pct) { return pct > 80 ? 'red' : pct > 50 ? 'yellow' : 'green'; }
+function _timeAgo(iso) {
+  if (!iso) return '-';
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 0) return '刚刚';
+  if (s < 60) return s + '秒前';
+  if (s < 3600) return Math.floor(s/60) + '分钟前';
+  if (s < 86400) return Math.floor(s/3600) + '小时前';
+  return Math.floor(s/86400) + '天前';
+}
+function _statusIcon(st) {
+  return {online:'🟢',offline:'🔴',draining:'🟡',disabled:'⚫',busy:'🟢',error:'🔴'}[st] || '⚪';
+}
+function _statusLabel(st) {
+  return {online:'在线',offline:'离线',draining:'排空中',disabled:'已禁用',busy:'繁忙',error:'错误'}[st] || st;
+}
+
 async function loadWorkers() {
   const grid = document.getElementById('workers-grid');
+  const statsBar = document.getElementById('worker-stats-bar');
   try {
     const d = await api('/api/v1/workers');
     if (!d) { grid.innerHTML='<div style="color:var(--text-muted)">无数据</div>'; return; }
     const list = Array.isArray(d) ? d : (d.workers||d.items||[]);
-    grid.innerHTML = list.length ? list.map(w => {
-      const online = w.status==='online'||w.is_online;
-      const cpu = w.cpu_usage||w.cpu_percent||0;
-      const mem = w.memory_usage||w.memory_percent||w.mem_usage||0;
-      return `<div class="worker-card">
-        <h3>${w.hostname||w.name||'Worker'} ${online?'<span class="badge badge-green">在线</span>':'<span class="badge badge-red">离线</span>'}</h3>
-        <div class="worker-meta"><span>IP: ${w.ip||w.ip_address||'-'}</span><span>并发: ${w.concurrency||w.max_concurrency||'-'}</span></div>
-        <div class="worker-meta"><span>CPU</span><span>${cpu}%</span></div>
-        <div class="progress-bar"><div class="fill" style="width:${cpu}%"></div></div>
-        <div class="worker-meta" style="margin-top:8px"><span>内存</span><span>${typeof mem==='number'?mem+'%':mem}</span></div>
-        <div class="worker-meta" style="margin-top:8px"><span>✅ ${w.tasks_completed||w.completed||0} 完成</span><span>❌ ${w.tasks_failed||w.failed||0} 失败</span></div>
-        <button class="btn btn-sm btn-danger" style="margin-top:12px" onclick="removeWorker('${w.id||w.worker_id}')">移除</button>
+
+    // Stats
+    const total = list.length;
+    const online = list.filter(w=>w.status==='online'||w.status==='busy').length;
+    const offline = list.filter(w=>w.status==='offline').length;
+    const disabled = list.filter(w=>w.status==='disabled').length;
+    const draining = list.filter(w=>w.status==='draining').length;
+    const totalCompleted = list.reduce((s,w)=>s+(w.total_completed||0),0);
+    const totalFailed = list.reduce((s,w)=>s+(w.total_failed||0),0);
+    const onlineList = list.filter(w=>w.status==='online'||w.status==='busy');
+    const avgCpu = onlineList.length ? (onlineList.reduce((s,w)=>s+(w.cpu_percent||0),0)/onlineList.length).toFixed(1) : '-';
+    const avgMem = onlineList.length ? (onlineList.reduce((s,w)=>s+(w.memory_mb||0),0)/onlineList.length).toFixed(0) : '-';
+    statsBar.innerHTML = `
+      <div class="stat-card"><div class="label">总数</div><div class="value">${total}</div></div>
+      <div class="stat-card"><div class="label">🟢 在线</div><div class="value">${online}</div></div>
+      <div class="stat-card"><div class="label">🔴 离线</div><div class="value">${offline}</div></div>
+      <div class="stat-card"><div class="label">⚫ 禁用</div><div class="value">${disabled}</div></div>
+      <div class="stat-card"><div class="label">✅ 完成</div><div class="value">${totalCompleted}</div></div>
+      <div class="stat-card"><div class="label">❌ 失败</div><div class="value">${totalFailed}</div></div>
+      <div class="stat-card"><div class="label">平均CPU</div><div class="value">${avgCpu}%</div></div>
+      <div class="stat-card"><div class="label">平均内存</div><div class="value">${avgMem}MB</div></div>`;
+
+    if (!list.length) { grid.innerHTML='<div style="color:var(--text-muted)">暂无Worker节点</div>'; return; }
+
+    grid.innerHTML = list.map(w => {
+      const st = w.status || 'offline';
+      const cpu = w.cpu_percent || 0;
+      const memMb = w.memory_mb || 0;
+      const memTotal = w.memory_total_mb || 0;
+      const memPct = memTotal > 0 ? (memMb / memTotal * 100).toFixed(1) : 0;
+      const disk = w.disk_percent || 0;
+      const tasks = w.current_tasks || [];
+      const cardClass = st === 'offline' ? 'offline' : st === 'disabled' ? 'disabled' : '';
+      const canDisable = st !== 'disabled';
+      const canEnable = st === 'disabled';
+      const wid = w.id || w.worker_id;
+
+      return `<div class="worker-card ${cardClass}" id="wc-${wid}">
+        <div class="w-header">
+          <h3 style="margin:0">${_statusIcon(st)} ${w.hostname || wid}</h3>
+          <div style="display:flex;gap:6px">
+            ${canDisable ? `<button class="btn btn-sm" onclick="workerAction('${wid}','disable')">禁用</button>` : ''}
+            ${canEnable ? `<button class="btn btn-sm btn-primary" onclick="workerAction('${wid}','enable')">启用</button>` : ''}
+            <button class="btn btn-sm btn-danger" onclick="removeWorker('${wid}')">删除</button>
+          </div>
+        </div>
+        <div class="w-info">主机: ${w.hostname||'-'} | IP: ${w.ip||'-'}</div>
+        <div class="w-info">系统: ${w.os_info||'-'} | Python ${w.python_version||'-'}</div>
+        <hr class="w-separator">
+        <div class="w-bar"><span class="w-bar-label">CPU</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(cpu)}" style="width:${cpu}%"></div></div><span class="w-bar-val">${cpu.toFixed?cpu.toFixed(1):cpu}%</span></div>
+        <div class="w-bar"><span class="w-bar-label">内存</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(memPct)}" style="width:${memPct}%"></div></div><span class="w-bar-val">${Math.round(memMb)}/${Math.round(memTotal)} MB</span></div>
+        <div class="w-bar"><span class="w-bar-label">磁盘</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(disk)}" style="width:${disk}%"></div></div><span class="w-bar-val">${disk.toFixed?disk.toFixed(1):disk}%</span></div>
+        <hr class="w-separator">
+        <div class="w-info">并发: ${w.active_jobs||0}/${w.max_concurrency||3} | ✅ ${w.total_completed||0} | ❌ ${w.total_failed||0}</div>
+        ${tasks.length ? `<div class="w-info">当前任务: ${tasks.join(', ')}</div>` : ''}
+        <div class="w-info">最后心跳: ${_timeAgo(w.last_heartbeat)} | 注册: ${w.registered_at ? w.registered_at.slice(0,16).replace('T',' ') : '-'}</div>
+        <div class="w-actions">
+          ${st!=='draining'&&st!=='disabled' ? `<button class="btn btn-sm" onclick="workerAction('${wid}','drain')" title="排空：完成当前任务后不再接新任务">🟡 排空</button>` : ''}
+          <button class="btn btn-sm" onclick="toggleWorkerDetail('${wid}')">📋 详情</button>
+        </div>
+        <div class="w-tasks-detail" id="wd-${wid}">加载中...</div>
       </div>`;
-    }).join('') : '<div style="color:var(--text-muted)">暂无Worker节点</div>';
-  } catch(e) { grid.innerHTML='<div style="color:var(--text-muted)">加载失败</div>'; }
+    }).join('');
+
+    // Auto-refresh
+    if (_workerRefreshTimer) clearInterval(_workerRefreshTimer);
+    _workerRefreshTimer = setInterval(() => {
+      if (document.getElementById('page-workers').style.display !== 'none') loadWorkers();
+      else { clearInterval(_workerRefreshTimer); _workerRefreshTimer = null; }
+    }, 10000);
+  } catch(e) { grid.innerHTML='<div style="color:var(--text-muted)">加载失败: '+e.message+'</div>'; }
+}
+
+async function workerAction(id, action) {
+  const method = action === 'drain' ? 'POST' : 'PUT';
+  try {
+    const r = await api(`/api/v1/workers/${id}/${action}`, {method});
+    if (r && r.ok) { toast(_statusLabel(r.status||action),'success'); loadWorkers(); }
+    else toast('操作失败','error');
+  } catch(e) { toast('操作失败: '+e.message,'error'); }
+}
+
+async function toggleWorkerDetail(id) {
+  const el = document.getElementById('wd-'+id);
+  if (el.classList.contains('open')) { el.classList.remove('open'); return; }
+  el.classList.add('open');
+  el.innerHTML = '加载中...';
+  try {
+    const d = await api(`/api/v1/workers/${id}`);
+    const runs = d.recent_runs || [];
+    if (!runs.length) { el.innerHTML = '暂无执行记录'; return; }
+    el.innerHTML = '<table style="width:100%;font-size:12px"><tr><th>运行ID</th><th>任务ID</th><th>状态</th><th>数据量</th><th>时间</th></tr>' +
+      runs.map(r => `<tr><td>${(r.id||'').slice(0,8)}</td><td>${(r.task_id||'').slice(0,8)}</td><td>${r.status}</td><td>${r.items_count||0}</td><td>${r.started_at?r.started_at.slice(0,16).replace('T',' '):'-'}</td></tr>`).join('') + '</table>';
+  } catch(e) { el.innerHTML = '加载失败'; }
 }
 
 async function removeWorker(id) {
-  if (!confirm('确认移除该Worker?')) return;
-  try { const r = await api(`/api/v1/workers/${id}`,{method:'DELETE'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('已移除','success'); loadWorkers(); } } catch(e) { toast('操作失败','error'); }
+  if (!confirm('确认删除该Worker记录?')) return;
+  try { const r = await api(`/api/v1/workers/${id}`,{method:'DELETE'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('已删除','success'); loadWorkers(); } } catch(e) { toast('操作失败','error'); }
 }
 
 // --- Logs ---

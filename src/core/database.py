@@ -82,18 +82,24 @@ CREATE TABLE IF NOT EXISTS task_runs (
 
 CREATE TABLE IF NOT EXISTS workers (
     id TEXT PRIMARY KEY,
-    hostname TEXT,
-    ip TEXT,
-    status TEXT DEFAULT 'online',
+    hostname TEXT DEFAULT '',
+    ip TEXT DEFAULT '',
+    status TEXT DEFAULT 'offline',
     max_concurrency INTEGER DEFAULT 3,
     active_jobs INTEGER DEFAULT 0,
     total_completed INTEGER DEFAULT 0,
     total_failed INTEGER DEFAULT 0,
     cpu_percent REAL DEFAULT 0,
     memory_mb REAL DEFAULT 0,
+    memory_total_mb REAL DEFAULT 0,
+    disk_percent REAL DEFAULT 0,
+    python_version TEXT DEFAULT '',
+    os_info TEXT DEFAULT '',
     tags TEXT DEFAULT '[]',
-    last_heartbeat TEXT,
-    registered_at TEXT
+    current_tasks TEXT DEFAULT '[]',
+    last_heartbeat TEXT DEFAULT '',
+    registered_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS data_records (
@@ -152,7 +158,7 @@ CREATE TABLE IF NOT EXISTS proxy_permissions (
 _JSON_FIELDS = {
     "projects": ["extracted_data", "messages", "test_results", "sink_config", "proxy_config"],
     "tasks": ["target_urls"],
-    "workers": ["tags"],
+    "workers": ["tags", "current_tasks"],
     "data_records": ["data"],
     "task_runs": [],
     "proxy_pools": ["proxies"],
@@ -191,6 +197,20 @@ async def init_db():
         logger.info("Added column projects.proxy_config")
     except Exception:
         pass
+    # Add new worker columns
+    for col, coltype in [
+        ("memory_total_mb", "REAL DEFAULT 0"),
+        ("disk_percent", "REAL DEFAULT 0"),
+        ("python_version", "TEXT DEFAULT ''"),
+        ("os_info", "TEXT DEFAULT ''"),
+        ("current_tasks", "TEXT DEFAULT '[]'"),
+        ("updated_at", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE workers ADD COLUMN {col} {coltype}")
+            await db.commit()
+        except Exception:
+            pass
     await db.close()
     logger.info(f"Database initialized at {DB_PATH}")
 
