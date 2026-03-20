@@ -251,6 +251,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="detail-tab" data-tab="test" onclick="switchDetailTab('test')">测试</div>
       <div class="detail-tab" data-tab="sink" onclick="switchDetailTab('sink')">Sink配置</div>
       <div class="detail-tab" data-tab="proxy" onclick="switchDetailTab('proxy')">代理配置</div>
+      <div class="detail-tab" data-tab="browser" onclick="switchDetailTab('browser')">🌐 浏览器</div>
       <div class="detail-tab" data-tab="deploy" onclick="switchDetailTab('deploy')">部署</div>
     </div>
 
@@ -326,6 +327,47 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <button class="btn" onclick="testProxy()"><i class="ri-speed-line"></i> 测试代理</button>
       </div>
       <div id="proxy-test-result" style="margin-top:8px"></div>
+    </div>
+
+    <!-- Browser settings tab -->
+    <div id="tab-browser" class="hidden">
+      <div class="form-group">
+        <label>🔒 反爬等级</label>
+        <select class="form-input" id="stealth-level">
+          <option value="off">关闭</option>
+          <option value="basic">基础 — navigator伪装</option>
+          <option value="medium">中等 — 基础 + Canvas指纹</option>
+          <option value="full">完整 — 中等 + WebRTC禁用</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="enable-screenshot"> 📸 截图存证（爬取完成后自动截图）
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-primary" onclick="saveBrowserSettings()"><i class="ri-save-line"></i> 保存设置</button>
+      </div>
+
+      <hr style="border-color:var(--border);margin:24px 0">
+
+      <h3 style="margin:0 0 12px">🍪 Cookie管理</h3>
+      <div class="form-group">
+        <label>域名</label>
+        <input class="form-input" id="cookie-domain" placeholder="example.com">
+      </div>
+      <div class="form-group">
+        <label>名称（可选）</label>
+        <input class="form-input" id="cookie-name" placeholder="我的登录态">
+      </div>
+      <div class="form-group">
+        <label>Cookie内容（支持浏览器复制格式 / JSON / Netscape）</label>
+        <textarea class="form-input" id="cookie-content" rows="4" placeholder="key=value; key2=value2"></textarea>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="importCookies()"><i class="ri-upload-line"></i> 导入Cookie</button>
+      </div>
+      <div id="saved-sessions" style="margin-top:16px"></div>
     </div>
 
     <!-- Deploy Tab -->
@@ -710,14 +752,18 @@ async function openProject(id) {
     let proxyCfg = currentProject.proxy_config || {};
     if (typeof proxyCfg === 'string') { try { proxyCfg = JSON.parse(proxyCfg); } catch(e) { proxyCfg = {}; } currentProject.proxy_config = proxyCfg; }
     loadAvailableProxies(proxyCfg.proxy_pool_id || '');
+    // browser settings
+    document.getElementById('stealth-level').value = currentProject.stealth_level || 'off';
+    document.getElementById('enable-screenshot').checked = !!currentProject.enable_screenshot;
     switchDetailTab('editor');
     switchPage('detail');
   } catch(e) { toast(e.message,'error'); }
 }
 
 function switchDetailTab(tab) {
-  ['editor','test','sink','proxy','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
+  ['editor','test','sink','proxy','browser','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
   document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
+  if (tab === 'browser') loadSavedSessions();
 }
 
 // Chat
@@ -895,6 +941,59 @@ async function testProxy() {
       el.innerHTML = `<span style="color:#e74c3c">❌ ${esc(res.error)}</span>`;
     }
   } catch(e) { el.innerHTML = `<span style="color:#e74c3c">❌ ${esc(e.message)}</span>`; }
+}
+
+// Browser settings
+async function saveBrowserSettings() {
+  if (!currentProject) return;
+  const stealth_level = document.getElementById('stealth-level').value;
+  const enable_screenshot = document.getElementById('enable-screenshot').checked ? 1 : 0;
+  try {
+    await api('PUT', `/api/v1/projects/${currentProject.id}`, { stealth_level, enable_screenshot });
+    currentProject.stealth_level = stealth_level;
+    currentProject.enable_screenshot = enable_screenshot;
+    toast('浏览器设置已保存');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function importCookies() {
+  const domain = document.getElementById('cookie-domain').value.trim();
+  const cookies = document.getElementById('cookie-content').value.trim();
+  const name = document.getElementById('cookie-name').value.trim();
+  if (!domain || !cookies) return toast('请填写域名和Cookie内容', 'error');
+  try {
+    const res = await api('POST', '/api/v1/sessions/import-cookies', { domain, cookies, name });
+    toast(`成功导入 ${res.cookie_count} 个Cookie`);
+    document.getElementById('cookie-content').value = '';
+    loadSavedSessions();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function loadSavedSessions() {
+  const el = document.getElementById('saved-sessions');
+  try {
+    const sessions = await api('GET', '/api/v1/sessions');
+    if (!sessions.length) { el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:12px">暂无保存的Session</div>'; return; }
+    el.innerHTML = sessions.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:6px">
+        <div>
+          <strong>${esc(s.name || s.domain)}</strong>
+          <span style="color:var(--text-muted);margin-left:8px">${s.cookie_count} cookies</span>
+          <span style="color:var(--text-muted);margin-left:8px;font-size:12px">${s.status}</span>
+        </div>
+        <button class="btn btn-sm" style="color:#e74c3c" onclick="deleteSession('${s.id}')"><i class="ri-delete-bin-line"></i></button>
+      </div>
+    `).join('');
+  } catch(e) { el.innerHTML = ''; }
+}
+
+async function deleteSession(id) {
+  if (!confirm('确定删除此Session？')) return;
+  try {
+    await api('DELETE', `/api/v1/sessions/${id}`);
+    toast('已删除');
+    loadSavedSessions();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // Deploy

@@ -170,6 +170,21 @@ CREATE TABLE IF NOT EXISTS seed_templates (
     updated_at TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS browser_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    name TEXT DEFAULT '',
+    cookies TEXT DEFAULT '{}',
+    local_storage TEXT DEFAULT '{}',
+    user_agent TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    expires_at TEXT DEFAULT '',
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT '',
+    UNIQUE(user_id, domain)
+);
+
 CREATE TABLE IF NOT EXISTS proxy_permissions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -222,6 +237,20 @@ async def init_db():
         await db.execute("ALTER TABLE projects ADD COLUMN proxy_config TEXT DEFAULT '{}'")
         await db.commit()
         logger.info("Added column projects.proxy_config")
+    except Exception:
+        pass
+    # Add stealth_level to projects
+    try:
+        await db.execute("ALTER TABLE projects ADD COLUMN stealth_level TEXT DEFAULT 'off'")
+        await db.commit()
+        logger.info("Added column projects.stealth_level")
+    except Exception:
+        pass
+    # Add enable_screenshot to projects
+    try:
+        await db.execute("ALTER TABLE projects ADD COLUMN enable_screenshot INTEGER DEFAULT 0")
+        await db.commit()
+        logger.info("Added column projects.enable_screenshot")
     except Exception:
         pass
     # Add new worker columns

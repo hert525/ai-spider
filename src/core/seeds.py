@@ -1505,6 +1505,928 @@ async def crawl(url: str, config: dict) -> list[dict]:
         "tags": ['漫画下载', 'script', 'community', '社区'],
         "difficulty": "medium",
     },
+
+    # ═══════════════════════════════════════════════════════════════
+    #  量化金融专区
+    # ═══════════════════════════════════════════════════════════════
+
+    # ── 1. 东方财富A股实时行情 ──
+    {
+        "name": "东方财富A股实时行情",
+        "description": "通过东方财富推送接口获取沪深A股实时行情数据，包括最新价、涨跌幅、成交量等",
+        "category": "finance",
+        "icon": "📈",
+        "target_url": "http://push2.eastmoney.com/api/qt/clist/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """东方财富A股实时行情"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://quote.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    # 分页参数
+    page = config.get("page", 1)
+    page_size = config.get("page_size", 20)
+    params = {
+        "pn": page,
+        "pz": page_size,
+        "po": 1,
+        "np": 1,
+        "fltt": 2,
+        "invt": 2,
+        "fid": "f3",  # 按涨跌幅排序
+        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23",  # 沪深A股
+        "fields": "f2,f3,f4,f5,f6,f7,f12,f14",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(url or "http://push2.eastmoney.com/api/qt/clist/get", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("diff", []):
+            results.append({
+                "code": item.get("f12", ""),       # 股票代码
+                "name": item.get("f14", ""),       # 股票名称
+                "price": item.get("f2", 0),        # 最新价
+                "change_pct": item.get("f3", 0),   # 涨跌幅%
+                "change_amt": item.get("f4", 0),   # 涨跌额
+                "volume": item.get("f5", 0),       # 成交量(手)
+                "amount": item.get("f6", 0),       # 成交额
+                "turnover": item.get("f7", 0),     # 换手率%
+            })
+    return results
+''',
+        "tags": ["A股", "行情", "东方财富", "实时", "沪深"],
+        "difficulty": "easy",
+    },
+
+    # ── 2. 东方财富龙虎榜 ──
+    {
+        "name": "东方财富龙虎榜",
+        "description": "获取东方财富龙虎榜数据，包含上榜原因、买卖金额等",
+        "category": "finance",
+        "icon": "🐉",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """东方财富龙虎榜数据"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "reportName": "RPT_DAILYBILLBOARD_DETAILSNEW",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "SECURITY_CODE",
+        "sortTypes": "1",
+        "pageNumber": config.get("page", 1),
+        "pageSize": config.get("page_size", 50),
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "code": item.get("SECURITY_CODE", ""),
+                "name": item.get("SECURITY_NAME_ABBR", ""),
+                "close": item.get("CLOSE_PRICE", 0),
+                "change_pct": item.get("CHANGE_RATE", 0),
+                "net_buy": item.get("NET_BUY_AMT", 0),
+                "reason": item.get("EXPLAIN", ""),
+                "date": item.get("TRADE_DATE", ""),
+            })
+    return results
+''',
+        "tags": ["龙虎榜", "A股", "东方财富", "游资"],
+        "difficulty": "easy",
+    },
+
+    # ── 3. 同花顺概念板块 ──
+    {
+        "name": "同花顺概念板块",
+        "description": "获取同花顺概念板块列表及涨跌幅、领涨股等信息",
+        "category": "finance",
+        "icon": "🧩",
+        "target_url": "https://dq.10jqka.com.cn/fuyao/hot_list_data/out/hot_list/v1/stock/concept/list",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """同花顺概念板块行情（使用东财备用接口）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    # 使用东财概念板块接口作为稳定替代
+    params = {
+        "pn": config.get("page", 1),
+        "pz": config.get("page_size", 50),
+        "po": 1,
+        "np": 1,
+        "fltt": 2,
+        "invt": 2,
+        "fid": "f3",
+        "fs": "m:90+t:3+f:!50",  # 概念板块
+        "fields": "f2,f3,f4,f8,f12,f14,f104,f105,f128,f140,f141",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            "http://push2.eastmoney.com/api/qt/clist/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("diff", []):
+            results.append({
+                "name": item.get("f14", ""),        # 板块名称
+                "code": item.get("f12", ""),        # 板块代码
+                "change_pct": item.get("f3", 0),    # 涨跌幅%
+                "turnover": item.get("f8", 0),      # 换手率%
+                "leading_stock": item.get("f140", ""),  # 领涨股名称
+            })
+    return results
+''',
+        "tags": ["概念板块", "同花顺", "A股", "题材"],
+        "difficulty": "easy",
+    },
+
+    # ── 4. 新浪财经A股行情 ──
+    {
+        "name": "新浪财经A股行情",
+        "description": "通过新浪财经API获取沪深A股行情数据",
+        "category": "finance",
+        "icon": "📊",
+        "target_url": "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """新浪财经A股行情"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://finance.sina.com.cn/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "page": config.get("page", 1),
+        "num": config.get("page_size", 40),
+        "sort": "symbol",
+        "asc": 1,
+        "node": "hs_a",  # 沪深A股
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        api = url or "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"
+        resp = await client.get(api, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        for item in data:
+            results.append({
+                "code": item.get("symbol", ""),
+                "name": item.get("name", ""),
+                "open": float(item.get("open", 0)),
+                "close": float(item.get("trade", 0)),
+                "high": float(item.get("high", 0)),
+                "low": float(item.get("low", 0)),
+                "volume": float(item.get("volume", 0)),
+                "amount": float(item.get("amount", 0)),
+            })
+    return results
+''',
+        "tags": ["A股", "行情", "新浪财经", "沪深"],
+        "difficulty": "easy",
+    },
+
+    # ── 5. 雪球热股榜 ──
+    {
+        "name": "雪球热股榜",
+        "description": "获取雪球热门股票排行，需要先访问雪球首页获取Cookie",
+        "category": "finance",
+        "icon": "🔥",
+        "target_url": "https://stock.xueqiu.com/v5/stock/hot_stock/list.json",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """雪球热股榜（需先获取cookie）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Origin": "https://xueqiu.com",
+        "Referer": "https://xueqiu.com/hq",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers, follow_redirects=True) as client:
+        # 第一步：访问首页拿cookie
+        await client.get("https://xueqiu.com/")
+        # 第二步：请求热股接口
+        params = {
+            "size": config.get("page_size", 30),
+            "_type": 10,
+            "type": 10,
+        }
+        resp = await client.get(
+            url or "https://stock.xueqiu.com/v5/stock/hot_stock/list.json",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("items", []):
+            results.append({
+                "code": item.get("code", ""),
+                "name": item.get("name", ""),
+                "price": item.get("current", 0),
+                "change_pct": item.get("percent", 0),
+                "followers": item.get("follow_count", 0),
+            })
+    return results
+''',
+        "tags": ["雪球", "热股", "A股", "人气榜"],
+        "difficulty": "medium",
+    },
+
+    # ── 6. 东财概念板块行情 ──
+    {
+        "name": "东财概念板块行情",
+        "description": "通过东方财富数据中心API获取概念板块实时行情及领涨股",
+        "category": "finance",
+        "icon": "💡",
+        "target_url": "http://push2.eastmoney.com/api/qt/clist/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """东财概念板块行情"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://quote.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "pn": config.get("page", 1),
+        "pz": config.get("page_size", 50),
+        "po": 1, "np": 1, "fltt": 2, "invt": 2,
+        "fid": "f3",
+        "fs": "m:90+t:3+f:!50",
+        "fields": "f2,f3,f4,f5,f6,f7,f8,f12,f14,f104,f105,f128,f140,f141",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "http://push2.eastmoney.com/api/qt/clist/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("diff", []):
+            results.append({
+                "name": item.get("f14", ""),
+                "code": item.get("f12", ""),
+                "change_pct": item.get("f3", 0),
+                "volume": item.get("f5", 0),
+                "leading_stock": item.get("f140", ""),
+            })
+    return results
+''',
+        "tags": ["概念板块", "东方财富", "题材", "A股"],
+        "difficulty": "easy",
+    },
+
+    # ── 7. 富途牛牛港股行情 ──
+    {
+        "name": "富途牛牛港股行情",
+        "description": "通过东方财富接口获取港股实时行情数据",
+        "category": "finance",
+        "icon": "🇭🇰",
+        "target_url": "http://push2.eastmoney.com/api/qt/clist/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """港股实时行情（东财接口）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://quote.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "pn": config.get("page", 1),
+        "pz": config.get("page_size", 20),
+        "po": 1, "np": 1, "fltt": 2, "invt": 2,
+        "fid": "f3",
+        "fs": "m:128+t:3,m:128+t:4,m:128+t:1,m:128+t:2",  # 港股
+        "fields": "f2,f3,f4,f5,f6,f12,f14",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "http://push2.eastmoney.com/api/qt/clist/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("diff", []):
+            results.append({
+                "code": item.get("f12", ""),
+                "name": item.get("f14", ""),
+                "price": item.get("f2", 0),
+                "change_pct": item.get("f3", 0),
+                "volume": item.get("f5", 0),
+            })
+    return results
+''',
+        "tags": ["港股", "行情", "HK", "恒生"],
+        "difficulty": "easy",
+    },
+
+    # ── 8. 东方财富资金流向 ──
+    {
+        "name": "东方财富资金流向",
+        "description": "获取个股资金流向数据，包括主力、超大单、大单、中单、小单净流入",
+        "category": "finance",
+        "icon": "💰",
+        "target_url": "http://push2.eastmoney.com/api/qt/clist/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """东方财富个股资金流向"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "pn": config.get("page", 1),
+        "pz": config.get("page_size", 20),
+        "po": 1, "np": 1, "fltt": 2, "invt": 2,
+        "fid": "f62",  # 按主力净流入排序
+        "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23",
+        "fields": "f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "http://push2.eastmoney.com/api/qt/clist/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("diff", []):
+            results.append({
+                "code": item.get("f12", ""),
+                "name": item.get("f14", ""),
+                "price": item.get("f2", 0),
+                "change_pct": item.get("f3", 0),             # 涨跌幅
+                "main_net_inflow": item.get("f62", 0),       # 主力净流入
+                "main_pct": item.get("f184", 0),             # 主力净占比%
+                "super_large_net": item.get("f66", 0),       # 超大单净流入
+                "large_net": item.get("f72", 0),             # 大单净流入
+                "medium_net": item.get("f78", 0),            # 中单净流入
+                "small_net": item.get("f84", 0),             # 小单净流入
+            })
+    return results
+''',
+        "tags": ["资金流", "主力", "A股", "东方财富"],
+        "difficulty": "easy",
+    },
+
+    # ── 9. 东方财富财务数据（利润表） ──
+    {
+        "name": "东方财富财务数据",
+        "description": "获取上市公司财务利润表数据，包括营收、净利润、EPS、ROE等",
+        "category": "finance",
+        "icon": "📋",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """东方财富财务利润表数据"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    # 默认查600519（贵州茅台），可通过config传stock_code
+    stock_code = config.get("stock_code", "600519")
+    params = {
+        "reportName": "RPT_LICO_FN_CPD",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "filter": f'(SECURITY_CODE="{stock_code}")',
+        "pageNumber": 1,
+        "pageSize": config.get("page_size", 10),
+        "sortColumns": "REPORT_DATE",
+        "sortTypes": "-1",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "code": item.get("SECURITY_CODE", ""),
+                "name": item.get("SECURITY_NAME_ABBR", ""),
+                "revenue": item.get("TOTAL_OPERATE_INCOME", 0),
+                "net_profit": item.get("NETPROFIT", 0),
+                "eps": item.get("BASIC_EPS", 0),
+                "roe": item.get("WEIGHTAVG_ROE", 0),
+                "report_date": item.get("REPORT_DATE", ""),
+            })
+    return results
+''',
+        "tags": ["财务", "利润表", "A股", "基本面"],
+        "difficulty": "easy",
+    },
+
+    # ── 10. 中国LPR利率 ──
+    {
+        "name": "中国LPR利率",
+        "description": "获取中国贷款市场报价利率(LPR)历史数据",
+        "category": "finance",
+        "icon": "🏦",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """中国LPR利率数据（东财数据中心）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "reportName": "RPTA_WEB_RATE",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "TRADE_DATE",
+        "sortTypes": "-1",
+        "pageNumber": 1,
+        "pageSize": config.get("page_size", 20),
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "date": item.get("TRADE_DATE", ""),
+                "lpr_1y": item.get("LPR1Y", 0),
+                "lpr_5y": item.get("LPR5Y", 0),
+            })
+    return results
+''',
+        "tags": ["LPR", "利率", "央行", "宏观"],
+        "difficulty": "easy",
+    },
+
+    # ── 11. 美股行情（Yahoo Finance） ──
+    {
+        "name": "美股行情Yahoo Finance",
+        "description": "通过Yahoo Finance API获取美股行情数据，可能需要代理",
+        "category": "finance",
+        "icon": "🇺🇸",
+        "target_url": "https://query1.finance.yahoo.com/v8/finance/chart/AAPL",
+        "mode": "code_generator",
+        "proxy_required": 1,
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """美股行情 - Yahoo Finance（可能需要代理）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    # 支持多个股票代码，逗号分隔
+    symbols = config.get("symbols", "AAPL,MSFT,GOOGL,AMZN,TSLA").split(",")
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        for symbol in symbols:
+            symbol = symbol.strip()
+            try:
+                resp = await client.get(
+                    url or f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+                    params={"range": "1d", "interval": "1d"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                meta = data.get("chart", {}).get("result", [{}])[0].get("meta", {})
+                results.append({
+                    "symbol": meta.get("symbol", symbol),
+                    "price": meta.get("regularMarketPrice", 0),
+                    "change": round(
+                        meta.get("regularMarketPrice", 0) - meta.get("previousClose", 0), 2
+                    ),
+                    "change_pct": round(
+                        (meta.get("regularMarketPrice", 0) - meta.get("previousClose", 0))
+                        / meta.get("previousClose", 1) * 100, 2
+                    ) if meta.get("previousClose") else 0,
+                    "volume": meta.get("regularMarketVolume", 0),
+                    "market_cap": meta.get("marketCap", 0),
+                })
+            except Exception:
+                results.append({"symbol": symbol, "error": "请求失败，可能需要代理"})
+    return results
+''',
+        "tags": ["美股", "Yahoo", "行情", "US"],
+        "difficulty": "medium",
+    },
+
+    # ── 12. 加密货币行情（CoinGecko） ──
+    {
+        "name": "加密货币行情CoinGecko",
+        "description": "通过CoinGecko免费API获取加密货币市值排行及行情，无需API Key",
+        "category": "finance",
+        "icon": "₿",
+        "target_url": "https://api.coingecko.com/api/v3/coins/markets",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """加密货币行情 - CoinGecko（免费API，有频率限制）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "vs_currency": config.get("currency", "usd"),
+        "order": "market_cap_desc",
+        "per_page": config.get("page_size", 50),
+        "page": config.get("page", 1),
+        "sparkline": "false",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://api.coingecko.com/api/v3/coins/markets",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in data:
+            results.append({
+                "name": item.get("name", ""),
+                "symbol": item.get("symbol", "").upper(),
+                "price": item.get("current_price", 0),
+                "change_24h": item.get("price_change_percentage_24h", 0),
+                "market_cap": item.get("market_cap", 0),
+                "volume_24h": item.get("total_volume", 0),
+            })
+    return results
+''',
+        "tags": ["加密货币", "BTC", "ETH", "CoinGecko", "crypto"],
+        "difficulty": "easy",
+    },
+
+    # ── 13. 期货行情（东方财富） ──
+    {
+        "name": "期货行情",
+        "description": "通过东方财富获取国内期货主力合约实时行情",
+        "category": "finance",
+        "icon": "📦",
+        "target_url": "http://push2.eastmoney.com/api/qt/clist/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """期货主力合约行情（东方财富）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://quote.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "pn": config.get("page", 1),
+        "pz": config.get("page_size", 20),
+        "po": 1, "np": 1, "fltt": 2, "invt": 2,
+        "fid": "f3",
+        "fs": "m:113,m:114,m:115,m:8,m:142",  # 国内期货
+        "fields": "f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18",
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "http://push2.eastmoney.com/api/qt/clist/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("data", {}) or {}).get("diff", []):
+            results.append({
+                "code": item.get("f12", ""),
+                "name": item.get("f14", ""),
+                "price": item.get("f2", 0),
+                "change_pct": item.get("f3", 0),
+                "open_interest": item.get("f18", 0),  # 持仓量
+                "volume": item.get("f5", 0),
+            })
+    return results
+''',
+        "tags": ["期货", "商品", "主力合约", "东方财富"],
+        "difficulty": "easy",
+    },
+
+    # ── 14. 融资融券数据 ──
+    {
+        "name": "融资融券数据",
+        "description": "获取沪深两市融资融券余额及交易数据",
+        "category": "finance",
+        "icon": "🔄",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """沪深融资融券数据（东财数据中心）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "reportName": "RPTA_WEB_RZRQ_SZSZ",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "DIM_DATE",
+        "sortTypes": "-1",
+        "pageNumber": 1,
+        "pageSize": config.get("page_size", 30),
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "date": item.get("DIM_DATE", ""),
+                "total_margin_buy": item.get("RZYE", 0),       # 融资余额
+                "total_margin_sell": item.get("RQYE", 0),      # 融券余额
+                "net_buy": item.get("RZMRE", 0),               # 融资买入额
+                "balance": item.get("RZRQYE", 0),              # 融资融券余额合计
+            })
+    return results
+''',
+        "tags": ["融资融券", "两融", "杠杆", "A股"],
+        "difficulty": "easy",
+    },
+
+    # ── 15. 北向资金/沪深港通 ──
+    {
+        "name": "北向资金沪深港通",
+        "description": "获取沪深港通北向资金每日净买入数据",
+        "category": "finance",
+        "icon": "🧭",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """北向资金/沪深港通净买入（东财数据中心）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "reportName": "RPT_MUTUAL_DEAL_HISTORY",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "TRADE_DATE",
+        "sortTypes": "-1",
+        "pageNumber": 1,
+        "pageSize": config.get("page_size", 30),
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "date": item.get("TRADE_DATE", ""),
+                "hk_to_sh": item.get("MUTUAL_A_DEALS_AMT", 0),   # 沪股通净买入
+                "hk_to_sz": item.get("MUTUAL_B_DEALS_AMT", 0),   # 深股通净买入
+                "total_net_buy": item.get("NET_DEAL_AMT", 0),     # 北向合计净买入
+            })
+    return results
+''',
+        "tags": ["北向资金", "沪深港通", "外资", "A股"],
+        "difficulty": "easy",
+    },
+
+    # ── 16. 新股/IPO信息 ──
+    {
+        "name": "新股IPO信息",
+        "description": "获取近期新股申购和上市信息",
+        "category": "finance",
+        "icon": "🆕",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """近期新股/IPO信息（东财数据中心）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    params = {
+        "reportName": "RPTA_APP_IPOAPPLY",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "APPLY_DATE",
+        "sortTypes": "-1",
+        "pageNumber": 1,
+        "pageSize": config.get("page_size", 30),
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "code": item.get("SECURITY_CODE", ""),
+                "name": item.get("SECURITY_NAME", ""),
+                "price": item.get("ISSUE_PRICE", 0),
+                "date": item.get("APPLY_DATE", ""),
+                "industry": item.get("INDUSTRY", ""),
+                "pe_ratio": item.get("PE_RATIO", 0),
+            })
+    return results
+''',
+        "tags": ["新股", "IPO", "打新", "申购"],
+        "difficulty": "easy",
+    },
+
+    # ── 17. 财经日历/经济数据 ──
+    {
+        "name": "财经日历",
+        "description": "获取全球重要经济数据发布日历，包括GDP、CPI、PMI等",
+        "category": "finance",
+        "icon": "📅",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+from datetime import datetime, timedelta
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """财经日历/经济数据（东财数据中心）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    # 默认查最近7天
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    params = {
+        "reportName": "RPT_ECONOMICVALUE_HKCAL",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "TRADE_DATE",
+        "sortTypes": "-1",
+        "pageNumber": 1,
+        "pageSize": config.get("page_size", 50),
+    }
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "time": item.get("TRADE_DATE", ""),
+                "country": item.get("COUNTRY", ""),
+                "event": item.get("INDICATOR_NAME", ""),
+                "importance": item.get("IMPORTANCE", ""),
+                "actual": item.get("ACTUAL_VALUE", ""),
+                "forecast": item.get("FORECAST_VALUE", ""),
+                "previous": item.get("PRE_VALUE", ""),
+            })
+    return results
+''',
+        "tags": ["财经日历", "经济数据", "宏观", "GDP", "CPI"],
+        "difficulty": "easy",
+    },
+
+    # ── 18. 股票公告/研报 ──
+    {
+        "name": "股票公告研报",
+        "description": "获取上市公司最新公告和研究报告",
+        "category": "finance",
+        "icon": "📄",
+        "target_url": "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        "mode": "code_generator",
+        "code": '''import httpx
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    """上市公司公告/研报（东财数据中心）"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://data.eastmoney.com/",
+    }
+    proxy = config.get("proxy")
+    proxies = {"http://": proxy, "https://": proxy} if proxy else None
+    # 可通过config传stock_code筛选特定股票
+    stock_code = config.get("stock_code", "")
+    params = {
+        "reportName": "RPT_REPORT_LIST",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "sortColumns": "NOTICE_DATE",
+        "sortTypes": "-1",
+        "pageNumber": config.get("page", 1),
+        "pageSize": config.get("page_size", 30),
+    }
+    if stock_code:
+        params["filter"] = f'(SECURITY_CODE="{stock_code}")'
+    results = []
+    async with httpx.AsyncClient(proxies=proxies, timeout=30, headers=headers) as client:
+        resp = await client.get(
+            url or "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        for item in (data.get("result", {}) or {}).get("data", []):
+            results.append({
+                "code": item.get("SECURITY_CODE", ""),
+                "name": item.get("SECURITY_NAME_ABBR", ""),
+                "title": item.get("TITLE", ""),
+                "date": item.get("NOTICE_DATE", ""),
+                "type": item.get("NOTICE_TYPE", ""),
+                "url": item.get("INFO_CODE", ""),
+            })
+    return results
+''',
+        "tags": ["公告", "研报", "A股", "信息披露"],
+        "difficulty": "easy",
+    },
 ]
 
 # Category label mapping

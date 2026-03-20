@@ -63,6 +63,12 @@ DEFAULT_CONFIGS = [
     {"key": "notify_task_failed", "value": "true", "category": "notification", "label": "任务失败通知", "description": "任务失败时发送通知", "field_type": "boolean", "sort_order": 2},
     {"key": "notify_worker_offline", "value": "true", "category": "notification", "label": "Worker离线通知", "description": "Worker离线时发送通知", "field_type": "boolean", "sort_order": 3},
     {"key": "webhook_url", "value": "", "category": "notification", "label": "Webhook URL", "description": "通知发送的Webhook地址", "field_type": "text", "sort_order": 4},
+
+    # Browser / anti-detection
+    {"key": "default_stealth_level", "value": "off", "category": "browser", "label": "默认反爬等级", "description": "新项目的默认反爬伪装等级", "field_type": "select", "options": '["off","basic","medium","full"]', "sort_order": 1},
+    {"key": "screenshot_retention_days", "value": "7", "category": "browser", "label": "截图保留天数", "description": "自动清理超过此天数的截图", "field_type": "number", "sort_order": 2},
+    {"key": "screenshot_max_storage_mb", "value": "500", "category": "browser", "label": "截图最大存储(MB)", "description": "截图目录最大占用空间", "field_type": "number", "sort_order": 3},
+    {"key": "enable_screenshot_default", "value": "false", "category": "browser", "label": "默认开启截图", "description": "新项目是否默认开启截图存证", "field_type": "boolean", "sort_order": 4},
 ]
 
 
