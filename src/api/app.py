@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -22,6 +23,10 @@ from src.api.v1.settings import router as settings_router
 from src.api.v1.deploy import router as deploy_router
 from src.api.v1.seeds import router as seeds_router
 from src.api.v1.browser_sessions import router as browser_sessions_router
+from src.api.v1.stats import router as stats_router
+from src.api.v1.export import router as export_router
+from src.api.v1.notifications import router as notifications_router
+from src.api.v1.quota import router as quota_router
 from src.api.ws import ws_manager
 
 # Configure logging before anything else
@@ -65,7 +70,14 @@ async def lifespan(app: FastAPI):
     logger.info("AI Spider stopped")
 
 
-app = FastAPI(title="AI Spider", version="2.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="AI Spider API",
+    description="AI驱动的智能爬虫平台",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
 
 # ── Include routers ──
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
@@ -80,6 +92,10 @@ app.include_router(settings_router, prefix="/api/v1")
 app.include_router(deploy_router, prefix="/api/v1")
 app.include_router(seeds_router, prefix="/api/v1")
 app.include_router(browser_sessions_router, prefix="/api/v1")
+app.include_router(stats_router, prefix="/api/v1")
+app.include_router(export_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(quota_router, prefix="/api/v1")
 
 # Also mount under /api/ for backward compat
 app.include_router(projects.router, prefix="/api", tags=["projects-compat"], include_in_schema=False)
@@ -96,6 +112,20 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(RequestLogMiddleware)
+
+
+# ── Rate limit middleware ──
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        api_key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
+        if api_key and api_key.startswith("sk-"):
+            from src.core.quota import quota_manager
+            allowed = await quota_manager.check_rate_limit(api_key, limit=60, window=60)
+            if not allowed:
+                return JSONResponse({"error": "Rate limit exceeded (60/min)"}, status_code=429)
+        return await call_next(request)
+
+app.add_middleware(RateLimitMiddleware)
 
 
 # ── Global exception handlers ──
@@ -133,6 +163,15 @@ async def admin_page():
     if p.exists():
         return HTMLResponse(p.read_text("utf-8"))
     return HTMLResponse("<h1>Admin</h1>")
+
+
+@app.get("/login")
+async def login_page():
+    """登录/注册页面"""
+    p = WEB_DIR / "templates" / "login.html"
+    if p.exists():
+        return FileResponse(str(p), media_type="text/html")
+    return HTMLResponse("<h1>Login</h1>")
 
 
 # ── Admin API (backward compat wrapper) ──

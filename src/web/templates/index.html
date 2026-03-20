@@ -166,7 +166,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   <header class="app-header">
     <div class="logo"><i class="ri-spider-line"></i> AI Spider</div>
     <div class="user-info">
+      <span id="quota-bar" style="font-size:12px;color:var(--text-secondary);margin-right:8px"></span>
       <span id="display-username"></span>
+      <button onclick="showNotificationSettings()" title="通知设置"><i class="ri-notification-3-line"></i></button>
       <button onclick="logout()"><i class="ri-logout-box-r-line"></i> 退出</button>
     </div>
   </header>
@@ -433,6 +435,11 @@ const pathParts = location.pathname.split('/');
 const spiderIdx = pathParts.indexOf('spider');
 const API_BASE = spiderIdx >= 0 ? pathParts.slice(0, spiderIdx + 1).join('/') : '';
 
+// Auth check
+if (!localStorage.getItem('api_key')) {
+  location.href = API_BASE + '/login';
+}
+
 let isRegister = false;
 let currentProject = null;
 let allData = [];
@@ -493,8 +500,7 @@ async function doAuth() {
 function logout() {
   localStorage.removeItem('api_key');
   localStorage.removeItem('username');
-  document.getElementById('app-main').classList.add('hidden');
-  document.getElementById('page-auth').classList.remove('hidden');
+  location.href = API_BASE + '/login';
 }
 
 function enterApp() {
@@ -502,6 +508,7 @@ function enterApp() {
   document.getElementById('app-main').classList.remove('hidden');
   document.getElementById('display-username').textContent = localStorage.getItem('username') || '';
   connectWS();
+  loadQuotaBar();
   switchPage('projects');
 }
 
@@ -1030,6 +1037,8 @@ async function loadTasks() {
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         ${t.status==='running'||t.status==='pending'?`<button class="btn btn-secondary btn-sm" onclick="taskAction('${t.id}','cancel')">取消</button>`:''}
         ${t.status==='failed'?`<button class="btn btn-secondary btn-sm" onclick="taskAction('${t.id}','retry')">重试</button>`:''}
+        ${t.status==='retrying'?`<span style="font-size:11px;color:var(--warning)">重试中(${t.retry_count||0}/${t.max_retries||3})</span>`:''}
+        ${t.status==='success'?`<div class="dropdown" style="display:inline-block"><button class="btn btn-secondary btn-sm" onclick="this.nextElementSibling.classList.toggle('show')">📥 导出</button><div class="dropdown-menu" style="display:none;position:absolute;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:4px;z-index:10"><a href="#" onclick="exportTaskData('${t.id}','csv');return false" style="display:block;padding:4px 8px">CSV</a><a href="#" onclick="exportTaskData('${t.id}','json');return false" style="display:block;padding:4px 8px">JSON</a><a href="#" onclick="exportTaskData('${t.id}','excel');return false" style="display:block;padding:4px 8px">Excel</a></div></div>`:''}
         <button class="btn btn-danger btn-sm" onclick="taskAction('${t.id}','delete')">删除</button>
       </td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
   } catch(e) { toast(e.message,'error'); }
@@ -1084,6 +1093,59 @@ function exportData(fmt) {
   let url = API_BASE + `/api/v1/data/export?format=${fmt}`;
   if (pid) url += `&project_id=${pid}`;
   window.open(url, '_blank');
+}
+
+function exportTaskData(taskId, fmt) {
+  window.open(API_BASE + `/api/v1/export/${taskId}?format=${fmt}`, '_blank');
+}
+
+async function loadQuotaBar() {
+  try {
+    const r = await apiFetch('/api/v1/quota');
+    const el = document.getElementById('quota-bar');
+    if (el && r) el.textContent = `今日任务 ${r.daily_tasks_used}/${r.daily_tasks_limit} | 存储 ${r.used_mb}/${r.limit_mb}MB`;
+  } catch(e) {}
+}
+
+async function showNotificationSettings() {
+  try {
+    const cfg = await apiFetch('/api/v1/notifications/config');
+    const html = `<div style="padding:20px">
+      <h3>🔔 通知设置</h3>
+      <label>Webhook URL</label><input id="noti-webhook" class="form-input" value="${cfg.webhook_url||''}" placeholder="https://...">
+      <label>邮箱</label><input id="noti-email" class="form-input" value="${cfg.email||''}" placeholder="user@example.com">
+      <label>Telegram Chat ID</label><input id="noti-telegram" class="form-input" value="${cfg.telegram_chat_id||''}" placeholder="123456">
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveNotificationConfig()">保存</button>
+        <button class="btn btn-secondary" onclick="testNotification()">发送测试</button>
+      </div>
+    </div>`;
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'noti-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = `<div style="background:var(--card-bg);border-radius:12px;max-width:450px;width:90%">${html}<button class="btn btn-secondary" style="margin:0 20px 20px" onclick="this.closest('.modal-overlay').remove()">关闭</button></div>`;
+    document.body.appendChild(modal);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function saveNotificationConfig() {
+  try {
+    await apiFetch('/api/v1/notifications/config', {method:'POST', body:JSON.stringify({
+      webhook_url: document.getElementById('noti-webhook').value,
+      email: document.getElementById('noti-email').value,
+      telegram_chat_id: document.getElementById('noti-telegram').value,
+    })});
+    toast('通知配置已保存','success');
+    document.getElementById('noti-modal')?.remove();
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function testNotification() {
+  try {
+    await apiFetch('/api/v1/notifications/test', {method:'POST'});
+    toast('测试通知已发送','success');
+  } catch(e) { toast(e.message,'error'); }
 }
 
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }

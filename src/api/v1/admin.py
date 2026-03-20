@@ -84,3 +84,28 @@ async def admin_stats(user: dict = Depends(require_admin)):
         "workers_online": workers_online,
         "data_records": data_records,
     }
+
+
+class UpdateQuotaReq(BaseModel):
+    daily_task_limit: int | None = None
+    storage_limit_mb: int | None = None
+    max_concurrent_tasks: int | None = None
+
+
+@router.put("/admin/users/{user_id}/quota")
+async def update_user_quota(user_id: str, req: UpdateQuotaReq, user: dict = Depends(require_admin)):
+    target = await db.get("users", user_id)
+    if not target:
+        raise HTTPException(404, "User not found")
+    update = {}
+    if req.daily_task_limit is not None:
+        update["daily_task_limit"] = req.daily_task_limit
+    if req.storage_limit_mb is not None:
+        update["storage_limit_mb"] = req.storage_limit_mb
+    if req.max_concurrent_tasks is not None:
+        update["max_concurrent_tasks"] = req.max_concurrent_tasks
+    if update:
+        from datetime import datetime
+        update["updated_at"] = datetime.now().isoformat()
+        await db.update("users", user_id, update)
+    return {"ok": True}

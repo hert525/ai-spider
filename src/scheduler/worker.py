@@ -151,7 +151,9 @@ class WorkerProcess:
         task_id = task["task_id"]
         run_id = task["run_id"]
         mode = task.get("mode", "code_generator")
-        logger.info(f"Executing task {task_id} (mode={mode})")
+        retry_count = task.get("retry_count", 0)
+        max_retries = task.get("max_retries", 3)
+        logger.info(f"Executing task {task_id} (mode={mode}, attempt={retry_count+1}/{max_retries+1})")
 
         try:
             target_urls = task.get("target_urls", [])
@@ -171,10 +173,51 @@ class WorkerProcess:
             self.total_completed += 1
             logger.info(f"Task {task_id} done: {len(all_items)} items")
 
+            # Notify on success
+            try:
+                from src.core.notifier import notifier
+                await notifier.notify("task_completed", {
+                    "task_id": task_id,
+                    "items_count": len(all_items),
+                    "pages_crawled": total_pages,
+                })
+            except Exception:
+                pass
+
         except Exception as e:
-            logger.error(f"Task {task_id} failed: {e}")
-            await self._report(task_id, run_id, "failed", error=str(e))
-            self.total_failed += 1
+            # Retry logic
+            if retry_count < max_retries:
+                retry_delays = [10, 30, 90]
+                delay = retry_delays[min(retry_count, len(retry_delays) - 1)]
+                logger.warning(f"Task {task_id} failed (attempt {retry_count+1}/{max_retries}), retrying in {delay}s: {e}")
+                try:
+                    await self._report(task_id, run_id, "retrying", error=str(e),
+                                       retry_count=retry_count + 1,
+                                       next_retry_at=(datetime.utcnow() + __import__('datetime').timedelta(seconds=delay)).isoformat())
+                except Exception:
+                    pass
+                await asyncio.sleep(delay)
+                task["retry_count"] = retry_count + 1
+                self.active_jobs -= 1
+                self._running_task_ids.discard(task_id)
+                self.active_jobs += 1
+                self._running_task_ids.add(task_id)
+                await self._execute_task(task)
+                return
+            else:
+                logger.error(f"Task {task_id} failed after {max_retries} retries: {e}")
+                await self._report(task_id, run_id, "failed", error=str(e))
+                self.total_failed += 1
+                # Notify on final failure
+                try:
+                    from src.core.notifier import notifier
+                    await notifier.notify("task_failed", {
+                        "task_id": task_id,
+                        "error": str(e),
+                        "retries": max_retries,
+                    })
+                except Exception:
+                    pass
         finally:
             self.active_jobs -= 1
             self._running_task_ids.discard(task_id)

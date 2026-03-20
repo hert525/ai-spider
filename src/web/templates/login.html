@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Spider - 登录</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0a0a0f;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#1a1a2e;border:1px solid #333;border-radius:16px;padding:40px;width:100%;max-width:420px;margin:20px}
+.logo{text-align:center;margin-bottom:32px}
+.logo h1{font-size:28px;color:#7c3aed}
+.logo .icon{font-size:48px;display:block;margin-bottom:8px}
+.logo p{color:#888;font-size:14px;margin-top:4px}
+.tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid #333}
+.tab{flex:1;padding:10px;text-align:center;cursor:pointer;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.2s}
+.tab.active{color:#7c3aed;border-bottom-color:#7c3aed}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;color:#aaa;margin-bottom:6px}
+.form-group input{width:100%;padding:10px 14px;background:#0d0d1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;outline:none;transition:.2s}
+.form-group input:focus{border-color:#7c3aed}
+.btn{width:100%;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;margin-top:8px}
+.btn:hover{background:#6d28d9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.error{background:#dc262620;border:1px solid #dc2626;color:#f87171;padding:10px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
+.switch{text-align:center;margin-top:16px;font-size:13px;color:#888}
+.switch a{color:#7c3aed;cursor:pointer;text-decoration:none}
+@media(max-width:480px){.card{margin:10px;padding:24px}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <span class="icon">🕷️</span>
+    <h1>AI Spider</h1>
+    <p>AI驱动的智能爬虫平台</p>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('login')" id="tab-login">登录</div>
+    <div class="tab" onclick="switchTab('register')" id="tab-register">注册</div>
+  </div>
+
+  <div id="error-box" class="error"></div>
+
+  <!-- Login Form -->
+  <div id="form-login">
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="login-email" placeholder="your@email.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="login-password" placeholder="输入密码" autocomplete="current-password">
+    </div>
+    <button class="btn" onclick="doLogin()" id="btn-login">登录</button>
+  </div>
+
+  <!-- Register Form -->
+  <div id="form-register" style="display:none">
+    <div class="form-group">
+      <label>昵称</label>
+      <input type="text" id="reg-name" placeholder="你的昵称">
+    </div>
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="reg-email" placeholder="your@email.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="reg-password" placeholder="至少6位" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label>确认密码</label>
+      <input type="password" id="reg-password2" placeholder="再次输入密码" autocomplete="new-password">
+    </div>
+    <button class="btn" onclick="doRegister()" id="btn-register">注册</button>
+  </div>
+
+  <div class="switch" id="switch-login">
+    还没有账号？<a onclick="switchTab('register')">立即注册</a>
+  </div>
+  <div class="switch" id="switch-register" style="display:none">
+    已有账号？<a onclick="switchTab('login')">去登录</a>
+  </div>
+</div>
+
+<script>
+const pathParts = location.pathname.split('/');
+const spiderIdx = pathParts.indexOf('spider');
+const API_BASE = spiderIdx >= 0 ? pathParts.slice(0, spiderIdx + 1).join('/') : '';
+const INDEX_URL = API_BASE + '/';
+
+// If already logged in, redirect
+if (localStorage.getItem('api_key')) {
+  location.href = INDEX_URL;
+}
+
+function switchTab(tab) {
+  document.getElementById('form-login').style.display = tab === 'login' ? '' : 'none';
+  document.getElementById('form-register').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('switch-login').style.display = tab === 'login' ? '' : 'none';
+  document.getElementById('switch-register').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('tab-login').className = 'tab' + (tab === 'login' ? ' active' : '');
+  document.getElementById('tab-register').className = 'tab' + (tab === 'register' ? ' active' : '');
+  hideError();
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideError() {
+  document.getElementById('error-box').style.display = 'none';
+}
+
+async function apiCall(path, body) {
+  const res = await fetch(API_BASE + path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || data.detail || '请求失败');
+  return data;
+}
+
+async function doLogin() {
+  hideError();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) return showError('请填写邮箱和密码');
+
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true;
+  try {
+    const res = await apiCall('/api/v1/auth/login', {email, password});
+    localStorage.setItem('api_key', res.api_key);
+    location.href = INDEX_URL;
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function doRegister() {
+  hideError();
+  const username = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const password2 = document.getElementById('reg-password2').value;
+
+  if (!username || !email || !password) return showError('请填写所有字段');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('邮箱格式不正确');
+  if (password.length < 6) return showError('密码至少6位');
+  if (password !== password2) return showError('两次密码不一致');
+
+  const btn = document.getElementById('btn-register');
+  btn.disabled = true;
+  try {
+    const res = await apiCall('/api/v1/auth/register', {email, username, password});
+    localStorage.setItem('api_key', res.api_key);
+    location.href = INDEX_URL;
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Enter key support
+document.getElementById('login-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('reg-password2').addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
+</script>
+</body>
+</html>

@@ -40,6 +40,12 @@ async def list_tasks(project_id: str = "", status: str = "", user: dict = Depend
 
 @router.post("/tasks")
 async def create_task(req: CreateTaskReq, user: dict = Depends(get_current_user)):
+    # Check daily quota
+    from src.core.quota import quota_manager
+    quota = await quota_manager.check_daily_quota(user.get("id", ""))
+    if not quota["allowed"]:
+        raise HTTPException(429, f"Daily task limit reached ({quota['daily_tasks_limit']})")
+
     proj = await db.get("projects", req.project_id)
     if not proj:
         raise HTTPException(400, "Project not found")

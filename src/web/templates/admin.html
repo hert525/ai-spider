@@ -195,12 +195,32 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
     <div class="page active" id="page-dashboard">
       <div class="page-title">仪表盘</div>
       <div class="stats-grid">
-        <div class="stat-card"><div class="label">👥 用户数</div><div class="value" id="s-users">-</div></div>
+        <div class="stat-card"><div class="label">👥 用户数</div><div class="value" id="s-users">-</div><div class="sub" id="s-users-sub"></div></div>
         <div class="stat-card"><div class="label">📁 项目数</div><div class="value" id="s-projects">-</div></div>
         <div class="stat-card"><div class="label">📋 任务数</div><div class="value" id="s-tasks">-</div><div class="sub" id="s-tasks-sub"></div></div>
+        <div class="stat-card"><div class="label">✅ 成功率</div><div class="value" id="s-success-rate">-</div></div>
+        <div class="stat-card"><div class="label">📦 数据量</div><div class="value" id="s-data">-</div></div>
         <div class="stat-card"><div class="label">🖥️ Worker节点</div><div class="value" id="s-workers">-</div><div class="sub" id="s-workers-sub"></div></div>
       </div>
-      <div class="page-title" style="font-size:16px;margin-bottom:16px">最近任务</div>
+
+      <div class="page-title" style="font-size:16px;margin:24px 0 12px">📈 最近7天任务趋势</div>
+      <div id="trend-chart" style="display:flex;align-items:flex-end;gap:6px;height:120px;padding:8px 0;"></div>
+
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:24px">
+        <div style="flex:1;min-width:300px">
+          <div class="page-title" style="font-size:16px;margin-bottom:12px">🔥 热门项目 TOP5</div>
+          <div class="table-wrap">
+            <table><thead><tr><th>项目名</th><th>任务数</th><th>数据量</th></tr></thead>
+            <tbody id="top-projects"></tbody></table>
+          </div>
+        </div>
+        <div style="flex:1;min-width:300px">
+          <div class="page-title" style="font-size:16px;margin-bottom:12px">🖥️ Worker状态</div>
+          <div id="worker-cards" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+
+      <div class="page-title" style="font-size:16px;margin:24px 0 12px">最近任务</div>
       <div class="table-wrap">
         <table><thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th></tr></thead>
         <tbody id="recent-tasks"></tbody></table>
@@ -436,7 +456,7 @@ async function checkAuth() {
 
 function showLogin() { document.getElementById('login-page').classList.remove('hidden'); document.getElementById('app').classList.add('hidden'); }
 function showApp() { document.getElementById('login-page').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); connectAdminWS(); }
-function doLogout() { API_KEY=''; localStorage.removeItem('admin_api_key'); showLogin(); if(_adminWs) { try{_adminWs.close();}catch(e){} } }
+function doLogout() { API_KEY=''; localStorage.removeItem('admin_api_key'); location.href = API_BASE + '/login'; if(_adminWs) { try{_adminWs.close();}catch(e){} } }
 
 // WebSocket for admin
 let _adminWs = null;
@@ -474,16 +494,79 @@ function switchPage(name) {
 
 // --- Dashboard ---
 async function loadDashboard() {
-  // Use admin stats endpoint
+  // Enhanced stats from /api/v1/stats/overview
   try {
-    const stats = await api('/api/v1/admin/stats');
-    if (stats) {
-      document.getElementById('s-users').textContent = stats.users ?? '-';
-      document.getElementById('s-projects').textContent = stats.projects ?? '-';
-      document.getElementById('s-tasks').textContent = stats.tasks ?? '-';
-      document.getElementById('s-tasks-sub').textContent = stats.tasks_running ? stats.tasks_running+' 运行中' : '';
-      document.getElementById('s-workers').textContent = stats.workers ?? '-';
-      document.getElementById('s-workers-sub').textContent = stats.workers_online ? stats.workers_online+' 在线' : '';
+    const ov = await api('/api/v1/stats/overview');
+    if (ov) {
+      document.getElementById('s-users').textContent = ov.total_users ?? '-';
+      document.getElementById('s-users-sub').textContent = ov.active_users_24h ? ov.active_users_24h+' 活跃(24h)' : '';
+      document.getElementById('s-projects').textContent = ov.total_projects ?? '-';
+      document.getElementById('s-tasks').textContent = ov.total_tasks ?? '-';
+      document.getElementById('s-tasks-sub').textContent = ov.tasks_today ? '今日 '+ov.tasks_today : '';
+      document.getElementById('s-success-rate').textContent = ov.tasks_success_rate !== undefined ? ov.tasks_success_rate+'%' : '-';
+      document.getElementById('s-data').textContent = ov.total_data_items ?? '-';
+      document.getElementById('s-workers').textContent = ov.active_workers ?? '-';
+      document.getElementById('s-workers-sub').textContent = '';
+    }
+  } catch(e) {
+    // Fallback to old stats
+    try {
+      const stats = await api('/api/v1/admin/stats');
+      if (stats) {
+        document.getElementById('s-users').textContent = stats.users ?? '-';
+        document.getElementById('s-projects').textContent = stats.projects ?? '-';
+        document.getElementById('s-tasks').textContent = stats.tasks ?? '-';
+        document.getElementById('s-workers').textContent = stats.workers ?? '-';
+      }
+    } catch(e2) {}
+  }
+
+  // Trend chart
+  try {
+    const trend = await api('/api/v1/stats/tasks/trend?days=7');
+    const chart = document.getElementById('trend-chart');
+    if (trend && trend.length) {
+      const maxVal = Math.max(...trend.map(d => d.total), 1);
+      chart.innerHTML = trend.map(d => {
+        const h = Math.max(d.total / maxVal * 100, 2);
+        const sh = d.total > 0 ? Math.max(d.success / d.total * h, 1) : 0;
+        const fh = d.total > 0 ? Math.max(d.failed / d.total * h, 0) : 0;
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
+          <div style="font-size:11px;color:#aaa">${d.total}</div>
+          <div style="width:100%;display:flex;flex-direction:column-reverse;height:${h}px">
+            <div style="background:#22c55e;height:${sh}px;border-radius:3px 3px 0 0"></div>
+            ${fh > 0 ? `<div style="background:#ef4444;height:${fh}px"></div>` : ''}
+          </div>
+          <div style="font-size:10px;color:#666">${d.date.slice(5)}</div>
+        </div>`;
+      }).join('');
+    } else {
+      chart.innerHTML = '<div style="color:#666;font-size:13px">暂无数据</div>';
+    }
+  } catch(e) { document.getElementById('trend-chart').innerHTML = ''; }
+
+  // Top projects
+  try {
+    const top = await api('/api/v1/stats/projects/top?limit=5');
+    const tb = document.getElementById('top-projects');
+    if (top && top.length) {
+      tb.innerHTML = top.map(p => `<tr><td>${p.name||p.project_id||'-'}</td><td>${p.task_count}</td><td>${p.data_count}</td></tr>`).join('');
+    } else {
+      tb.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#666">暂无数据</td></tr>';
+    }
+  } catch(e) {}
+
+  // Worker cards
+  try {
+    const wl = await api('/api/v1/stats/workers/load');
+    const wc = document.getElementById('worker-cards');
+    if (wl && wl.length) {
+      wc.innerHTML = wl.map(w => `<div style="background:#1a1a2e;border:1px solid ${w.status==='online'?'#22c55e':'#666'};border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${w.worker_id}</strong><br><span style="font-size:12px;color:#888">${w.status||'offline'}</span></div>
+        <div style="text-align:right;font-size:12px;color:#aaa">CPU: ${(w.cpu||0).toFixed(1)}% | Mem: ${(w.memory||0).toFixed(0)}MB<br>完成: ${w.tasks_completed||0}</div>
+      </div>`).join('');
+    } else {
+      wc.innerHTML = '<div style="color:#666;font-size:13px">无Worker在线</div>';
     }
   } catch(e) {}
 
@@ -522,12 +605,13 @@ async function loadUsers() {
       <td>${(u.id||'').toString().slice(0,8)}</td>
       <td>${u.email||'-'}</td><td>${u.username||'-'}</td>
       <td>${roleBadge(u.role)}</td>
-      <td>${u.quota_projects||'-'}/${u.quota_tasks||'-'}</td>
+      <td>${u.quota_projects||'-'}/${u.quota_tasks||'-'} | 日限${u.daily_task_limit||100} 存储${u.storage_limit_mb||500}MB</td>
       <td>${u.status==='suspended'?'<span class="badge badge-red">已封禁</span>':'<span class="badge badge-green">正常</span>'}</td>
       <td>${fmtTime(u.created_at)}</td>
       <td class="actions">
         <button class="btn btn-sm ${u.status==='suspended'?'btn-success':'btn-warn'}" onclick="toggleBan('${u.id}','${u.status}')">${u.status==='suspended'?'解封':'封禁'}</button>
         <button class="btn btn-sm btn-outline" onclick="changeRole('${u.id}')">改角色</button>
+        <button class="btn btn-sm btn-outline" onclick="editQuota('${u.id}',${u.daily_task_limit||100},${u.storage_limit_mb||500},${u.max_concurrent_tasks||5})">配额</button>
         <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">删除</button>
       </td></tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">暂无用户</td></tr>';
   } catch(e) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
@@ -545,6 +629,15 @@ async function changeRole(id) {
 async function deleteUser(id) {
   if (!confirm('确认删除该用户?')) return;
   try { const r = await api(`/api/v1/admin/users/${id}`, {method:'DELETE'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('已删除','success'); loadUsers(); } } catch(e) { toast('操作失败','error'); }
+}
+async function editQuota(id, daily, storage, concurrent) {
+  const d = prompt('每日任务限制:', daily); if(d===null) return;
+  const s = prompt('存储限制(MB):', storage); if(s===null) return;
+  const c = prompt('最大并发任务:', concurrent); if(c===null) return;
+  try {
+    await api(`/api/v1/admin/users/${id}/quota`, {method:'PUT', body:JSON.stringify({daily_task_limit:parseInt(d),storage_limit_mb:parseInt(s),max_concurrent_tasks:parseInt(c)})});
+    toast('配额已更新','success'); loadUsers();
+  } catch(e) { toast('更新失败: '+e.message,'error'); }
 }
 
 // --- Tasks ---

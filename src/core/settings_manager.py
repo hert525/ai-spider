@@ -63,6 +63,15 @@ DEFAULT_CONFIGS = [
     {"key": "notify_task_failed", "value": "true", "category": "notification", "label": "任务失败通知", "description": "任务失败时发送通知", "field_type": "boolean", "sort_order": 2},
     {"key": "notify_worker_offline", "value": "true", "category": "notification", "label": "Worker离线通知", "description": "Worker离线时发送通知", "field_type": "boolean", "sort_order": 3},
     {"key": "webhook_url", "value": "", "category": "notification", "label": "Webhook URL", "description": "通知发送的Webhook地址", "field_type": "text", "sort_order": 4},
+    {"key": "notification_webhook_url", "value": "", "category": "notification", "label": "通知Webhook URL", "description": "全局通知Webhook地址", "field_type": "text", "sort_order": 5},
+    {"key": "notification_smtp_host", "value": "", "category": "notification", "label": "SMTP主机", "description": "邮件通知SMTP服务器", "field_type": "text", "sort_order": 6},
+    {"key": "notification_smtp_port", "value": "587", "category": "notification", "label": "SMTP端口", "description": "SMTP端口", "field_type": "number", "sort_order": 7},
+    {"key": "notification_smtp_user", "value": "", "category": "notification", "label": "SMTP用户名", "description": "SMTP登录用户", "field_type": "text", "sort_order": 8},
+    {"key": "notification_smtp_pass", "value": "", "category": "notification", "label": "SMTP密码", "description": "SMTP登录密码", "field_type": "password", "sort_order": 9},
+    {"key": "notification_email_to", "value": "", "category": "notification", "label": "通知邮箱", "description": "接收通知的邮箱地址", "field_type": "text", "sort_order": 10},
+    {"key": "notification_telegram_bot_token", "value": "", "category": "notification", "label": "Telegram Bot Token", "description": "Telegram Bot的API Token", "field_type": "password", "sort_order": 11},
+    {"key": "notification_telegram_chat_id", "value": "", "category": "notification", "label": "Telegram Chat ID", "description": "接收通知的Telegram Chat ID", "field_type": "text", "sort_order": 12},
+    {"key": "notification_events", "value": "task_failed,worker_offline", "category": "notification", "label": "通知事件", "description": "触发通知的事件类型(逗号分隔)", "field_type": "text", "sort_order": 13},
 
     # Browser / anti-detection
     {"key": "default_stealth_level", "value": "off", "category": "browser", "label": "默认反爬等级", "description": "新项目的默认反爬伪装等级", "field_type": "select", "options": '["off","basic","medium","full"]', "sort_order": 1},

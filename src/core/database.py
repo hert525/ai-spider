@@ -185,6 +185,29 @@ CREATE TABLE IF NOT EXISTS browser_sessions (
     UNIQUE(user_id, domain)
 );
 
+CREATE TABLE IF NOT EXISTS notification_configs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    webhook_url TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    telegram_chat_id TEXT DEFAULT '',
+    events TEXT DEFAULT '["task_failed"]',
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS notification_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT DEFAULT '',
+    event TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    data TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'sent',
+    error TEXT DEFAULT '',
+    created_at TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS proxy_permissions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -253,6 +276,23 @@ async def init_db():
         logger.info("Added column projects.enable_screenshot")
     except Exception:
         pass
+    # Add data_hash to data_records for dedup
+    try:
+        await db.execute("ALTER TABLE data_records ADD COLUMN data_hash TEXT DEFAULT ''")
+        await db.commit()
+        logger.info("Added column data_records.data_hash")
+    except Exception:
+        pass
+    # Dedup indexes
+    for idx_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_data_records_hash ON data_records(data_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_data_records_project ON data_records(project_id)",
+    ]:
+        try:
+            await db.execute(idx_sql)
+            await db.commit()
+        except Exception:
+            pass
     # Add new worker columns
     for col, coltype in [
         ("memory_total_mb", "REAL DEFAULT 0"),
@@ -264,6 +304,29 @@ async def init_db():
     ]:
         try:
             await db.execute(f"ALTER TABLE workers ADD COLUMN {col} {coltype}")
+            await db.commit()
+        except Exception:
+            pass
+    # Add retry columns to task_runs
+    for col, coltype in [
+        ("retry_count", "INTEGER DEFAULT 0"),
+        ("max_retries", "INTEGER DEFAULT 3"),
+        ("next_retry_at", "TEXT DEFAULT ''"),
+        ("user_id", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE task_runs ADD COLUMN {col} {coltype}")
+            await db.commit()
+        except Exception:
+            pass
+    # Add quota columns to users
+    for col, coltype in [
+        ("daily_task_limit", "INTEGER DEFAULT 100"),
+        ("storage_limit_mb", "INTEGER DEFAULT 500"),
+        ("max_concurrent_tasks", "INTEGER DEFAULT 5"),
+    ]:
+        try:
+            await db.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
             await db.commit()
         except Exception:
             pass

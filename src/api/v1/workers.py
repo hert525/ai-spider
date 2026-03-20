@@ -188,15 +188,27 @@ async def worker_report(worker_id: str, req: WorkerReportReq):
         if req.items:
             task_data = await db.get("tasks", req.task_id)
             project_id = task_data["project_id"] if task_data else ""
+
+            # Clean and deduplicate
+            from src.engine.dedup import deduplicator
+            items = deduplicator.clean(req.items)
+            items = deduplicator.deduplicate(items)
+            if project_id:
+                items = await deduplicator.deduplicate_against_db(items, project_id)
+
             records = []
-            for item in req.items:
-                records.append(DataRecord(
+            for item in items:
+                data_hash = item.pop("_data_hash", "")
+                rec = DataRecord(
                     project_id=project_id,
                     task_id=req.task_id,
                     task_run_id=req.run_id,
                     data=item,
-                ).model_dump())
-            await db.insert_many("data_records", records)
+                ).model_dump()
+                rec["data_hash"] = data_hash
+                records.append(rec)
+            if records:
+                await db.insert_many("data_records", records)
 
         await task_manager.complete_task(
             req.task_id, req.run_id,
