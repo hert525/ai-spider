@@ -103,3 +103,37 @@ async def delete_task(tid: str):
     if not await task_manager.delete_task(tid):
         raise HTTPException(404)
     return {"ok": True}
+
+
+class BatchTaskIds(BaseModel):
+    task_ids: list[str]
+
+
+@router.post("/tasks/batch/cancel")
+async def batch_cancel_tasks(body: BatchTaskIds, user: dict = Depends(get_current_user)):
+    results = {"cancelled": 0, "failed": 0}
+    for tid in body.task_ids:
+        try:
+            ok = await task_manager.cancel_task(tid)
+            if ok:
+                results["cancelled"] += 1
+            else:
+                results["failed"] += 1
+        except Exception:
+            results["failed"] += 1
+    return results
+
+
+@router.post("/tasks/batch/delete")
+async def batch_delete_tasks(body: BatchTaskIds, user: dict = Depends(get_current_user)):
+    results = {"deleted": 0, "failed": 0}
+    for tid in body.task_ids:
+        try:
+            ok = await task_manager.delete_task(tid)
+            if ok:
+                results["deleted"] += 1
+            else:
+                results["failed"] += 1
+        except Exception:
+            results["failed"] += 1
+    return results

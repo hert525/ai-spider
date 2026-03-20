@@ -1,473 +1,510 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Spider - 管理后台</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
-    <style>
-    :root {
-        --bg-primary: #0a0a0f;
-        --bg-secondary: #12121a;
-        --bg-card: #16161f;
-        --bg-hover: #1c1c28;
-        --bg-input: #0e0e16;
-        --border: #262630;
-        --border-light: #2a2a36;
-        --text-primary: #e8e8ed;
-        --text-secondary: #8888a0;
-        --text-muted: #55556a;
-        --accent: #6c5ce7;
-        --accent-light: #7c6ff7;
-        --accent-glow: rgba(108,92,231,0.15);
-        --green: #00d68f;
-        --green-bg: rgba(0,214,143,0.1);
-        --red: #ff4757;
-        --red-bg: rgba(255,71,87,0.1);
-        --yellow: #ffa502;
-        --yellow-bg: rgba(255,165,2,0.1);
-        --blue: #3498ff;
-        --blue-bg: rgba(52,152,255,0.1);
-        --radius: 12px;
-        --radius-sm: 8px;
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Inter',-apple-system,sans-serif; background:var(--bg-primary); color:var(--text-primary); }
-    ::-webkit-scrollbar { width:6px; }
-    ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Spider 管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg-primary:#0a0a0f;--bg-secondary:#12121a;--bg-card:#16161f;
+--bg-hover:#1c1c28;--bg-input:#0e0e16;--border:#262630;
+--text-primary:#e8e8ed;--text-secondary:#8888a0;--text-muted:#55556a;
+--accent:#6c5ce7;--accent-light:#7c6ff7;
+--green:#00d68f;--red:#ff4757;--yellow:#ffa502;--blue:#3498ff;
+}
+.hidden{display:none!important}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh}
+a{color:var(--accent-light);text-decoration:none}
 
-    .layout { display:flex; min-height:100vh; }
+/* Toast */
+#toast{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast-item{padding:12px 20px;border-radius:8px;font-size:14px;color:#fff;animation:slideIn .3s;min-width:250px}
+.toast-item.success{background:var(--green)}.toast-item.error{background:var(--red)}.toast-item.info{background:var(--blue)}.toast-item.warn{background:var(--yellow);color:#000}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
 
-    /* ── Sidebar ── */
-    .sidebar {
-        width:220px; background:var(--bg-secondary); border-right:1px solid var(--border);
-        padding:20px 12px; display:flex; flex-direction:column; position:sticky; top:0; height:100vh;
-    }
-    .sidebar-logo { display:flex; align-items:center; gap:10px; padding:0 8px; margin-bottom:28px; }
-    .sidebar-logo-icon {
-        width:34px; height:34px; border-radius:10px;
-        background:linear-gradient(135deg,var(--accent),#a855f7);
-        display:flex; align-items:center; justify-content:center; font-size:16px; color:#fff;
-    }
-    .sidebar-logo-text { font-size:14px; font-weight:700; }
-    .sidebar-label { font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; padding:0 12px; margin:20px 0 8px; }
-    .sidebar-item {
-        display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm);
-        font-size:13px; color:var(--text-secondary); cursor:pointer; transition:all 0.15s;
-        text-decoration:none; margin-bottom:2px;
-    }
-    .sidebar-item:hover { background:var(--bg-hover); color:var(--text-primary); }
-    .sidebar-item.active { background:var(--accent-glow); color:var(--accent-light); }
-    .sidebar-item i { font-size:16px; width:20px; text-align:center; }
-    .sidebar-footer { margin-top:auto; padding:12px; border-top:1px solid var(--border); }
-    .sidebar-footer a { font-size:12px; color:var(--text-muted); text-decoration:none; display:flex; align-items:center; gap:6px; }
-    .sidebar-footer a:hover { color:var(--text-secondary); }
+/* Login */
+#login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg-primary)}
+.login-box{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:48px;width:400px;max-width:90vw}
+.login-box h1{text-align:center;margin-bottom:8px;font-size:24px}
+.login-box p{text-align:center;color:var(--text-secondary);margin-bottom:32px;font-size:14px}
+.form-group{margin-bottom:20px}
+.form-group label{display:block;margin-bottom:6px;font-size:13px;color:var(--text-secondary)}
+.form-group input{width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:14px;outline:none}
+.form-group input:focus{border-color:var(--accent)}
+.btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:all .2s}
+.btn-primary{background:var(--accent);color:#fff;width:100%}.btn-primary:hover{background:var(--accent-light)}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:6px}
+.btn-danger{background:var(--red);color:#fff}.btn-danger:hover{opacity:.85}
+.btn-success{background:var(--green);color:#fff}.btn-success:hover{opacity:.85}
+.btn-warn{background:var(--yellow);color:#000}.btn-warn:hover{opacity:.85}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text-secondary)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
 
-    /* ── Main ── */
-    .main { flex:1; padding:24px 32px; overflow-y:auto; }
-    .page-title { font-size:22px; font-weight:700; margin-bottom:20px; }
+/* Layout */
+#app{display:flex;min-height:100vh}
+#sidebar{width:220px;background:var(--bg-secondary);border-right:1px solid var(--border);position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:100}
+.sidebar-logo{padding:20px;font-size:16px;font-weight:700;color:var(--accent-light);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.sidebar-logo svg{width:22px;height:22px}
+.sidebar-nav{flex:1;padding:12px 0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--text-secondary);cursor:pointer;font-size:14px;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+.nav-item.active{color:var(--accent-light);background:var(--bg-hover);border-left-color:var(--accent)}
+.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+.sidebar-footer .logout-btn{color:var(--red);cursor:pointer;font-size:13px}
+.sidebar-footer .logout-btn:hover{text-decoration:underline}
 
-    /* ── Stat Cards ── */
-    .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
-    .stat-card {
-        background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
-        padding:18px 20px; position:relative; overflow:hidden;
-    }
-    .stat-card::after {
-        content:''; position:absolute; top:0; right:0; width:80px; height:80px;
-        border-radius:50%; opacity:0.06; transform:translate(20px,-20px);
-    }
-    .stat-card:nth-child(1)::after { background:var(--accent); }
-    .stat-card:nth-child(2)::after { background:var(--green); }
-    .stat-card:nth-child(3)::after { background:var(--blue); }
-    .stat-card:nth-child(4)::after { background:var(--yellow); }
-    .stat-label { font-size:12px; color:var(--text-muted); font-weight:500; margin-bottom:8px; }
-    .stat-value { font-size:28px; font-weight:700; letter-spacing:-1px; }
-    .stat-sub { font-size:11px; color:var(--text-muted); margin-top:4px; }
+#main{margin-left:220px;flex:1;padding:28px 32px;min-height:100vh}
+.page{display:none}.page.active{display:block}
+.page-title{font-size:22px;font-weight:600;margin-bottom:24px}
 
-    /* ── Card ── */
-    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); }
-    .card-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-    .card-title { font-size:14px; font-weight:600; }
-    .card-body { padding:16px 20px; }
+/* Cards */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:28px}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.stat-card .label{font-size:13px;color:var(--text-secondary);margin-bottom:8px}
+.stat-card .value{font-size:28px;font-weight:700}.stat-card .sub{font-size:12px;color:var(--text-muted);margin-top:4px}
 
-    /* ── Table ── */
-    .tbl { width:100%; border-collapse:collapse; font-size:13px; }
-    .tbl th { text-align:left; padding:10px 14px; color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
-    .tbl td { padding:10px 14px; border-bottom:1px solid rgba(38,38,48,0.5); color:var(--text-secondary); }
-    .tbl tr:hover td { background:var(--bg-hover); }
+/* Table */
+.table-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:12px 16px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--bg-secondary)}
+td{padding:10px 16px;font-size:13px;border-bottom:1px solid var(--border);color:var(--text-secondary)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg-hover)}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(0,214,143,.15);color:var(--green)}
+.badge-red{background:rgba(255,71,87,.15);color:var(--red)}
+.badge-yellow{background:rgba(255,165,2,.15);color:var(--yellow)}
+.badge-blue{background:rgba(52,152,255,.15);color:var(--blue)}
+.badge-purple{background:rgba(108,92,231,.15);color:var(--accent-light)}
+.badge-gray{background:rgba(136,136,160,.15);color:var(--text-muted)}
 
-    /* ── Badge ── */
-    .badge { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; }
-    .badge-dot { width:6px; height:6px; border-radius:50%; }
-    .badge-green { background:var(--green-bg); color:var(--green); }
-    .badge-green .badge-dot { background:var(--green); }
-    .badge-yellow { background:var(--yellow-bg); color:var(--yellow); }
-    .badge-yellow .badge-dot { background:var(--yellow); }
-    .badge-red { background:var(--red-bg); color:var(--red); }
-    .badge-red .badge-dot { background:var(--red); }
-    .badge-blue { background:var(--blue-bg); color:var(--blue); }
-    .badge-blue .badge-dot { background:var(--blue); }
-    .badge-gray { background:rgba(85,85,106,0.15); color:var(--text-muted); }
+/* Toolbar */
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.toolbar select,.toolbar input[type=text]{padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none}
+.toolbar select:focus,.toolbar input:focus{border-color:var(--accent)}
 
-    /* ── Buttons ── */
-    .btn { padding:5px 12px; border-radius:6px; font-size:11px; font-weight:500; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer; transition:all 0.15s; display:inline-flex; align-items:center; gap:4px; }
-    .btn:hover { background:var(--bg-hover); color:var(--text-primary); }
-    .btn-danger { color:var(--red); }
-    .btn-danger:hover { background:var(--red-bg); border-color:var(--red); }
+/* Worker cards */
+.worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.worker-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.worker-card h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.worker-meta{font-size:13px;color:var(--text-secondary);margin-bottom:6px;display:flex;justify-content:space-between}
+.progress-bar{height:6px;background:var(--bg-input);border-radius:3px;margin-top:4px;overflow:hidden}
+.progress-bar .fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
 
-    /* ── Worker Card ── */
-    .worker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
-    .worker-card { padding:18px 20px; }
-    .worker-name { font-size:14px; font-weight:600; }
-    .worker-meta { font-size:11px; color:var(--text-muted); margin-top:4px; }
-    .progress-bar { height:6px; background:var(--bg-input); border-radius:3px; margin-top:8px; overflow:hidden; }
-    .progress-fill { height:100%; border-radius:3px; transition:width 0.3s; }
+/* Log */
+#log-container{background:#000;border:1px solid var(--border);border-radius:12px;padding:16px;font-family:'Fira Code','Cascadia Code',monospace;font-size:12px;line-height:1.7;max-height:calc(100vh - 220px);overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.log-INFO{color:var(--blue)}.log-WARN{color:var(--yellow)}.log-ERROR{color:var(--red)}.log-DEBUG{color:var(--text-muted)}
 
-    /* ── Logs ── */
-    .log-view {
-        background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm);
-        padding:16px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px;
-        line-height:1.8; max-height:500px; overflow:auto; color:var(--text-secondary);
-    }
-    .log-info { color:var(--blue); }
-    .log-warn { color:var(--yellow); }
-    .log-error { color:var(--red); }
-    .log-time { color:var(--text-muted); }
+/* Settings */
+.settings-form{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;max-width:600px}
+.settings-form .form-group{margin-bottom:20px}
 
-    .hidden { display:none!important; }
-    .input { background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px; color:var(--text-primary); font-size:13px; font-family:inherit; outline:none; }
-    .input:focus { border-color:var(--accent); }
+/* Info card */
+.info-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:20px}
+.info-card h3{font-size:15px;margin-bottom:12px;color:var(--text-primary)}
+.info-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
+.info-row:last-child{border-bottom:none}
+.info-row .k{color:var(--text-muted)}.info-row .v{color:var(--text-secondary)}
 
-    @media(max-width:900px) { .stat-grid{grid-template-columns:repeat(2,1fr);} .sidebar{display:none;} }
-    </style>
+.actions{display:flex;gap:6px}
+.checkbox-col{width:40px}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+</style>
 </head>
 <body>
 
-<div class="layout">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div class="sidebar-logo">
-            <div class="sidebar-logo-icon"><i class="ri-bug-line"></i></div>
-            <div>
-                <div class="sidebar-logo-text">AI Spider</div>
-                <div style="font-size:10px;color:var(--text-muted)">管理后台</div>
-            </div>
-        </div>
+<div id="toast"></div>
 
-        <div class="sidebar-label">概览</div>
-        <a class="sidebar-item active" onclick="showPage('dashboard',this)"><i class="ri-dashboard-3-line"></i> 仪表盘</a>
-
-        <div class="sidebar-label">管理</div>
-        <a class="sidebar-item" onclick="showPage('tasks',this)"><i class="ri-play-circle-line"></i> 任务管理</a>
-        <a class="sidebar-item" onclick="showPage('workers',this)"><i class="ri-server-line"></i> Worker 节点</a>
-        <a class="sidebar-item" onclick="showPage('logs',this)"><i class="ri-file-list-3-line"></i> 系统日志</a>
-
-        <div class="sidebar-label">设置</div>
-        <a class="sidebar-item" onclick="showPage('settings',this)"><i class="ri-settings-3-line"></i> 系统设置</a>
-
-        <div class="sidebar-footer">
-            <a href="/" target="_blank"><i class="ri-external-link-line"></i> 用户端</a>
-        </div>
-    </aside>
-
-    <!-- Main -->
-    <div class="main">
-
-        <!-- ═══ Dashboard ═══ -->
-        <div id="page-dashboard">
-            <div class="page-title">📊 仪表盘</div>
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="stat-label">项目总数</div>
-                    <div class="stat-value" id="s-projects">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">任务总数</div>
-                    <div class="stat-value" id="s-tasks">-</div>
-                    <div class="stat-sub" id="s-tasks-sub"></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Worker 节点</div>
-                    <div class="stat-value" id="s-workers">-</div>
-                    <div class="stat-sub" id="s-workers-sub"></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">数据总量</div>
-                    <div class="stat-value" id="s-data">-</div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">最近任务</span>
-                </div>
-                <table class="tbl">
-                    <thead><tr><th>ID</th><th>状态</th><th>类型</th><th>创建时间</th></tr></thead>
-                    <tbody id="dash-tasks"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ═══ Tasks ═══ -->
-        <div id="page-tasks" class="hidden">
-            <div class="page-title" style="display:flex;align-items:center;justify-content:space-between">
-                <span>📋 任务管理</span>
-                <div style="display:flex;gap:8px">
-                    <select id="task-filter" class="input" style="width:130px;font-size:12px" onchange="loadAdminTasks()">
-                        <option value="">全部状态</option>
-                        <option value="queued">排队中</option>
-                        <option value="running">运行中</option>
-                        <option value="success">成功</option>
-                        <option value="failed">失败</option>
-                        <option value="cancelled">已取消</option>
-                    </select>
-                </div>
-            </div>
-            <div class="card">
-                <table class="tbl">
-                    <thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th><th>操作</th></tr></thead>
-                    <tbody id="admin-tasks"></tbody>
-                </table>
-                <div id="admin-tasks-empty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">暂无任务</div>
-            </div>
-        </div>
-
-        <!-- ═══ Workers ═══ -->
-        <div id="page-workers" class="hidden">
-            <div class="page-title">🖥️ Worker 节点</div>
-            <div id="worker-list" class="worker-grid"></div>
-            <div id="worker-empty" style="text-align:center;padding:60px;color:var(--text-muted);font-size:13px">
-                <i class="ri-server-line" style="font-size:36px;display:block;margin-bottom:12px;opacity:0.3"></i>
-                暂无 Worker 注册
-            </div>
-        </div>
-
-        <!-- ═══ Logs ═══ -->
-        <div id="page-logs" class="hidden">
-            <div class="page-title" style="display:flex;align-items:center;justify-content:space-between">
-                <span>📝 系统日志</span>
-                <div style="display:flex;gap:8px">
-                    <select id="log-level" class="input" style="width:100px;font-size:12px" onchange="loadLogs()">
-                        <option value="">全部</option>
-                        <option value="INFO">INFO</option>
-                        <option value="WARNING">WARN</option>
-                        <option value="ERROR">ERROR</option>
-                    </select>
-                    <button class="btn" onclick="loadLogs()"><i class="ri-refresh-line"></i> 刷新</button>
-                </div>
-            </div>
-            <div class="log-view" id="log-content">加载中...</div>
-        </div>
-
-        <!-- ═══ Settings ═══ -->
-        <div id="page-settings" class="hidden">
-            <div class="page-title">⚙️ 系统设置</div>
-            <div class="card" style="max-width:600px">
-                <div class="card-body">
-                    <div style="margin-bottom:16px">
-                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">LLM 模型</label>
-                        <input class="input" style="width:100%" id="set-model" placeholder="deepseek/deepseek-chat">
-                    </div>
-                    <div style="margin-bottom:16px">
-                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">Redis URL</label>
-                        <input class="input" style="width:100%" id="set-redis" placeholder="redis://127.0.0.1:6379/2">
-                    </div>
-                    <div style="margin-bottom:16px">
-                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">User-Agent</label>
-                        <input class="input" style="width:100%" id="set-ua">
-                    </div>
-                    <div style="margin-bottom:20px">
-                        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px">最大并发</label>
-                        <input class="input" style="width:120px" id="set-conc" type="number" value="5">
-                    </div>
-                    <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:8px 20px" onclick="saveSettings()">
-                        <i class="ri-save-line"></i> 保存设置
-                    </button>
-                </div>
-            </div>
-        </div>
-
+<!-- Login Page -->
+<div id="login-page">
+  <div class="login-box">
+    <h1>🕷️ AI Spider</h1>
+    <p>管理后台登录</p>
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="login-email" placeholder="admin@example.com">
     </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="login-password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">登 录</button>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" class="hidden">
+  <div id="sidebar">
+    <div class="sidebar-logo">🕷️ AI Spider 管理后台</div>
+    <div class="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">📊 仪表盘</div>
+      <div class="nav-item" data-page="users" onclick="switchPage('users')">👥 用户管理</div>
+      <div class="nav-item" data-page="tasks" onclick="switchPage('tasks')">📋 任务管理</div>
+      <div class="nav-item" data-page="workers" onclick="switchPage('workers')">🖥️ Worker节点</div>
+      <div class="nav-item" data-page="logs" onclick="switchPage('logs')">📜 系统日志</div>
+      <div class="nav-item" data-page="settings" onclick="switchPage('settings')">⚙️ 系统设置</div>
+    </div>
+    <div class="sidebar-footer">
+      <div id="admin-email" style="margin-bottom:8px"></div>
+      <span class="logout-btn" onclick="doLogout()">退出登录</span>
+    </div>
+  </div>
+
+  <div id="main">
+    <!-- Dashboard -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">仪表盘</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="label">👥 用户数</div><div class="value" id="s-users">-</div></div>
+        <div class="stat-card"><div class="label">📁 项目数</div><div class="value" id="s-projects">-</div></div>
+        <div class="stat-card"><div class="label">📋 任务数</div><div class="value" id="s-tasks">-</div><div class="sub" id="s-tasks-sub"></div></div>
+        <div class="stat-card"><div class="label">🖥️ Worker节点</div><div class="value" id="s-workers">-</div><div class="sub" id="s-workers-sub"></div></div>
+      </div>
+      <div class="page-title" style="font-size:16px;margin-bottom:16px">最近任务</div>
+      <div class="table-wrap">
+        <table><thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th></tr></thead>
+        <tbody id="recent-tasks"></tbody></table>
+      </div>
+      <div class="info-card" id="sys-info-card">
+        <h3>系统信息</h3>
+        <div id="sys-info-body"></div>
+      </div>
+    </div>
+
+    <!-- Users -->
+    <div class="page" id="page-users">
+      <div class="page-title">用户管理</div>
+      <div class="table-wrap">
+        <table><thead><tr><th>ID</th><th>邮箱</th><th>用户名</th><th>角色</th><th>配额</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead>
+        <tbody id="users-tbody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- Tasks -->
+    <div class="page" id="page-tasks">
+      <div class="page-title">任务管理</div>
+      <div class="toolbar">
+        <select id="task-status-filter" onchange="loadTasks()">
+          <option value="">全部状态</option>
+          <option value="pending">待处理</option>
+          <option value="running">运行中</option>
+          <option value="completed">已完成</option>
+          <option value="failed">失败</option>
+          <option value="cancelled">已取消</option>
+        </select>
+        <button class="btn btn-sm btn-outline" onclick="batchTaskAction('cancel')">批量取消</button>
+        <button class="btn btn-sm btn-danger" onclick="batchTaskAction('delete')">批量删除</button>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th class="checkbox-col"><input type="checkbox" id="task-select-all" onchange="toggleAllTasks(this)"></th><th>ID</th><th>用户</th><th>项目</th><th>状态</th><th>类型</th><th>优先级</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="tasks-tbody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- Workers -->
+    <div class="page" id="page-workers">
+      <div class="page-title">Worker节点</div>
+      <div class="worker-grid" id="workers-grid"></div>
+    </div>
+
+    <!-- Logs -->
+    <div class="page" id="page-logs">
+      <div class="page-title">系统日志</div>
+      <div class="toolbar">
+        <select id="log-level-filter" onchange="filterLogs()">
+          <option value="">全部</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option>
+        </select>
+        <button class="btn btn-sm btn-outline" onclick="loadLogs()">🔄 刷新</button>
+      </div>
+      <div id="log-container"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="page" id="page-settings">
+      <div class="page-title">系统设置</div>
+      <div class="settings-form">
+        <div class="form-group"><label>LLM 模型</label><input type="text" id="set-model" placeholder="gpt-4"></div>
+        <div class="form-group"><label>Redis URL</label><input type="text" id="set-redis" placeholder="redis://localhost:6379"></div>
+        <div class="form-group"><label>User-Agent</label><input type="text" id="set-ua" placeholder="AI-Spider/1.0"></div>
+        <div class="form-group"><label>最大并发</label><input type="text" id="set-concurrency" placeholder="10"></div>
+        <button class="btn btn-primary" style="width:auto" onclick="saveSettings()">保存设置</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-const API_BASE = (() => {
-    let base = location.pathname.replace(/\/admin\/?$/, '').replace(/\/$/, '');
-    return (path) => `${base}${path}`.replace(/\/\//g, '/');
-})();
+const API_BASE = location.pathname.replace(/\/admin\/?$/, '').replace(/\/$/, '');
+let API_KEY = localStorage.getItem('admin_api_key') || '';
+let allLogs = [];
 
-async function api(path, opts = {}) {
-    const url = API_BASE(path);
-    const res = await fetch(url, { headers:{'Content-Type':'application/json',...opts.headers}, ...opts });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+// --- Util ---
+function toast(msg, type='info') {
+  const d = document.createElement('div');
+  d.className = 'toast-item ' + type;
+  d.textContent = msg;
+  document.getElementById('toast').appendChild(d);
+  setTimeout(() => d.remove(), 3500);
 }
 
-function badge(status) {
-    const m = { draft:['草稿','gray'], generating:['生成中','blue'], generated:['已生成','green'], testing:['测试中','yellow'], tested:['已测试','green'], failed:['失败','red'], queued:['排队中','yellow'], running:['运行中','blue'], success:['成功','green'], cancelled:['已取消','gray'], paused:['暂停','gray'] };
-    const [t,c] = m[status] || [status,'gray'];
-    return `<span class="badge badge-${c}"><span class="badge-dot"></span>${t}</span>`;
+async function api(path, opts={}) {
+  const headers = {'Content-Type':'application/json'};
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  try {
+    const r = await fetch(API_BASE + path, {...opts, headers: {...headers, ...(opts.headers||{})}});
+    if (r.status === 401) { doLogout(); throw new Error('未授权'); }
+    if (r.status === 404) return null;
+    if (!r.ok) { const e = await r.text(); throw new Error(e); }
+    return await r.json();
+  } catch(e) { if(e.message!=='未授权') throw e; return null; }
 }
 
-function timeAgo(iso) {
-    if (!iso) return '-';
-    const s=(Date.now()-new Date(iso))/1000;
-    if(s<60)return'刚刚';if(s<3600)return`${Math.floor(s/60)}分钟前`;if(s<86400)return`${Math.floor(s/3600)}小时前`;return`${Math.floor(s/86400)}天前`;
+function fmtTime(t) {
+  if (!t) return '-';
+  return new Date(t).toLocaleString('zh-CN');
 }
 
-function showPage(page, el) {
-    ['dashboard','tasks','workers','logs','settings'].forEach(p => {
-        const d = document.getElementById(`page-${p}`);
-        if (d) d.classList.toggle('hidden', p !== page);
-    });
-    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-    if (el) el.classList.add('active');
-    if (page === 'dashboard') loadDashboard();
-    if (page === 'tasks') loadAdminTasks();
-    if (page === 'workers') loadWorkers();
-    if (page === 'logs') loadLogs();
-    if (page === 'settings') loadSettings();
+function statusBadge(s) {
+  const m = {pending:'badge-yellow',running:'badge-blue',completed:'badge-green',failed:'badge-red',cancelled:'badge-gray',success:'badge-green'};
+  return `<span class="badge ${m[s]||'badge-gray'}">${s||'-'}</span>`;
 }
 
+function roleBadge(r) {
+  return r === 'admin' ? '<span class="badge badge-purple">admin</span>' : '<span class="badge badge-gray">'+(r||'user')+'</span>';
+}
+
+// --- Auth ---
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pw = document.getElementById('login-password').value;
+  if (!email || !pw) return toast('请填写邮箱和密码','warn');
+  try {
+    const r = await api('/api/v1/auth/login', {method:'POST', body: JSON.stringify({email, password: pw})});
+    if (!r || !r.api_key) return toast('登录失败','error');
+    API_KEY = r.api_key;
+    localStorage.setItem('admin_api_key', API_KEY);
+    await checkAuth();
+  } catch(e) { toast('登录失败: '+e.message,'error'); }
+}
+
+async function checkAuth() {
+  try {
+    const me = await api('/api/v1/auth/me');
+    if (!me) { showLogin(); return; }
+    if (me.role !== 'admin') { toast('无管理员权限','error'); doLogout(); return; }
+    document.getElementById('admin-email').textContent = me.email || me.username || 'Admin';
+    showApp();
+    loadDashboard();
+  } catch(e) { showLogin(); }
+}
+
+function showLogin() { document.getElementById('login-page').classList.remove('hidden'); document.getElementById('app').classList.add('hidden'); }
+function showApp() { document.getElementById('login-page').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }
+function doLogout() { API_KEY=''; localStorage.removeItem('admin_api_key'); showLogin(); }
+
+// --- Navigation ---
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
+  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, logs:loadLogs};
+  if (loaders[name]) loaders[name]();
+}
+
+// --- Dashboard ---
 async function loadDashboard() {
-    try {
-        const [projects, tasks, workers] = await Promise.all([
-            api('/api/v1/projects'),
-            api('/api/v1/tasks'),
-            api('/api/v1/workers'),
-        ]);
-        document.getElementById('s-projects').textContent = projects.length;
-        document.getElementById('s-tasks').textContent = tasks.length;
-        const running = tasks.filter(t => t.status === 'running').length;
-        document.getElementById('s-tasks-sub').textContent = running ? `${running} 运行中` : '';
-        document.getElementById('s-workers').textContent = workers.length;
-        const online = workers.filter(w => w.status === 'online').length;
-        document.getElementById('s-workers-sub').textContent = online ? `${online} 在线` : '';
-
-        // Data count
-        try {
-            const data = await api('/api/v1/data?page_size=1');
-            document.getElementById('s-data').textContent = data.total || 0;
-        } catch { document.getElementById('s-data').textContent = '0'; }
-
-        // Recent tasks
-        const recent = tasks.slice(0, 8);
-        document.getElementById('dash-tasks').innerHTML = recent.length ?
-            recent.map(t => `<tr><td style="font-family:monospace;font-size:12px">${t.id.slice(0,10)}</td><td>${badge(t.status)}</td><td>${t.task_type}</td><td style="font-size:12px;color:var(--text-muted)">${timeAgo(t.created_at)}</td></tr>`).join('') :
-            '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted)">暂无任务</td></tr>';
-    } catch (e) { console.error(e); }
+  // Users
+  try { const d = await api('/api/v1/auth/users'); document.getElementById('s-users').textContent = d ? (Array.isArray(d) ? d.length : (d.total||d.count||'-')) : '-'; } catch(e) { document.getElementById('s-users').textContent = '-'; }
+  // Projects
+  try { const d = await api('/api/v1/projects'); document.getElementById('s-projects').textContent = d ? (Array.isArray(d) ? d.length : (d.total||d.count||'-')) : '-'; } catch(e) { document.getElementById('s-projects').textContent = '-'; }
+  // Tasks
+  try {
+    const d = await api('/api/v1/tasks');
+    if (d) {
+      const list = Array.isArray(d) ? d : (d.tasks||d.items||[]);
+      const total = d.total || list.length;
+      const running = list.filter(t=>t.status==='running').length;
+      document.getElementById('s-tasks').textContent = total;
+      document.getElementById('s-tasks-sub').textContent = running ? running+' 运行中' : '';
+      // Recent tasks
+      const recent = list.slice(0,8);
+      document.getElementById('recent-tasks').innerHTML = recent.length ? recent.map(t =>
+        `<tr><td>${(t.id||t.task_id||'').toString().slice(0,8)}</td><td>${t.project_name||t.project_id||'-'}</td><td>${statusBadge(t.status)}</td><td>${t.type||t.task_type||'-'}</td><td>${fmtTime(t.created_at)}</td></tr>`
+      ).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
+    } else { document.getElementById('s-tasks').textContent = '-'; }
+  } catch(e) { document.getElementById('s-tasks').textContent = '-'; }
+  // Workers
+  try {
+    const d = await api('/api/v1/workers');
+    if (d) {
+      const list = Array.isArray(d) ? d : (d.workers||d.items||[]);
+      const total = d.total || list.length;
+      const online = list.filter(w=>w.status==='online'||w.is_online).length;
+      document.getElementById('s-workers').textContent = total;
+      document.getElementById('s-workers-sub').textContent = online ? online+' 在线' : '';
+    } else { document.getElementById('s-workers').textContent = '-'; }
+  } catch(e) { document.getElementById('s-workers').textContent = '-'; }
+  // System info
+  try {
+    const d = await api('/api/v1/system/info');
+    if (d) {
+      const entries = Object.entries(d).filter(([k])=>!k.startsWith('_'));
+      document.getElementById('sys-info-body').innerHTML = entries.map(([k,v])=>
+        `<div class="info-row"><span class="k">${k}</span><span class="v">${typeof v==='object'?JSON.stringify(v):v}</span></div>`
+      ).join('');
+    } else { document.getElementById('sys-info-body').innerHTML = '<div class="info-row"><span class="k">状态</span><span class="v">无法获取</span></div>'; }
+  } catch(e) { document.getElementById('sys-info-body').innerHTML = '<div class="info-row"><span class="k">状态</span><span class="v">无法获取</span></div>'; }
 }
 
-async function loadAdminTasks() {
-    try {
-        const filter = document.getElementById('task-filter').value;
-        let tasks = await api('/api/v1/tasks');
-        if (filter) tasks = tasks.filter(t => t.status === filter);
-        const tbody = document.getElementById('admin-tasks');
-        const empty = document.getElementById('admin-tasks-empty');
-        if (!tasks.length) { tbody.innerHTML = ''; empty.classList.remove('hidden'); return; }
-        empty.classList.add('hidden');
-        tbody.innerHTML = tasks.map(t => `
-            <tr>
-                <td style="font-family:monospace;font-size:12px">${t.id.slice(0,10)}</td>
-                <td style="font-size:12px">${t.project_id ? t.project_id.slice(0,8) : '-'}</td>
-                <td>${badge(t.status)}</td>
-                <td>${t.task_type}</td>
-                <td style="font-size:12px;color:var(--text-muted)">${timeAgo(t.created_at)}</td>
-                <td>
-                    <div style="display:flex;gap:4px">
-                        ${['failed','cancelled'].includes(t.status)?`<button class="btn" onclick="retryTask('${t.id}')"><i class="ri-restart-line"></i></button>`:''}
-                        ${['running','queued'].includes(t.status)?`<button class="btn" onclick="cancelTask('${t.id}')"><i class="ri-stop-line"></i></button>`:''}
-                        <button class="btn btn-danger" onclick="deleteTask('${t.id}')"><i class="ri-delete-bin-6-line"></i></button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-    } catch (e) { console.error(e); }
+// --- Users ---
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  try {
+    const d = await api('/api/v1/auth/users');
+    if (!d) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">接口不可用</td></tr>'; return; }
+    const list = Array.isArray(d) ? d : (d.users||d.items||[]);
+    tbody.innerHTML = list.length ? list.map(u => `<tr>
+      <td>${(u.id||'').toString().slice(0,8)}</td>
+      <td>${u.email||'-'}</td><td>${u.username||'-'}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td>${u.quota||u.credits||'-'}</td>
+      <td>${u.is_active===false||u.status==='banned'?'<span class="badge badge-red">已封禁</span>':'<span class="badge badge-green">正常</span>'}</td>
+      <td>${fmtTime(u.created_at)}</td>
+      <td class="actions">
+        <button class="btn btn-sm ${u.is_active===false||u.status==='banned'?'btn-success':'btn-warn'}" onclick="toggleBan('${u.id}')">${u.is_active===false||u.status==='banned'?'解封':'封禁'}</button>
+        <button class="btn btn-sm btn-outline" onclick="changeRole('${u.id}')">改角色</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">删除</button>
+      </td></tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">暂无用户</td></tr>';
+  } catch(e) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
 }
 
-async function retryTask(id) { await api(`/api/v1/tasks/${id}/retry`,{method:'POST'}); loadAdminTasks(); }
-async function cancelTask(id) { await api(`/api/v1/tasks/${id}/cancel`,{method:'POST'}); loadAdminTasks(); }
-async function deleteTask(id) { if(confirm('确定删除？')){await api(`/api/v1/tasks/${id}`,{method:'DELETE'}); loadAdminTasks();} }
+async function toggleBan(id) {
+  try { const r = await api(`/api/v1/admin/users/${id}/ban`, {method:'POST'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('操作成功','success'); loadUsers(); } } catch(e) { toast('操作失败','error'); }
+}
+async function changeRole(id) {
+  const role = prompt('输入新角色 (admin/user):');
+  if (!role) return;
+  try { const r = await api(`/api/v1/admin/users/${id}/role`, {method:'PUT', body:JSON.stringify({role})}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('角色已更新','success'); loadUsers(); } } catch(e) { toast('操作失败','error'); }
+}
+async function deleteUser(id) {
+  if (!confirm('确认删除该用户?')) return;
+  try { const r = await api(`/api/v1/admin/users/${id}`, {method:'DELETE'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('已删除','success'); loadUsers(); } } catch(e) { toast('操作失败','error'); }
+}
 
+// --- Tasks ---
+async function loadTasks() {
+  const tbody = document.getElementById('tasks-tbody');
+  const status = document.getElementById('task-status-filter').value;
+  try {
+    let url = '/api/v1/tasks';
+    if (status) url += '?status=' + status;
+    const d = await api(url);
+    if (!d) { tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">无数据</td></tr>'; return; }
+    const list = Array.isArray(d) ? d : (d.tasks||d.items||[]);
+    document.getElementById('task-select-all').checked = false;
+    tbody.innerHTML = list.length ? list.map(t => `<tr>
+      <td class="checkbox-col"><input type="checkbox" class="task-cb" value="${t.id||t.task_id}"></td>
+      <td>${(t.id||t.task_id||'').toString().slice(0,8)}</td>
+      <td>${t.user_id||t.username||'-'}</td>
+      <td>${t.project_name||t.project_id||'-'}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td>${t.type||t.task_type||'-'}</td>
+      <td>${t.priority||'-'}</td>
+      <td>${fmtTime(t.created_at)}</td>
+      <td class="actions">
+        <button class="btn btn-sm btn-warn" onclick="taskAction('${t.id||t.task_id}','cancel')">取消</button>
+        <button class="btn btn-sm btn-outline" onclick="taskAction('${t.id||t.task_id}','retry')">重试</button>
+        <button class="btn btn-sm btn-danger" onclick="taskAction('${t.id||t.task_id}','delete')">删除</button>
+      </td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
+  } catch(e) { tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
+}
+
+function toggleAllTasks(el) {
+  document.querySelectorAll('.task-cb').forEach(cb => cb.checked = el.checked);
+}
+
+function getSelectedTaskIds() {
+  return [...document.querySelectorAll('.task-cb:checked')].map(cb => cb.value);
+}
+
+async function taskAction(id, action) {
+  try {
+    let r;
+    if (action === 'delete') { if(!confirm('确认删除?'))return; r = await api(`/api/v1/tasks/${id}`,{method:'DELETE'}); }
+    else if (action === 'cancel') { r = await api(`/api/v1/tasks/${id}/cancel`,{method:'POST'}); }
+    else if (action === 'retry') { r = await api(`/api/v1/tasks/${id}/retry`,{method:'POST'}); }
+    if(r===null) toast('接口暂不可用(404)','warn'); else { toast('操作成功','success'); loadTasks(); }
+  } catch(e) { toast('操作失败','error'); }
+}
+
+async function batchTaskAction(action) {
+  const ids = getSelectedTaskIds();
+  if (!ids.length) return toast('请先选择任务','warn');
+  if (action==='delete' && !confirm(`确认删除 ${ids.length} 个任务?`)) return;
+  for (const id of ids) await taskAction(id, action);
+}
+
+// --- Workers ---
 async function loadWorkers() {
-    try {
-        const workers = await api('/api/v1/workers');
-        const list = document.getElementById('worker-list');
-        const empty = document.getElementById('worker-empty');
-        if (!workers.length) { list.innerHTML = ''; empty.style.display = ''; return; }
-        empty.style.display = 'none';
-        list.innerHTML = workers.map(w => {
-            const cpu = w.cpu_percent || 0;
-            const cpuColor = cpu > 80 ? 'var(--red)' : cpu > 50 ? 'var(--yellow)' : 'var(--green)';
-            return `
-            <div class="card worker-card">
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                    <div>
-                        <span class="worker-name">${w.hostname || w.id}</span>
-                        <span class="badge badge-${w.status === 'online' ? 'green' : 'red'}" style="margin-left:8px">
-                            <span class="badge-dot"></span>${w.status === 'online' ? '在线' : '离线'}
-                        </span>
-                    </div>
-                    <button class="btn btn-danger" style="font-size:10px" onclick="removeWorker('${w.id}')"><i class="ri-close-line"></i></button>
-                </div>
-                <div class="worker-meta">${w.ip || ''} · 并发 ${w.max_concurrency || '-'} · 活跃 ${w.active_jobs || 0}</div>
-                <div style="margin-top:12px">
-                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px">
-                        <span>CPU</span><span>${cpu.toFixed(1)}%</span>
-                    </div>
-                    <div class="progress-bar"><div class="progress-fill" style="width:${cpu}%;background:${cpuColor}"></div></div>
-                </div>
-                <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;color:var(--text-muted)">
-                    <span>内存 ${(w.memory_mb || 0).toFixed(0)}MB</span>
-                    <span>完成 ${w.total_completed || 0}</span>
-                    <span>失败 ${w.total_failed || 0}</span>
-                </div>
-            </div>`;
-        }).join('');
-    } catch (e) { console.error(e); }
+  const grid = document.getElementById('workers-grid');
+  try {
+    const d = await api('/api/v1/workers');
+    if (!d) { grid.innerHTML='<div style="color:var(--text-muted)">无数据</div>'; return; }
+    const list = Array.isArray(d) ? d : (d.workers||d.items||[]);
+    grid.innerHTML = list.length ? list.map(w => {
+      const online = w.status==='online'||w.is_online;
+      const cpu = w.cpu_usage||w.cpu_percent||0;
+      const mem = w.memory_usage||w.memory_percent||w.mem_usage||0;
+      return `<div class="worker-card">
+        <h3>${w.hostname||w.name||'Worker'} ${online?'<span class="badge badge-green">在线</span>':'<span class="badge badge-red">离线</span>'}</h3>
+        <div class="worker-meta"><span>IP: ${w.ip||w.ip_address||'-'}</span><span>并发: ${w.concurrency||w.max_concurrency||'-'}</span></div>
+        <div class="worker-meta"><span>CPU</span><span>${cpu}%</span></div>
+        <div class="progress-bar"><div class="fill" style="width:${cpu}%"></div></div>
+        <div class="worker-meta" style="margin-top:8px"><span>内存</span><span>${typeof mem==='number'?mem+'%':mem}</span></div>
+        <div class="worker-meta" style="margin-top:8px"><span>✅ ${w.tasks_completed||w.completed||0} 完成</span><span>❌ ${w.tasks_failed||w.failed||0} 失败</span></div>
+        <button class="btn btn-sm btn-danger" style="margin-top:12px" onclick="removeWorker('${w.id||w.worker_id}')">移除</button>
+      </div>`;
+    }).join('') : '<div style="color:var(--text-muted)">暂无Worker节点</div>';
+  } catch(e) { grid.innerHTML='<div style="color:var(--text-muted)">加载失败</div>'; }
 }
 
 async function removeWorker(id) {
-    if (!confirm('移除此Worker？')) return;
-    await api(`/api/v1/workers/${id}`, { method: 'DELETE' });
-    loadWorkers();
+  if (!confirm('确认移除该Worker?')) return;
+  try { const r = await api(`/api/v1/workers/${id}`,{method:'DELETE'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('已移除','success'); loadWorkers(); } } catch(e) { toast('操作失败','error'); }
 }
 
+// --- Logs ---
 async function loadLogs() {
-    const level = document.getElementById('log-level').value;
-    try {
-        const logs = await api(`/api/v1/system/logs?level=${level}&limit=100`);
-        const el = document.getElementById('log-content');
-        if (!logs.length) { el.innerHTML = '<span style="color:var(--text-muted)">暂无日志</span>'; return; }
-        el.innerHTML = logs.map(l => {
-            const cls = l.level === 'ERROR' ? 'log-error' : l.level === 'WARNING' ? 'log-warn' : 'log-info';
-            return `<div><span class="log-time">${l.time || ''}</span> <span class="${cls}">[${l.level}]</span> ${l.message}</div>`;
-        }).join('');
-        el.scrollTop = el.scrollHeight;
-    } catch {
-        document.getElementById('log-content').innerHTML = '<span style="color:var(--text-muted)">日志接口暂不可用</span>';
-    }
+  try {
+    const d = await api('/api/v1/system/logs');
+    if (!d) { document.getElementById('log-container').textContent = '接口不可用'; return; }
+    allLogs = Array.isArray(d) ? d : (d.logs||d.items||[]);
+    filterLogs();
+  } catch(e) { document.getElementById('log-container').textContent = '加载失败'; }
 }
 
-async function loadSettings() {
-    try {
-        const info = await api('/api/v1/system/info');
-        document.getElementById('set-model').value = info.llm_model || '';
-        document.getElementById('set-redis').value = info.redis_url || '';
-        document.getElementById('set-ua').value = info.user_agent || '';
-        document.getElementById('set-conc').value = info.max_concurrency || 5;
-    } catch {}
+function filterLogs() {
+  const level = document.getElementById('log-level-filter').value;
+  const filtered = level ? allLogs.filter(l => (l.level||'').toUpperCase() === level) : allLogs;
+  const container = document.getElementById('log-container');
+  container.innerHTML = filtered.length ? filtered.map(l => {
+    const lv = (l.level||'INFO').toUpperCase();
+    const ts = l.timestamp || l.time || '';
+    const msg = l.message || l.msg || JSON.stringify(l);
+    return `<div><span class="log-${lv}" style="font-weight:600">[${lv}]</span> <span style="color:var(--text-muted)">${ts}</span> ${msg}</div>`;
+  }).join('') : '<div style="color:var(--text-muted)">暂无日志</div>';
+  container.scrollTop = container.scrollHeight;
 }
 
+// --- Settings ---
 function saveSettings() {
-    alert('设置保存功能开发中');
+  toast('功能开发中，敬请期待','info');
 }
 
-loadDashboard();
+// --- Init ---
+document.getElementById('login-password').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+if (API_KEY) checkAuth(); else showLogin();
 </script>
 </body>
 </html>

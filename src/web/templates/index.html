@@ -1,803 +1,726 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Spider - 智能爬虫平台</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.1.0/fonts/remixicon.css" rel="stylesheet">
-    <style>
-    :root {
-        --bg-primary: #0a0a0f;
-        --bg-secondary: #12121a;
-        --bg-card: #16161f;
-        --bg-hover: #1c1c28;
-        --bg-input: #0e0e16;
-        --border: #262630;
-        --border-light: #2a2a36;
-        --text-primary: #e8e8ed;
-        --text-secondary: #8888a0;
-        --text-muted: #55556a;
-        --accent: #6c5ce7;
-        --accent-light: #7c6ff7;
-        --accent-glow: rgba(108,92,231,0.15);
-        --green: #00d68f;
-        --green-bg: rgba(0,214,143,0.1);
-        --red: #ff4757;
-        --red-bg: rgba(255,71,87,0.1);
-        --yellow: #ffa502;
-        --yellow-bg: rgba(255,165,2,0.1);
-        --blue: #3498ff;
-        --blue-bg: rgba(52,152,255,0.1);
-        --radius: 12px;
-        --radius-sm: 8px;
-        --shadow: 0 4px 24px rgba(0,0,0,0.3);
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: var(--bg-primary);
-        color: var(--text-primary);
-        min-height: 100vh;
-        overflow-x: hidden;
-    }
-    ::-webkit-scrollbar { width:6px; }
-    ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
-    ::-webkit-scrollbar-thumb:hover { background:var(--text-muted); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Spider</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--bg-primary:#0a0a0f;--bg-secondary:#12121a;--bg-card:#16161f;
+--bg-hover:#1c1c28;--bg-input:#0e0e16;--border:#262630;
+--text-primary:#e8e8ed;--text-secondary:#8888a0;--text-muted:#55556a;
+--accent:#6c5ce7;--accent-light:#7c6ff7;
+--green:#00d68f;--red:#ff4757;--yellow:#ffa502;--blue:#3498ff;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh}
+.hidden{display:none!important}
+a{color:var(--accent);text-decoration:none;cursor:pointer}
+a:hover{color:var(--accent-light)}
 
-    /* ── Header ── */
-    .header {
-        position:sticky; top:0; z-index:40;
-        background: rgba(10,10,15,0.85);
-        backdrop-filter: blur(20px);
-        border-bottom: 1px solid var(--border);
-        padding: 0 24px;
-        height: 56px;
-        display:flex; align-items:center; justify-content:space-between;
-    }
-    .header-left { display:flex; align-items:center; gap:12px; }
-    .logo {
-        width:32px; height:32px; border-radius:10px;
-        background: linear-gradient(135deg, var(--accent), #a855f7);
-        display:flex; align-items:center; justify-content:center;
-        font-size:16px; color:#fff;
-    }
-    .logo-text { font-size:16px; font-weight:700; letter-spacing:-0.5px; }
-    .header-nav { display:flex; gap:2px; background:var(--bg-secondary); border-radius:10px; padding:3px; }
-    .nav-btn {
-        padding:6px 16px; border-radius:8px; font-size:13px; font-weight:500;
-        color:var(--text-secondary); cursor:pointer; border:none; background:none;
-        transition: all 0.2s;
-    }
-    .nav-btn:hover { color:var(--text-primary); }
-    .nav-btn.active { background:var(--bg-card); color:var(--text-primary); box-shadow:0 1px 3px rgba(0,0,0,0.2); }
-    .btn-create {
-        padding:7px 18px; border-radius:10px; font-size:13px; font-weight:600;
-        background: linear-gradient(135deg, var(--accent), #a855f7);
-        color:#fff; border:none; cursor:pointer;
-        transition: all 0.2s; display:flex; align-items:center; gap:6px;
-    }
-    .btn-create:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(108,92,231,0.4); }
+/* Toast */
+#toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:8px;font-size:14px;animation:slideIn .3s;max-width:360px;word-break:break-word}
+.toast.success{background:var(--green);color:#000}
+.toast.error{background:var(--red);color:#fff}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
 
-    /* ── Cards ── */
-    .card {
-        background:var(--bg-card); border:1px solid var(--border);
-        border-radius:var(--radius); overflow:hidden;
-        transition: all 0.2s;
-    }
-    .card:hover { border-color:var(--border-light); }
-    .card-clickable:hover { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent-glow); cursor:pointer; }
+/* Layout */
+.app-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--bg-secondary);border-bottom:1px solid var(--border)}
+.app-header .logo{font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
+.app-header .logo i{color:var(--accent);font-size:24px}
+.user-info{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-secondary)}
+.user-info button{background:none;border:1px solid var(--border);color:var(--text-secondary);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+.user-info button:hover{border-color:var(--accent);color:var(--accent)}
 
-    /* ── Buttons ── */
-    .btn {
-        padding:6px 14px; border-radius:var(--radius-sm); font-size:12px; font-weight:500;
-        border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary);
-        cursor:pointer; transition:all 0.15s; display:inline-flex; align-items:center; gap:4px;
-    }
-    .btn:hover { background:var(--bg-hover); color:var(--text-primary); border-color:var(--border-light); }
-    .btn-sm { padding:4px 10px; font-size:11px; border-radius:6px; }
-    .btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-    .btn-primary:hover { background:var(--accent-light); border-color:var(--accent-light); }
-    .btn-danger { color:var(--red); }
-    .btn-danger:hover { background:var(--red-bg); border-color:var(--red); }
-    .btn-ghost { border:none; background:none; }
-    .btn-ghost:hover { background:var(--bg-hover); }
+/* Nav */
+.nav-tabs{display:flex;background:var(--bg-secondary);border-bottom:1px solid var(--border);padding:0 24px;gap:4px;overflow-x:auto}
+.nav-tab{padding:12px 20px;cursor:pointer;color:var(--text-secondary);font-size:14px;border-bottom:2px solid transparent;white-space:nowrap;transition:.2s}
+.nav-tab:hover{color:var(--text-primary)}
+.nav-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
-    /* ── Inputs ── */
-    .input {
-        background:var(--bg-input); border:1px solid var(--border);
-        border-radius:var(--radius-sm); padding:9px 14px; color:var(--text-primary);
-        font-size:13px; font-family:inherit; width:100%;
-        transition: border-color 0.2s, box-shadow 0.2s; outline:none;
-    }
-    .input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
-    .input::placeholder { color:var(--text-muted); }
-    textarea.input { resize:vertical; min-height:80px; line-height:1.6; }
-    select.input { cursor:pointer; }
+.container{max-width:1200px;margin:0 auto;padding:24px}
 
-    /* ── Badges ── */
-    .badge {
-        display:inline-flex; align-items:center; gap:4px;
-        padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600;
-        letter-spacing:0.3px;
-    }
-    .badge-dot { width:6px; height:6px; border-radius:50%; }
-    .badge-green { background:var(--green-bg); color:var(--green); }
-    .badge-green .badge-dot { background:var(--green); }
-    .badge-yellow { background:var(--yellow-bg); color:var(--yellow); }
-    .badge-yellow .badge-dot { background:var(--yellow); }
-    .badge-red { background:var(--red-bg); color:var(--red); }
-    .badge-red .badge-dot { background:var(--red); }
-    .badge-blue { background:var(--blue-bg); color:var(--blue); }
-    .badge-blue .badge-dot { background:var(--blue); }
-    .badge-gray { background:rgba(85,85,106,0.15); color:var(--text-muted); }
-    .badge-gray .badge-dot { background:var(--text-muted); }
+/* Auth */
+.auth-page{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.auth-box{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:400px}
+.auth-box h2{text-align:center;margin-bottom:8px;font-size:24px}
+.auth-box .sub{text-align:center;color:var(--text-secondary);margin-bottom:28px;font-size:14px}
 
-    /* ── Layout ── */
-    .container { max-width:1200px; margin:0 auto; padding:24px; }
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    @media(max-width:768px){ .grid-2{grid-template-columns:1fr;} }
-    .flex-between { display:flex; align-items:center; justify-content:space-between; }
-    .flex-center { display:flex; align-items:center; }
-    .gap-1 { gap:4px; } .gap-2 { gap:8px; } .gap-3 { gap:12px; } .gap-4 { gap:16px; }
+/* Form elements */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px}
+.form-input{width:100%;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:14px;font-family:inherit;outline:none;transition:.2s}
+.form-input:focus{border-color:var(--accent)}
+textarea.form-input{resize:vertical;min-height:80px}
+select.form-input{cursor:pointer}
 
-    /* ── Empty State ── */
-    .empty-state { text-align:center; padding:80px 20px; }
-    .empty-icon { font-size:48px; margin-bottom:16px; opacity:0.3; }
-    .empty-title { font-size:16px; font-weight:600; color:var(--text-secondary); margin-bottom:8px; }
-    .empty-desc { font-size:13px; color:var(--text-muted); }
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;border:none;transition:.2s;font-family:inherit}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-light)}
+.btn-secondary{background:var(--bg-hover);color:var(--text-primary);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--accent)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-sm{padding:6px 12px;font-size:13px}
+.btn-block{width:100%}
+.btn:disabled{opacity:.5;cursor:not-allowed}
 
-    /* ── Project Card ── */
-    .project-card { padding:16px 20px; }
-    .project-name { font-size:14px; font-weight:600; color:var(--text-primary); }
-    .project-desc { font-size:12px; color:var(--text-secondary); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .project-meta { display:flex; align-items:center; gap:12px; margin-top:10px; font-size:11px; color:var(--text-muted); }
-    .project-url { color:var(--blue); text-decoration:none; }
-    .project-url:hover { text-decoration:underline; }
+/* Badge */
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
+.badge-green{background:rgba(0,214,143,.15);color:var(--green)}
+.badge-yellow{background:rgba(255,165,2,.15);color:var(--yellow)}
+.badge-red{background:rgba(255,71,87,.15);color:var(--red)}
+.badge-blue{background:rgba(52,152,255,.15);color:var(--blue)}
+.badge-muted{background:rgba(85,85,106,.15);color:var(--text-muted)}
 
-    /* ── Code Editor ── */
-    .code-area {
-        background:var(--bg-input); color:#a9dc76; font-family:'JetBrains Mono','Fira Code','Consolas',monospace;
-        font-size:12.5px; line-height:1.7; border:1px solid var(--border);
-        border-radius:var(--radius-sm); padding:16px; width:100%;
-        min-height:350px; resize:vertical; tab-size:4; outline:none;
-    }
-    .code-area:focus { border-color:var(--accent); }
+/* Cards */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;cursor:pointer;transition:.2s}
+.card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.card h3{font-size:16px;margin-bottom:6px}
+.card p{font-size:13px;color:var(--text-secondary);margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted)}
 
-    /* ── Chat ── */
-    .chat-box { display:flex; flex-direction:column; height:100%; }
-    .chat-messages { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
-    .chat-bubble { max-width:85%; padding:10px 14px; border-radius:14px; font-size:13px; line-height:1.5; word-break:break-word; }
-    .chat-user { background:var(--accent); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
-    .chat-ai { background:var(--bg-hover); color:var(--text-primary); align-self:flex-start; border-bottom-left-radius:4px; border:1px solid var(--border); }
-    .chat-input-row { display:flex; gap:8px; padding:12px; border-top:1px solid var(--border); }
-    .chat-input-row .input { border-radius:20px; padding:8px 16px; }
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:20px;font-size:18px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 
-    /* ── Modal ── */
-    .modal-overlay {
-        position:fixed; inset:0; z-index:100;
-        background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);
-        display:flex; align-items:center; justify-content:center;
-        opacity:0; pointer-events:none; transition:opacity 0.2s;
-    }
-    .modal-overlay.show { opacity:1; pointer-events:auto; }
-    .modal {
-        background:var(--bg-card); border:1px solid var(--border);
-        border-radius:16px; padding:28px; width:520px; max-width:92vw;
-        max-height:85vh; overflow-y:auto; box-shadow:var(--shadow);
-        transform:translateY(10px); transition:transform 0.2s;
-    }
-    .modal-overlay.show .modal { transform:translateY(0); }
-    .modal-title { font-size:18px; font-weight:700; margin-bottom:20px; }
-    .form-group { margin-bottom:16px; }
-    .form-label { font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block; text-transform:uppercase; letter-spacing:0.5px; }
+/* Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}
+th{color:var(--text-secondary);font-weight:500;white-space:nowrap}
+td{color:var(--text-primary)}
+tr:hover td{background:var(--bg-hover)}
 
-    /* ── Mode selector ── */
-    .mode-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .mode-card {
-        padding:14px; border-radius:var(--radius-sm); border:2px solid var(--border);
-        cursor:pointer; transition:all 0.2s; text-align:center;
-    }
-    .mode-card:hover { border-color:var(--border-light); }
-    .mode-card.selected { border-color:var(--accent); background:var(--accent-glow); }
-    .mode-icon { font-size:24px; margin-bottom:6px; }
-    .mode-title { font-size:13px; font-weight:600; }
-    .mode-desc { font-size:11px; color:var(--text-muted); margin-top:3px; }
+/* Detail tabs */
+.detail-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
+.detail-tab{padding:10px 18px;cursor:pointer;color:var(--text-secondary);font-size:14px;border-bottom:2px solid transparent;transition:.2s}
+.detail-tab:hover{color:var(--text-primary)}
+.detail-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
-    /* ── Detail tabs ── */
-    .detail-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; }
-    .detail-tab {
-        padding:10px 16px; font-size:13px; font-weight:500; color:var(--text-muted);
-        cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s;
-    }
-    .detail-tab:hover { color:var(--text-secondary); }
-    .detail-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+/* Toolbar */
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.toolbar h2{font-size:20px}
 
-    /* ── Table ── */
-    .data-table { width:100%; border-collapse:collapse; font-size:13px; }
-    .data-table th { text-align:left; padding:10px 12px; color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:1px solid var(--border); }
-    .data-table td { padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text-secondary); }
-    .data-table tr:hover td { background:var(--bg-hover); }
+/* Chat */
+.chat-box{border:1px solid var(--border);border-radius:12px;height:300px;display:flex;flex-direction:column;overflow:hidden;margin-top:12px}
+.chat-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.chat-msg{padding:8px 12px;border-radius:8px;font-size:13px;max-width:80%;word-break:break-word}
+.chat-msg.user{background:var(--accent);color:#fff;align-self:flex-end}
+.chat-msg.ai{background:var(--bg-hover);align-self:flex-start}
+.chat-input-row{display:flex;border-top:1px solid var(--border)}
+.chat-input-row input{flex:1;padding:10px 14px;background:transparent;border:none;color:var(--text-primary);font-size:14px;outline:none}
+.chat-input-row button{padding:10px 16px;background:var(--accent);color:#fff;border:none;cursor:pointer}
 
-    /* ── Task card ── */
-    .task-card { padding:14px 18px; }
-    .task-name { font-size:13px; font-weight:600; }
-    .task-meta { font-size:11px; color:var(--text-muted); margin-top:6px; }
+/* Slider */
+input[type=range]{width:100%;accent-color:var(--accent)}
 
-    /* ── Spinner ── */
-    .spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; display:inline-block; }
-    @keyframes spin { to{transform:rotate(360deg);} }
-
-    /* ── Loading shimmer ── */
-    .shimmer { background:linear-gradient(90deg,var(--bg-card) 25%,var(--bg-hover) 50%,var(--bg-card) 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:var(--radius-sm); }
-    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-
-    /* ── Pagination ── */
-    .pagination { display:flex; gap:4px; justify-content:center; margin-top:16px; }
-    .page-btn { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:500; cursor:pointer; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-secondary); transition:all 0.15s; }
-    .page-btn:hover { background:var(--bg-hover); }
-    .page-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
-
-    /* ── Deploy panel ── */
-    .deploy-panel .form-group { margin-bottom:14px; }
-
-    /* ── Transition ── */
-    .hidden { display:none!important; }
-    .fade-in { animation: fadeIn 0.2s ease; }
-    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-    </style>
+/* Responsive */
+@media(max-width:640px){
+  .container{padding:16px}
+  .card-grid{grid-template-columns:1fr}
+  .nav-tabs{padding:0 12px}
+  .app-header{padding:12px 16px}
+  .auth-box{padding:28px 20px}
+}
+</style>
 </head>
 <body>
 
-<!-- Header -->
-<header class="header">
-    <div class="header-left">
-        <div class="logo"><i class="ri-bug-line"></i></div>
-        <span class="logo-text">AI Spider</span>
+<div id="toast-container"></div>
+
+<!-- AUTH PAGE -->
+<div id="page-auth" class="auth-page">
+  <div class="auth-box">
+    <h2 id="auth-title">登录</h2>
+    <p class="sub" id="auth-sub">登录你的 AI Spider 账户</p>
+    <div id="auth-form">
+      <div class="form-group hidden" id="fg-username">
+        <label>用户名</label>
+        <input class="form-input" id="auth-username" placeholder="你的用户名">
+      </div>
+      <div class="form-group">
+        <label>邮箱</label>
+        <input class="form-input" id="auth-email" type="email" placeholder="email@example.com">
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input class="form-input" id="auth-password" type="password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary btn-block" id="auth-btn" onclick="doAuth()" style="margin-top:8px">登录</button>
+      <p style="text-align:center;margin-top:16px;font-size:13px;color:var(--text-secondary)">
+        <span id="auth-toggle-text">还没有账户？</span>
+        <a id="auth-toggle-link" onclick="toggleAuthMode()">注册</a>
+      </p>
     </div>
-    <nav class="header-nav">
-        <button class="nav-btn active" onclick="switchTab('projects')" id="tab-projects"><i class="ri-folder-3-line"></i> 项目</button>
-        <button class="nav-btn" onclick="switchTab('tasks')" id="tab-tasks"><i class="ri-play-circle-line"></i> 任务</button>
-        <button class="nav-btn" onclick="switchTab('data')" id="tab-data"><i class="ri-database-2-line"></i> 数据</button>
-    </nav>
-    <button class="btn-create" onclick="showModal()"><i class="ri-add-line"></i> 新建项目</button>
-</header>
-
-<!-- Main -->
-<div class="container">
-
-    <!-- ═══ Projects View ═══ -->
-    <div id="view-projects" class="fade-in">
-        <div id="project-list" class="space-y" style="display:flex;flex-direction:column;gap:10px"></div>
-        <div id="project-empty" class="empty-state">
-            <div class="empty-icon">🕷️</div>
-            <div class="empty-title">还没有项目</div>
-            <div class="empty-desc">点击右上角「新建项目」，用自然语言描述你想抓取的数据</div>
-        </div>
-    </div>
-
-    <!-- ═══ Project Detail ═══ -->
-    <div id="view-detail" class="hidden fade-in">
-        <div class="flex-between" style="margin-bottom:16px">
-            <div class="flex-center gap-3">
-                <button class="btn btn-ghost btn-sm" onclick="backToList()"><i class="ri-arrow-left-s-line"></i> 返回</button>
-                <h2 id="detail-name" style="font-size:16px;font-weight:700"></h2>
-                <span id="detail-badge"></span>
-            </div>
-            <div class="flex-center gap-2">
-                <button class="btn btn-sm" onclick="testProject(this)"><i class="ri-play-line"></i> 测试</button>
-                <button class="btn btn-sm" onclick="saveCode()"><i class="ri-save-line"></i> 保存</button>
-            </div>
-        </div>
-
-        <div class="detail-tabs">
-            <div class="detail-tab active" onclick="switchDetailTab('editor',this)"><i class="ri-code-s-slash-line"></i> 编辑器</div>
-            <div class="detail-tab" onclick="switchDetailTab('chat',this)"><i class="ri-chat-3-line"></i> 对话</div>
-            <div class="detail-tab" onclick="switchDetailTab('test',this)"><i class="ri-flask-line"></i> 测试结果</div>
-            <div class="detail-tab" onclick="switchDetailTab('deploy',this)"><i class="ri-rocket-line"></i> 部署</div>
-        </div>
-
-        <div class="grid-2">
-            <!-- Left: Editor / Extract Data -->
-            <div id="panel-editor" class="card" style="padding:0">
-                <textarea id="code-editor" class="code-area" spellcheck="false"></textarea>
-                <div id="extract-result" class="hidden" style="padding:16px">
-                    <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">提取结果</div>
-                    <pre id="extract-data" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12px;color:var(--green);max-height:400px;overflow:auto;font-family:monospace;white-space:pre-wrap"></pre>
-                </div>
-            </div>
-
-            <!-- Right: Chat / Test / Deploy -->
-            <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:400px">
-                <!-- Chat -->
-                <div id="panel-chat" class="chat-box" style="display:none">
-                    <div id="chat-messages" class="chat-messages"></div>
-                    <div class="chat-input-row">
-                        <input id="chat-input" class="input" placeholder="描述修改需求..." onkeydown="if(event.key==='Enter')sendChat()">
-                        <button class="btn btn-primary" onclick="sendChat()" style="border-radius:20px;padding:8px 18px"><i class="ri-send-plane-fill"></i></button>
-                    </div>
-                </div>
-                <!-- Test -->
-                <div id="panel-test" class="hidden" style="padding:16px;overflow:auto;flex:1">
-                    <div id="test-output" style="font-size:13px;color:var(--text-muted)">暂无测试结果，点击上方"测试"按钮运行</div>
-                </div>
-                <!-- Deploy -->
-                <div id="panel-deploy" class="hidden deploy-panel" style="padding:20px;overflow:auto;flex:1">
-                    <div class="form-group">
-                        <label class="form-label">任务类型</label>
-                        <select id="deploy-type" class="input" onchange="document.getElementById('cron-row').style.display=this.value==='cron'?'block':'none'">
-                            <option value="one_time">⚡ 单次执行</option>
-                            <option value="cron">🔄 定时任务</option>
-                            <option value="continuous">♾️ 持续运行</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="cron-row" style="display:none">
-                        <label class="form-label">Cron 表达式</label>
-                        <input id="deploy-cron" class="input" placeholder="0 */6 * * *  (每6小时)">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">目标URL（每行一个）</label>
-                        <textarea id="deploy-urls" class="input" rows="3"></textarea>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                        <div class="form-group">
-                            <label class="form-label">最大页数</label>
-                            <input id="deploy-pages" type="number" class="input" value="100">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">优先级 (1-10)</label>
-                            <input id="deploy-priority" type="number" class="input" value="5" min="1" max="10">
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;border-radius:10px;margin-top:8px" onclick="deployTask()">
-                        <i class="ri-rocket-fill"></i> 部署任务
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ Tasks View ═══ -->
-    <div id="view-tasks" class="hidden fade-in">
-        <div id="task-list" style="display:flex;flex-direction:column;gap:10px"></div>
-        <div id="task-empty" class="empty-state">
-            <div class="empty-icon">📋</div>
-            <div class="empty-title">暂无任务</div>
-            <div class="empty-desc">在项目详情中部署任务</div>
-        </div>
-    </div>
-
-    <!-- ═══ Data View ═══ -->
-    <div id="view-data" class="hidden fade-in">
-        <div class="card" style="padding:18px">
-            <div class="flex-between" style="margin-bottom:14px">
-                <div class="flex-center gap-3">
-                    <select id="data-project-filter" class="input" style="width:200px" onchange="loadData()">
-                        <option value="">全部项目</option>
-                    </select>
-                    <span id="data-count" style="font-size:12px;color:var(--text-muted)"></span>
-                </div>
-                <div class="flex-center gap-2">
-                    <button class="btn btn-sm" onclick="exportData('json')"><i class="ri-file-code-line"></i> JSON</button>
-                    <button class="btn btn-sm" onclick="exportData('csv')"><i class="ri-file-excel-line"></i> CSV</button>
-                </div>
-            </div>
-            <div style="overflow-x:auto">
-                <table class="data-table">
-                    <thead id="data-thead"></thead>
-                    <tbody id="data-tbody"></tbody>
-                </table>
-            </div>
-            <div id="data-empty" class="hidden" style="text-align:center;padding:40px;color:var(--text-muted);font-size:13px">暂无数据</div>
-            <div id="data-pagination" class="pagination"></div>
-        </div>
-    </div>
-
+  </div>
 </div>
 
-<!-- ═══ New Project Modal ═══ -->
-<div id="modal-new" class="modal-overlay" onclick="if(event.target===this)hideModal()">
-    <div class="modal">
-        <div class="modal-title">🕷️ 新建爬虫项目</div>
-        <div class="form-group">
-            <label class="form-label">爬取模式</label>
-            <div class="mode-cards">
-                <div class="mode-card selected" onclick="selectMode('code_generator',this)">
-                    <div class="mode-icon">🛠️</div>
-                    <div class="mode-title">代码生成</div>
-                    <div class="mode-desc">AI生成可编辑的爬虫代码，支持迭代优化</div>
-                </div>
-                <div class="mode-card" onclick="selectMode('smart_scraper',this)">
-                    <div class="mode-icon">✨</div>
-                    <div class="mode-title">智能提取</div>
-                    <div class="mode-desc">LLM直接提取结构化数据，一步到位</div>
-                </div>
-            </div>
-        </div>
-        <div class="form-group">
-            <label class="form-label">目标网址</label>
-            <input id="new-url" class="input" placeholder="https://example.com">
-        </div>
-        <div class="form-group">
-            <label class="form-label">需求描述</label>
-            <textarea id="new-desc" class="input" placeholder="描述你想抓取什么数据...&#10;例如：提取所有商品的名称、价格和图片链接"></textarea>
-        </div>
-        <div class="form-group">
-            <label class="form-label">项目名称 <span style="color:var(--text-muted);font-weight:400;text-transform:none">(可选)</span></label>
-            <input id="new-name" class="input" placeholder="不填则自动生成">
-        </div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:24px">
-            <button class="btn" onclick="hideModal()">取消</button>
-            <button class="btn btn-primary" id="btn-create" onclick="createProject()" style="padding:8px 24px;font-size:13px"><i class="ri-magic-line"></i> 创建</button>
-        </div>
+<!-- MAIN APP -->
+<div id="app-main" class="hidden">
+  <header class="app-header">
+    <div class="logo"><i class="ri-spider-line"></i> AI Spider</div>
+    <div class="user-info">
+      <span id="display-username"></span>
+      <button onclick="logout()"><i class="ri-logout-box-r-line"></i> 退出</button>
     </div>
+  </header>
+  <nav class="nav-tabs">
+    <div class="nav-tab active" data-page="projects" onclick="switchPage('projects')"><i class="ri-folder-3-line"></i> 项目</div>
+    <div class="nav-tab" data-page="tasks" onclick="switchPage('tasks')"><i class="ri-play-circle-line"></i> 任务</div>
+    <div class="nav-tab" data-page="data" onclick="switchPage('data')"><i class="ri-database-2-line"></i> 数据</div>
+  </nav>
+
+  <!-- Projects Page -->
+  <div id="page-projects" class="container">
+    <div class="toolbar">
+      <h2>我的项目</h2>
+      <button class="btn btn-primary" onclick="showNewProjectModal()"><i class="ri-add-line"></i> 新建项目</button>
+    </div>
+    <div class="card-grid" id="project-list"></div>
+  </div>
+
+  <!-- Tasks Page -->
+  <div id="page-tasks" class="container hidden">
+    <div class="toolbar"><h2>任务列表</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="task-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Data Page -->
+  <div id="page-data" class="container hidden">
+    <div class="toolbar">
+      <h2>数据</h2>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="form-input" id="data-project-filter" onchange="loadData()" style="width:auto;min-width:160px">
+          <option value="">全部项目</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="exportData('json')"><i class="ri-download-line"></i> JSON</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportData('csv')"><i class="ri-download-line"></i> CSV</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="data-thead"><tr><th>加载中...</th></tr></thead>
+        <tbody id="data-tbody"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:center;gap:8px;margin-top:16px" id="data-pagination"></div>
+  </div>
+
+  <!-- Project Detail Page -->
+  <div id="page-detail" class="container hidden">
+    <div class="toolbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="btn btn-secondary btn-sm" onclick="switchPage('projects')"><i class="ri-arrow-left-line"></i></button>
+        <h2 id="detail-name"></h2>
+        <span id="detail-badge"></span>
+      </div>
+    </div>
+    <div class="detail-tabs">
+      <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">编辑器</div>
+      <div class="detail-tab" data-tab="test" onclick="switchDetailTab('test')">测试</div>
+      <div class="detail-tab" data-tab="sink" onclick="switchDetailTab('sink')">Sink配置</div>
+      <div class="detail-tab" data-tab="deploy" onclick="switchDetailTab('deploy')">部署</div>
+    </div>
+
+    <!-- Editor Tab -->
+    <div id="tab-editor">
+      <div id="editor-smart">
+        <div class="form-group">
+          <label>提取描述</label>
+          <textarea class="form-input" id="editor-description" rows="4" placeholder="描述你要提取的数据..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>已提取数据</label>
+          <pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;overflow:auto;max-height:300px;color:var(--text-secondary)" id="editor-extracted">暂无数据</pre>
+        </div>
+      </div>
+      <div id="editor-code" class="hidden">
+        <div class="form-group">
+          <label>代码编辑器</label>
+          <textarea class="form-input" id="editor-code-area" rows="12" style="font-family:monospace;font-size:13px" placeholder="# 爬虫代码..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>AI 对话 — 让 AI 帮你修改代码</label>
+          <div class="chat-box">
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-row">
+              <input id="chat-input" placeholder="输入指令让AI修改代码..." onkeydown="if(event.key==='Enter')sendChat()">
+              <button onclick="sendChat()"><i class="ri-send-plane-fill"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Tab -->
+    <div id="tab-test" class="hidden">
+      <div class="form-group">
+        <label>目标 URL</label>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="test-url" placeholder="https://example.com" style="flex:1">
+          <button class="btn btn-primary" id="test-run-btn" onclick="runTest()"><i class="ri-play-line"></i> 运行测试</button>
+        </div>
+      </div>
+      <div id="test-result" style="margin-top:16px"></div>
+    </div>
+
+    <!-- Sink Tab -->
+    <div id="tab-sink" class="hidden">
+      <div class="form-group">
+        <label>Sink 类型</label>
+        <select class="form-input" id="sink-type" onchange="updateSinkFields()">
+          <option value="sqlite">SQLite（默认）</option>
+          <option value="local_file">本地文件</option>
+          <option value="kafka">Kafka</option>
+          <option value="s3">S3</option>
+        </select>
+      </div>
+      <div id="sink-fields"></div>
+      <button class="btn btn-primary" onclick="saveSink()" style="margin-top:12px"><i class="ri-save-line"></i> 保存配置</button>
+    </div>
+
+    <!-- Deploy Tab -->
+    <div id="tab-deploy" class="hidden">
+      <div class="form-group">
+        <label>任务类型</label>
+        <select class="form-input" id="deploy-type" onchange="document.getElementById('deploy-cron-group').classList.toggle('hidden',this.value!=='cron')">
+          <option value="once">单次执行</option>
+          <option value="cron">定时任务</option>
+        </select>
+      </div>
+      <div class="form-group hidden" id="deploy-cron-group">
+        <label>Cron 表达式</label>
+        <input class="form-input" id="deploy-cron" placeholder="0 */6 * * *">
+      </div>
+      <div class="form-group">
+        <label>目标 URL（每行一个）</label>
+        <textarea class="form-input" id="deploy-urls" rows="4" placeholder="https://example.com/page1&#10;https://example.com/page2"></textarea>
+      </div>
+      <div class="form-group">
+        <label>优先级: <span id="deploy-priority-val">5</span></label>
+        <input type="range" min="1" max="10" value="5" id="deploy-priority" oninput="document.getElementById('deploy-priority-val').textContent=this.value">
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="form-group" style="flex:1">
+          <label>最大页数</label>
+          <input class="form-input" id="deploy-maxpages" type="number" value="100" min="1">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>超时（秒）</label>
+          <input class="form-input" id="deploy-timeout" type="number" value="300" min="10">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="deployTask()"><i class="ri-rocket-line"></i> 部署</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Project Modal -->
+<div id="modal-new-project" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal">
+    <h3>新建项目</h3>
+    <div class="form-group"><label>项目名称</label><input class="form-input" id="np-name" placeholder="我的爬虫项目"></div>
+    <div class="form-group"><label>描述</label><textarea class="form-input" id="np-desc" rows="2" placeholder="项目描述..."></textarea></div>
+    <div class="form-group"><label>目标 URL</label><input class="form-input" id="np-url" placeholder="https://example.com"></div>
+    <div class="form-group">
+      <label>模式</label>
+      <select class="form-input" id="np-mode">
+        <option value="smart_scraper">智能提取</option>
+        <option value="code_generator">代码生成</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('modal-new-project').classList.add('hidden')">取消</button>
+      <button class="btn btn-primary" onclick="createProject()">创建</button>
+    </div>
+  </div>
 </div>
 
 <script>
-// ── State ──
-const API_BASE = (() => {
-    const base = location.pathname.replace(/\/$/, '');
-    return (path) => `${base}${path}`.replace(/\/\//g, '/');
-})();
+// API Base
+const pathParts = location.pathname.split('/');
+const spiderIdx = pathParts.indexOf('spider');
+const API_BASE = spiderIdx >= 0 ? pathParts.slice(0, spiderIdx + 1).join('/') : '';
+
+let isRegister = false;
 let currentProject = null;
-let selectedMode = 'code_generator';
-let dataPage = 1;
+let allData = [];
 
-// ── Utils ──
-async function api(path, opts = {}) {
-    const url = API_BASE(path.startsWith('/api') ? path : `/api/v1${path}`);
-    const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json', ...opts.headers },
-        ...opts,
-    });
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
+function toast(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function api(method, path, body) {
+  const key = localStorage.getItem('api_key');
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (key) opts.headers['X-API-Key'] = key;
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(API_BASE + path, opts).then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || data.error || r.statusText);
+    return data;
+  });
+}
+
+// Auth
+function toggleAuthMode() {
+  isRegister = !isRegister;
+  document.getElementById('auth-title').textContent = isRegister ? '注册' : '登录';
+  document.getElementById('auth-sub').textContent = isRegister ? '创建新的 AI Spider 账户' : '登录你的 AI Spider 账户';
+  document.getElementById('auth-btn').textContent = isRegister ? '注册' : '登录';
+  document.getElementById('fg-username').classList.toggle('hidden', !isRegister);
+  document.getElementById('auth-toggle-text').textContent = isRegister ? '已有账户？' : '还没有账户？';
+  document.getElementById('auth-toggle-link').textContent = isRegister ? '登录' : '注册';
+}
+
+async function doAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if (!email || !password) return toast('请填写所有字段', 'error');
+  try {
+    if (isRegister) {
+      const username = document.getElementById('auth-username').value.trim();
+      if (!username) return toast('请填写用户名', 'error');
+      const res = await api('POST', '/api/v1/auth/register', { email, username, password });
+      localStorage.setItem('api_key', res.api_key);
+      localStorage.setItem('username', res.user?.username || username);
+      toast('注册成功');
+    } else {
+      const res = await api('POST', '/api/v1/auth/login', { email, password });
+      localStorage.setItem('api_key', res.api_key);
+      localStorage.setItem('username', res.username || email.split('@')[0]);
+      toast('登录成功');
     }
-    return res.json();
+    enterApp();
+  } catch (e) { toast(e.message, 'error'); }
 }
 
-function badgeHTML(status) {
-    const m = {
-        draft:['草稿','gray'], generating:['生成中','blue'], generated:['已生成','green'],
-        testing:['测试中','yellow'], tested:['已测试','green'], failed:['失败','red'],
-        approved:['已通过','green'], queued:['排队中','yellow'], running:['运行中','blue'],
-        success:['成功','green'], cancelled:['已取消','gray'], paused:['暂停','gray'],
-    };
-    const [text, cls] = m[status] || [status, 'gray'];
-    return `<span class="badge badge-${cls}"><span class="badge-dot"></span>${text}</span>`;
+function logout() {
+  localStorage.removeItem('api_key');
+  localStorage.removeItem('username');
+  document.getElementById('app-main').classList.add('hidden');
+  document.getElementById('page-auth').classList.remove('hidden');
 }
 
-function timeAgo(iso) {
-    if (!iso) return '';
-    const s = (Date.now() - new Date(iso)) / 1000;
-    if (s < 60) return '刚刚';
-    if (s < 3600) return `${Math.floor(s/60)}分钟前`;
-    if (s < 86400) return `${Math.floor(s/3600)}小时前`;
-    return `${Math.floor(s/86400)}天前`;
+function enterApp() {
+  document.getElementById('page-auth').classList.add('hidden');
+  document.getElementById('app-main').classList.remove('hidden');
+  document.getElementById('display-username').textContent = localStorage.getItem('username') || '';
+  switchPage('projects');
 }
 
-// ── Tabs ──
-function switchTab(tab) {
-    ['projects','tasks','data'].forEach(t => {
-        const v = document.getElementById(`view-${t}`);
-        if (v) v.classList.toggle('hidden', t !== tab);
-        const b = document.getElementById(`tab-${t}`);
-        if (b) b.className = `nav-btn${t === tab ? ' active' : ''}`;
-    });
-    document.getElementById('view-detail').classList.add('hidden');
-    if (tab === 'projects') loadProjects();
-    if (tab === 'tasks') loadTasks();
-    if (tab === 'data') loadData();
+// Navigation
+function switchPage(page) {
+  ['projects','tasks','data','detail'].forEach(p => document.getElementById('page-'+p).classList.add('hidden'));
+  document.getElementById('page-'+page).classList.remove('hidden');
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.page===page));
+  if (page==='projects') loadProjects();
+  if (page==='tasks') loadTasks();
+  if (page==='data') { loadProjectFilter(); loadData(); }
 }
 
-function switchDetailTab(tab, el) {
-    document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('active'));
-    if (el) el.classList.add('active');
-    ['editor','chat','test','deploy'].forEach(t => {
-        const p = document.getElementById(`panel-${t}`);
-        if (!p) return;
-        if (t === 'editor') { p.style.display = tab === 'editor' ? '' : 'none'; return; }
-        if (t === 'chat') { p.style.display = tab === 'chat' ? 'flex' : 'none'; return; }
-        p.classList.toggle('hidden', t !== tab);
-    });
+function statusBadge(status) {
+  const map = {active:'badge-green',running:'badge-blue',pending:'badge-yellow',failed:'badge-red',completed:'badge-green',cancelled:'badge-muted',draft:'badge-muted'};
+  return `<span class="badge ${map[status]||'badge-muted'}">${status||'unknown'}</span>`;
 }
 
-// ── Modal ──
-function showModal() { document.getElementById('modal-new').classList.add('show'); }
-function hideModal() { document.getElementById('modal-new').classList.remove('show'); }
+function modeLabel(m) { return m==='smart_scraper'?'智能提取':'代码生成'; }
+function shortId(id) { return id ? String(id).slice(0,8) : '-'; }
+function fmtTime(t) { if(!t)return'-'; try{return new Date(t).toLocaleString('zh-CN')}catch{return t} }
 
-function selectMode(mode, el) {
-    selectedMode = mode;
-    document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
-    el.classList.add('selected');
-}
-
-// ── Projects ──
+// Projects
 async function loadProjects() {
-    try {
-        const projects = await api('/projects');
-        const list = document.getElementById('project-list');
-        const empty = document.getElementById('project-empty');
-        if (!projects.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
-        empty.classList.add('hidden');
-        list.innerHTML = projects.map(p => `
-            <div class="card card-clickable project-card" onclick="openProject('${p.id}')">
-                <div class="flex-between">
-                    <div class="flex-center gap-2">
-                        <span class="project-name">${p.name || '未命名项目'}</span>
-                        <span class="badge badge-${p.mode === 'smart_scraper' ? 'blue' : 'green'}" style="font-size:10px">
-                            ${p.mode === 'smart_scraper' ? '✨ 智能提取' : '🛠️ 代码生成'}
-                        </span>
-                        ${badgeHTML(p.status)}
-                    </div>
-                    <div class="flex-center gap-3">
-                        <span style="font-size:11px;color:var(--text-muted)">v${p.version || 1}</span>
-                        <span style="font-size:11px;color:var(--text-muted)">${timeAgo(p.updated_at)}</span>
-                        <button class="btn btn-ghost btn-sm btn-danger" onclick="event.stopPropagation();deleteProject('${p.id}')">
-                            <i class="ri-delete-bin-6-line"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="project-desc">${p.description || ''}</div>
-                ${p.target_url ? `<div class="project-meta"><i class="ri-link"></i> <a class="project-url" href="${p.target_url}" target="_blank" onclick="event.stopPropagation()">${p.target_url}</a></div>` : ''}
-            </div>
-        `).join('');
-    } catch (e) { console.error(e); }
+  try {
+    const res = await api('GET', '/api/v1/projects');
+    const list = Array.isArray(res) ? res : (res.projects || []);
+    const el = document.getElementById('project-list');
+    if (!list.length) { el.innerHTML = '<p style="color:var(--text-muted)">暂无项目，点击"新建项目"开始</p>'; return; }
+    el.innerHTML = list.map(p => `
+      <div class="card" onclick="openProject('${p.id}')">
+        <h3>${esc(p.name)}</h3>
+        <p>${esc(p.description||'无描述')}</p>
+        <div class="meta">
+          <span class="badge badge-blue">${modeLabel(p.mode)}</span>
+          ${statusBadge(p.status)}
+          <span>${fmtTime(p.created_at)}</span>
+        </div>
+      </div>`).join('');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+function showNewProjectModal() { document.getElementById('modal-new-project').classList.remove('hidden'); }
+
+async function createProject() {
+  const name = document.getElementById('np-name').value.trim();
+  const description = document.getElementById('np-desc').value.trim();
+  const target_url = document.getElementById('np-url').value.trim();
+  const mode = document.getElementById('np-mode').value;
+  if (!name) return toast('请填写项目名称','error');
+  try {
+    await api('POST', '/api/v1/projects', { name, description, target_url, mode });
+    document.getElementById('modal-new-project').classList.add('hidden');
+    toast('项目创建成功');
+    loadProjects();
+  } catch(e) { toast(e.message,'error'); }
 }
 
 async function openProject(id) {
-    try {
-        const p = await api(`/projects/${id}`);
-        currentProject = p;
-        document.getElementById('view-projects').classList.add('hidden');
-        document.getElementById('view-detail').classList.remove('hidden');
-        document.getElementById('detail-name').textContent = p.name || '未命名';
-        document.getElementById('detail-badge').innerHTML = badgeHTML(p.status);
-
-        const editor = document.getElementById('code-editor');
-        const extractDiv = document.getElementById('extract-result');
-
-        if (p.mode === 'smart_scraper') {
-            editor.style.display = 'none';
-            extractDiv.classList.remove('hidden');
-            let data = p.extracted_data;
-            if (typeof data === 'string') try { data = JSON.parse(data); } catch {}
-            document.getElementById('extract-data').textContent = JSON.stringify(data, null, 2);
-        } else {
-            editor.style.display = '';
-            extractDiv.classList.add('hidden');
-            editor.value = p.code || '# 等待生成...';
-        }
-
-        // Chat messages
-        const chatDiv = document.getElementById('chat-messages');
-        let msgs = p.messages;
-        if (typeof msgs === 'string') try { msgs = JSON.parse(msgs); } catch { msgs = []; }
-        chatDiv.innerHTML = (msgs || []).map(m =>
-            `<div class="chat-bubble ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">${m.content}</div>`
-        ).join('');
-        chatDiv.scrollTop = chatDiv.scrollHeight;
-
-        document.getElementById('deploy-urls').value = p.target_url || '';
-        switchDetailTab('editor', document.querySelector('.detail-tab'));
-    } catch (e) { alert('加载失败: ' + e.message); }
-}
-
-function backToList() {
-    document.getElementById('view-detail').classList.add('hidden');
-    document.getElementById('view-projects').classList.remove('hidden');
-    currentProject = null;
-    loadProjects();
-}
-
-async function createProject() {
-    const btn = document.getElementById('btn-create');
-    const url = document.getElementById('new-url').value.trim();
-    const desc = document.getElementById('new-desc').value.trim();
-    const name = document.getElementById('new-name').value.trim();
-    if (!desc) return alert('请输入需求描述');
-    if (!url) return alert('请输入目标URL');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> 生成中...';
-    try {
-        const p = await api('/projects', {
-            method: 'POST',
-            body: JSON.stringify({ description: desc, target_url: url, name, mode: selectedMode }),
-        });
-        hideModal();
-        ['new-url','new-desc','new-name'].forEach(id => document.getElementById(id).value = '');
-        openProject(p.id);
-    } catch (e) { alert('创建失败: ' + e.message); }
-    finally { btn.disabled = false; btn.innerHTML = '<i class="ri-magic-line"></i> 创建'; }
-}
-
-async function deleteProject(id) {
-    if (!confirm('确定删除此项目？')) return;
-    await api(`/projects/${id}`, { method: 'DELETE' });
-    loadProjects();
-}
-
-async function saveCode() {
-    if (!currentProject) return;
-    await api(`/projects/${currentProject.id}/code`, {
-        method: 'PUT',
-        body: JSON.stringify({ code: document.getElementById('code-editor').value }),
-    });
-    showToast('已保存');
-}
-
-async function testProject(btn) {
-    if (!currentProject) return;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> 测试中...';
-    if (currentProject.mode !== 'smart_scraper') {
-        await api(`/projects/${currentProject.id}/code`, {
-            method: 'PUT',
-            body: JSON.stringify({ code: document.getElementById('code-editor').value }),
-        });
+  try {
+    const p = await api('GET', `/api/v1/projects/${id}`);
+    currentProject = p.project || p;
+    document.getElementById('detail-name').textContent = currentProject.name;
+    document.getElementById('detail-badge').innerHTML = statusBadge(currentProject.status);
+    // editor mode
+    const isSmart = currentProject.mode === 'smart_scraper';
+    document.getElementById('editor-smart').classList.toggle('hidden', !isSmart);
+    document.getElementById('editor-code').classList.toggle('hidden', isSmart);
+    if (isSmart) {
+      document.getElementById('editor-description').value = currentProject.extraction_description || currentProject.description || '';
+      document.getElementById('editor-extracted').textContent = currentProject.extracted_data ? JSON.stringify(currentProject.extracted_data, null, 2) : '暂无数据';
+    } else {
+      document.getElementById('editor-code-area').value = currentProject.code || '';
     }
-    try {
-        const result = await api(`/projects/${currentProject.id}/test`, {
-            method: 'POST',
-            body: JSON.stringify({ target_url: currentProject.target_url }),
-        });
-        switchDetailTab('test', document.querySelectorAll('.detail-tab')[2]);
-        const out = document.getElementById('test-output');
-        if (result.error) {
-            out.innerHTML = `<div style="color:var(--red);margin-bottom:8px;font-weight:600">❌ 错误</div><pre style="font-size:12px;color:var(--text-muted);white-space:pre-wrap">${result.error}</pre>`;
-        } else {
-            const data = result.output || [];
-            out.innerHTML = `<div style="color:var(--green);margin-bottom:8px;font-weight:600">✅ 成功 · ${data.length} 条 · ${result.duration_ms}ms</div>
-                <pre style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;max-height:400px;overflow:auto;background:var(--bg-input);padding:14px;border-radius:8px;border:1px solid var(--border)">${JSON.stringify(data, null, 2)}</pre>`;
-        }
-    } catch (e) {
-        switchDetailTab('test', document.querySelectorAll('.detail-tab')[2]);
-        document.getElementById('test-output').innerHTML = `<div style="color:var(--red)">❌ ${e.message}</div>`;
-    } finally { btn.disabled = false; btn.innerHTML = '<i class="ri-play-line"></i> 测试'; }
+    document.getElementById('test-url').value = currentProject.target_url || '';
+    // sink
+    if (currentProject.sink) {
+      document.getElementById('sink-type').value = currentProject.sink.sink_type || 'sqlite';
+    }
+    updateSinkFields();
+    switchDetailTab('editor');
+    switchPage('detail');
+  } catch(e) { toast(e.message,'error'); }
 }
 
+function switchDetailTab(tab) {
+  ['editor','test','sink','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
+  document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
+}
+
+// Chat
 async function sendChat() {
-    if (!currentProject) return;
-    const input = document.getElementById('chat-input');
-    const msg = input.value.trim();
-    if (!msg) return;
-    input.value = '';
-    const chatDiv = document.getElementById('chat-messages');
-    chatDiv.innerHTML += `<div class="chat-bubble chat-user">${msg}</div>`;
-    const pendingId = 'p' + Date.now();
-    chatDiv.innerHTML += `<div class="chat-bubble chat-ai" id="${pendingId}"><span class="spinner"></span> 思考中...</div>`;
-    chatDiv.scrollTop = chatDiv.scrollHeight;
-    try {
-        const result = await api(`/projects/${currentProject.id}/refine`, {
-            method: 'POST',
-            body: JSON.stringify({ feedback: msg }),
-        });
-        document.getElementById(pendingId).textContent = `✅ 已更新代码 v${result.version || '?'}`;
-        if (result.code) document.getElementById('code-editor').value = result.code;
-        currentProject = result;
-    } catch (e) { document.getElementById(pendingId).innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg || !currentProject) return;
+  input.value = '';
+  const box = document.getElementById('chat-messages');
+  box.innerHTML += `<div class="chat-msg user">${esc(msg)}</div>`;
+  box.scrollTop = box.scrollHeight;
+  try {
+    const res = await api('POST', `/api/v1/projects/${currentProject.id}/refine`, { message: msg });
+    const reply = res.message || res.response || JSON.stringify(res);
+    box.innerHTML += `<div class="chat-msg ai">${esc(reply)}</div>`;
+    if (res.code) document.getElementById('editor-code-area').value = res.code;
+  } catch(e) {
+    box.innerHTML += `<div class="chat-msg ai" style="color:var(--red)">错误: ${esc(e.message)}</div>`;
+  }
+  box.scrollTop = box.scrollHeight;
 }
 
+// Test
+async function runTest() {
+  const url = document.getElementById('test-url').value.trim();
+  if (!url || !currentProject) return toast('请输入目标URL','error');
+  const btn = document.getElementById('test-run-btn');
+  btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i> 运行中...';
+  const start = Date.now();
+  try {
+    const res = await api('POST', `/api/v1/projects/${currentProject.id}/test`, { target_url: url });
+    const elapsed = ((Date.now()-start)/1000).toFixed(1);
+    const data = res.data || res.result || res;
+    let html = `<p style="color:var(--green);margin-bottom:8px">✓ 测试完成 (${elapsed}s)</p>`;
+    if (Array.isArray(data) && data.length) {
+      const keys = Object.keys(data[0]);
+      html += `<div class="table-wrap"><table><thead><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>`;
+      data.forEach(row => { html += '<tr>' + keys.map(k=>`<td>${esc(String(row[k]??''))}</td>`).join('') + '</tr>'; });
+      html += '</tbody></table></div>';
+    } else {
+      html += `<pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;overflow:auto;max-height:300px">${esc(JSON.stringify(data,null,2))}</pre>`;
+    }
+    document.getElementById('test-result').innerHTML = html;
+  } catch(e) {
+    document.getElementById('test-result').innerHTML = `<p style="color:var(--red)">✗ ${esc(e.message)}</p>`;
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ri-play-line"></i> 运行测试';
+}
+
+// Sink
+function updateSinkFields() {
+  const type = document.getElementById('sink-type').value;
+  const sink = currentProject?.sink || {};
+  let html = '';
+  if (type === 'local_file') {
+    html = `
+      <div class="form-group"><label>输出目录</label><input class="form-input" id="sink-dir" value="${esc(sink.output_dir||'')}" placeholder="/data/output"></div>
+      <div class="form-group"><label>格式</label><select class="form-input" id="sink-format">
+        <option value="jsonl" ${sink.format==='jsonl'?'selected':''}>JSONL</option>
+        <option value="csv" ${sink.format==='csv'?'selected':''}>CSV</option>
+        <option value="json" ${sink.format==='json'?'selected':''}>JSON</option>
+      </select></div>`;
+  } else if (type === 'kafka') {
+    html = `
+      <div class="form-group"><label>Bootstrap Servers</label><input class="form-input" id="sink-kafka-servers" value="${esc(sink.bootstrap_servers||'')}" placeholder="localhost:9092"></div>
+      <div class="form-group"><label>Topic</label><input class="form-input" id="sink-kafka-topic" value="${esc(sink.topic||'')}" placeholder="spider-data"></div>
+      <div class="form-group"><label>Key Field（可选）</label><input class="form-input" id="sink-kafka-key" value="${esc(sink.key_field||'')}" placeholder="id"></div>`;
+  } else if (type === 's3') {
+    html = `
+      <div class="form-group"><label>Bucket</label><input class="form-input" id="sink-s3-bucket" value="${esc(sink.bucket||'')}"></div>
+      <div class="form-group"><label>Prefix</label><input class="form-input" id="sink-s3-prefix" value="${esc(sink.prefix||'')}"></div>
+      <div class="form-group"><label>Region</label><input class="form-input" id="sink-s3-region" value="${esc(sink.region||'')}" placeholder="us-east-1"></div>
+      <div class="form-group"><label>Access Key</label><input class="form-input" id="sink-s3-ak" value="${esc(sink.access_key||'')}"></div>
+      <div class="form-group"><label>Secret Key</label><input class="form-input" id="sink-s3-sk" type="password" value="${esc(sink.secret_key||'')}"></div>
+      <div class="form-group"><label>格式</label><select class="form-input" id="sink-s3-format">
+        <option value="jsonl" ${sink.format==='jsonl'?'selected':''}>JSONL</option>
+        <option value="csv" ${sink.format==='csv'?'selected':''}>CSV</option>
+        <option value="json" ${sink.format==='json'?'selected':''}>JSON</option>
+      </select></div>`;
+  }
+  document.getElementById('sink-fields').innerHTML = html;
+}
+
+async function saveSink() {
+  if (!currentProject) return;
+  const sink_type = document.getElementById('sink-type').value;
+  const body = { sink_type };
+  if (sink_type === 'local_file') {
+    body.output_dir = document.getElementById('sink-dir').value;
+    body.format = document.getElementById('sink-format').value;
+  } else if (sink_type === 'kafka') {
+    body.bootstrap_servers = document.getElementById('sink-kafka-servers').value;
+    body.topic = document.getElementById('sink-kafka-topic').value;
+    body.key_field = document.getElementById('sink-kafka-key').value || undefined;
+  } else if (sink_type === 's3') {
+    body.bucket = document.getElementById('sink-s3-bucket').value;
+    body.prefix = document.getElementById('sink-s3-prefix').value;
+    body.region = document.getElementById('sink-s3-region').value;
+    body.access_key = document.getElementById('sink-s3-ak').value;
+    body.secret_key = document.getElementById('sink-s3-sk').value;
+    body.format = document.getElementById('sink-s3-format').value;
+  }
+  try {
+    await api('PUT', `/api/v1/projects/${currentProject.id}/sink`, body);
+    toast('Sink 配置已保存');
+  } catch(e) { toast(e.message,'error'); }
+}
+
+// Deploy
 async function deployTask() {
-    if (!currentProject) return;
-    const type = document.getElementById('deploy-type').value;
-    const urls = document.getElementById('deploy-urls').value.trim().split('\n').filter(Boolean);
-    const maxPages = parseInt(document.getElementById('deploy-pages').value) || 100;
-    const priority = parseInt(document.getElementById('deploy-priority').value) || 5;
-    const cron = document.getElementById('deploy-cron')?.value || '';
-    try {
-        await api('/tasks', {
-            method: 'POST',
-            body: JSON.stringify({ project_id: currentProject.id, target_urls: urls, task_type: type, cron_expr: cron, max_pages: maxPages, priority }),
-        });
-        showToast('任务已创建');
-        switchTab('tasks');
-    } catch (e) { alert('部署失败: ' + e.message); }
+  if (!currentProject) return;
+  const urlText = document.getElementById('deploy-urls').value.trim();
+  const target_urls = urlText ? urlText.split('\n').map(u=>u.trim()).filter(Boolean) : [];
+  if (!target_urls.length) return toast('请输入至少一个目标URL','error');
+  const task_type = document.getElementById('deploy-type').value;
+  const body = {
+    project_id: currentProject.id,
+    task_type,
+    target_urls,
+    priority: parseInt(document.getElementById('deploy-priority').value),
+    max_pages: parseInt(document.getElementById('deploy-maxpages').value),
+    timeout_seconds: parseInt(document.getElementById('deploy-timeout').value)
+  };
+  if (task_type === 'cron') body.cron_expr = document.getElementById('deploy-cron').value;
+  try {
+    await api('POST', '/api/v1/tasks', body);
+    toast('任务已部署');
+  } catch(e) { toast(e.message,'error'); }
 }
 
-// ── Tasks ──
+// Tasks
 async function loadTasks() {
-    try {
-        const tasks = await api('/tasks');
-        const list = document.getElementById('task-list');
-        const empty = document.getElementById('task-empty');
-        if (!tasks.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
-        empty.classList.add('hidden');
-        list.innerHTML = tasks.map(t => {
-            let urls = t.target_urls;
-            if (typeof urls === 'string') try { urls = JSON.parse(urls); } catch { urls = []; }
-            return `
-            <div class="card task-card">
-                <div class="flex-between">
-                    <div class="flex-center gap-2">
-                        <span class="task-name">${t.name || t.id.slice(0,8)}</span>
-                        ${badgeHTML(t.status)}
-                        <span class="badge badge-gray">${t.task_type === 'cron' ? '🔄 定时' : t.task_type === 'continuous' ? '♾️ 持续' : '⚡ 单次'}</span>
-                    </div>
-                    <div class="flex-center gap-2">
-                        ${['failed','cancelled'].includes(t.status) ? `<button class="btn btn-sm" onclick="retryTask('${t.id}')"><i class="ri-restart-line"></i></button>` : ''}
-                        ${['running','queued'].includes(t.status) ? `<button class="btn btn-sm" onclick="cancelTask('${t.id}')"><i class="ri-stop-line"></i></button>` : ''}
-                        <button class="btn btn-sm btn-danger" onclick="deleteTask('${t.id}')"><i class="ri-delete-bin-6-line"></i></button>
-                    </div>
-                </div>
-                <div class="task-meta">${(Array.isArray(urls) ? urls : []).join(' · ')}</div>
-            </div>`;
-        }).join('');
-    } catch (e) { console.error(e); }
+  try {
+    const res = await api('GET', '/api/v1/tasks');
+    const list = Array.isArray(res) ? res : (res.tasks || []);
+    document.getElementById('task-tbody').innerHTML = list.length ? list.map(t => `<tr>
+      <td>${shortId(t.id)}</td><td>${esc(t.project_name||t.project_id||'-')}</td>
+      <td>${statusBadge(t.status)}</td><td>${t.task_type||t.type||'-'}</td>
+      <td>${fmtTime(t.created_at)}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        ${t.status==='running'||t.status==='pending'?`<button class="btn btn-secondary btn-sm" onclick="taskAction('${t.id}','cancel')">取消</button>`:''}
+        ${t.status==='failed'?`<button class="btn btn-secondary btn-sm" onclick="taskAction('${t.id}','retry')">重试</button>`:''}
+        <button class="btn btn-danger btn-sm" onclick="taskAction('${t.id}','delete')">删除</button>
+      </td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
+  } catch(e) { toast(e.message,'error'); }
 }
 
-async function retryTask(id) { await api(`/tasks/${id}/retry`, { method:'POST' }); loadTasks(); }
-async function cancelTask(id) { await api(`/tasks/${id}/cancel`, { method:'POST' }); loadTasks(); }
-async function deleteTask(id) { if (confirm('确定删除？')) { await api(`/tasks/${id}`, { method:'DELETE' }); loadTasks(); } }
+async function taskAction(id, action) {
+  try {
+    if (action==='delete') await api('DELETE', `/api/v1/tasks/${id}`);
+    else await api('POST', `/api/v1/tasks/${id}/${action}`);
+    toast('操作成功'); loadTasks();
+  } catch(e) { toast(e.message,'error'); }
+}
 
-// ── Data ──
-async function loadData() {
-    const pid = document.getElementById('data-project-filter').value;
-    try {
-        const r = await api(`/data?project_id=${pid}&page=${dataPage}&page_size=20`);
-        document.getElementById('data-count').textContent = `共 ${r.total} 条`;
-        const items = r.items || [];
-        if (!items.length) {
-            document.getElementById('data-thead').innerHTML = '';
-            document.getElementById('data-tbody').innerHTML = '';
-            document.getElementById('data-empty').classList.remove('hidden');
-            document.getElementById('data-pagination').innerHTML = '';
-            return;
-        }
-        document.getElementById('data-empty').classList.add('hidden');
-        let first = items[0].data;
-        if (typeof first === 'string') try { first = JSON.parse(first); } catch {}
-        const keys = typeof first === 'object' ? Object.keys(first) : ['data'];
-        document.getElementById('data-thead').innerHTML = '<tr>' + keys.map(k => `<th>${k}</th>`).join('') + '</tr>';
-        document.getElementById('data-tbody').innerHTML = items.map(item => {
-            let d = item.data;
-            if (typeof d === 'string') try { d = JSON.parse(d); } catch {}
-            return '<tr>' + keys.map(k => {
-                let v = typeof d === 'object' ? (d[k] ?? '') : d;
-                if (typeof v === 'object') v = JSON.stringify(v);
-                if (typeof v === 'string' && v.length > 80) v = v.slice(0, 80) + '…';
-                return `<td>${v}</td>`;
-            }).join('') + '</tr>';
-        }).join('');
-        const tp = r.total_pages || 1;
-        let pag = '';
-        for (let i = 1; i <= Math.min(tp, 10); i++) {
-            pag += `<button class="page-btn${i === dataPage ? ' active' : ''}" onclick="dataPage=${i};loadData()">${i}</button>`;
-        }
-        document.getElementById('data-pagination').innerHTML = pag;
-    } catch (e) { console.error(e); }
+// Data
+async function loadProjectFilter() {
+  try {
+    const res = await api('GET', '/api/v1/projects');
+    const list = Array.isArray(res) ? res : (res.projects || []);
+    const sel = document.getElementById('data-project-filter');
+    sel.innerHTML = '<option value="">全部项目</option>' + list.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  } catch(e) {}
+}
+
+let dataPage = 1;
+async function loadData(page) {
+  dataPage = page || 1;
+  const pid = document.getElementById('data-project-filter').value;
+  let url = `/api/v1/data?page=${dataPage}&limit=20`;
+  if (pid) url += `&project_id=${pid}`;
+  try {
+    const res = await api('GET', url);
+    allData = Array.isArray(res) ? res : (res.data || res.items || []);
+    const total = res.total || allData.length;
+    if (!allData.length) {
+      document.getElementById('data-thead').innerHTML = '<tr><th>暂无数据</th></tr>';
+      document.getElementById('data-tbody').innerHTML = '';
+      document.getElementById('data-pagination').innerHTML = '';
+      return;
+    }
+    const keys = Object.keys(allData[0]);
+    document.getElementById('data-thead').innerHTML = '<tr>' + keys.map(k=>`<th>${esc(k)}</th>`).join('') + '</tr>';
+    document.getElementById('data-tbody').innerHTML = allData.map(row => '<tr>' + keys.map(k=>`<td>${esc(String(row[k]??''))}</td>`).join('') + '</tr>').join('');
+    const pages = Math.ceil(total/20);
+    let pgHtml = '';
+    for (let i=1;i<=pages&&i<=10;i++) pgHtml += `<button class="btn btn-sm ${i===dataPage?'btn-primary':'btn-secondary'}" onclick="loadData(${i})">${i}</button>`;
+    document.getElementById('data-pagination').innerHTML = pgHtml;
+  } catch(e) { toast(e.message,'error'); }
 }
 
 function exportData(fmt) {
-    const pid = document.getElementById('data-project-filter').value;
-    window.open(API_BASE(`/api/v1/data/export/${fmt}?project_id=${pid}`));
+  if (!allData.length) return toast('无数据可导出','error');
+  let content, mime, ext;
+  if (fmt==='json') {
+    content = JSON.stringify(allData, null, 2); mime = 'application/json'; ext = 'json';
+  } else {
+    const keys = Object.keys(allData[0]);
+    content = keys.join(',') + '\n' + allData.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(',')).join('\n');
+    mime = 'text/csv'; ext = 'csv';
+  }
+  const blob = new Blob([content], {type:mime});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `data.${ext}`;
+  a.click();
 }
 
-// ── Toast ──
-function showToast(msg) {
-    const t = document.createElement('div');
-    t.textContent = msg;
-    Object.assign(t.style, {
-        position:'fixed', bottom:'24px', left:'50%', transform:'translateX(-50%)',
-        background:'var(--green)', color:'#fff', padding:'8px 20px', borderRadius:'8px',
-        fontSize:'13px', fontWeight:'600', zIndex:'200', boxShadow:'0 4px 16px rgba(0,0,0,0.3)',
-    });
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 2000);
-}
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
-// ── Init ──
-async function init() {
-    loadProjects();
-    try {
-        const ps = await api('/projects');
-        const sel = document.getElementById('data-project-filter');
-        ps.forEach(p => { sel.innerHTML += `<option value="${p.id}">${p.name || p.id}</option>`; });
-    } catch {}
-}
-init();
+// Init
+if (localStorage.getItem('api_key')) enterApp();
 </script>
 </body>
 </html>

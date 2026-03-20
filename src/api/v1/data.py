@@ -1,10 +1,13 @@
 """Data API - export and preview."""
+from __future__ import annotations
+
 import json
 import csv
 import io
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from src.core.database import db
+from src.core.auth import get_current_user
 
 router = APIRouter()
 
@@ -115,3 +118,15 @@ async def export_csv(project_id: str = "", task_id: str = ""):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=data.csv"},
     )
+
+
+@router.get("/data/export")
+async def export_data(
+    project_id: str = "",
+    format: str = Query("json", alias="format"),
+    user: dict = Depends(get_current_user),
+):
+    """Export data as JSON or CSV (unified endpoint)."""
+    if format == "csv":
+        return await export_csv(project_id=project_id)
+    return await export_json(project_id=project_id)
