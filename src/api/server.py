@@ -18,7 +18,7 @@ from src.core.models import CrawlerStatus
 app = FastAPI(title="AI Spider", version="0.1.0")
 
 # Static files
-STATIC_DIR = Path(__file__).parent.parent / "web"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "web"
 if (STATIC_DIR / "static").exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR / "static")), name="static")
 

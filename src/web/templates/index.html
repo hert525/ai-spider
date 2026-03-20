@@ -137,7 +137,13 @@
 </div>
 
 <script>
-const API = '';
+// Auto-detect base path from current URL
+const API = (() => {
+  const p = window.location.pathname;
+  // If served under /spider/, API calls go to /spider/api/...
+  if (p.startsWith('/spider')) return '/spider';
+  return '';
+})();
 let currentProject = null;
 
 async function api(method, path, body) {
