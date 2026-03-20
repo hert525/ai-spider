@@ -19,6 +19,7 @@ from src.core.database import init_db, db
 from src.api.v1 import projects, tasks, workers, data, system, auth, admin
 from src.api.v1.proxy_admin import router as proxy_admin_router
 from src.api.v1.settings import router as settings_router
+from src.api.v1.deploy import router as deploy_router
 from src.api.ws import ws_manager
 
 # Configure logging before anything else
@@ -53,6 +54,7 @@ app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(proxy_admin_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
+app.include_router(deploy_router, prefix="/api/v1")
 
 # Also mount under /api/ for backward compat
 app.include_router(projects.router, prefix="/api", tags=["projects-compat"], include_in_schema=False)

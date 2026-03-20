@@ -1,0 +1,10 @@
+httpx
+litellm
+parsel
+loguru
+psutil
+playwright
+pydantic
+python-dotenv
+aiosqlite
+redis

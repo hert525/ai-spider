@@ -243,8 +243,32 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
     <!-- Workers -->
     <div class="page" id="page-workers">
       <div class="page-title">🖥️ Worker节点</div>
+      <div style="margin-bottom:20px">
+        <button class="btn btn-primary" onclick="showDeployModal()">🚀 部署新Worker</button>
+      </div>
       <div class="worker-stats-bar" id="worker-stats-bar"></div>
       <div class="worker-grid" id="workers-grid"></div>
+
+      <!-- Deploy Modal -->
+      <div id="deploy-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:28px;width:620px;max-width:90vw;max-height:90vh;overflow-y:auto">
+          <h3 style="margin-bottom:20px">🚀 部署新Worker</h3>
+          <p style="color:var(--text-secondary);margin-bottom:16px">在目标机器上运行以下命令：</p>
+          <div style="position:relative">
+            <pre id="deploy-command" style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;white-space:pre-wrap;word-break:break-all;color:var(--text-primary);margin-bottom:8px">加载中...</pre>
+            <button onclick="copyDeployCommand()" class="btn btn-sm" style="position:absolute;top:8px;right:8px">📋 复制</button>
+          </div>
+          <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h4 style="margin:0">部署 Token 管理</h4>
+            <button class="btn btn-sm btn-primary" onclick="createDeployToken()">+ 生成新Token</button>
+          </div>
+          <div id="deploy-tokens-list" style="font-size:13px;color:var(--text-secondary)">加载中...</div>
+          <div style="margin-top:20px;text-align:right">
+            <button class="btn btn-outline" onclick="hideDeployModal()">关闭</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Proxies -->
@@ -983,6 +1007,57 @@ async function revokePermission(poolId, userId) {
 // --- Init ---
 document.getElementById('login-password').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 if (API_KEY) checkAuth(); else showLogin();
+
+// ── Deploy functions ──
+async function showDeployModal() {
+  document.getElementById('deploy-modal').classList.remove('hidden');
+  await loadDeployCommand();
+  await loadDeployTokens();
+}
+function hideDeployModal() { document.getElementById('deploy-modal').classList.add('hidden'); }
+
+async function loadDeployCommand() {
+  try {
+    const r = await apiFetch('/api/v1/deploy/command');
+    document.getElementById('deploy-command').textContent = r.command;
+  } catch(e) { document.getElementById('deploy-command').textContent = '获取失败: ' + e.message; }
+}
+
+function copyDeployCommand() {
+  const t = document.getElementById('deploy-command').textContent;
+  navigator.clipboard.writeText(t).then(() => showToast('已复制'));
+}
+
+async function loadDeployTokens() {
+  const el = document.getElementById('deploy-tokens-list');
+  try {
+    const tokens = await apiFetch('/api/v1/deploy/tokens');
+    if (!tokens.length) { el.innerHTML = '<em>暂无Token，请生成</em>'; return; }
+    el.innerHTML = '<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:6px">名称</th><th style="padding:6px">Token</th><th style="padding:6px">使用</th><th style="padding:6px">状态</th><th style="padding:6px"></th></tr></thead><tbody>' +
+      tokens.map(t => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px">${t.name}</td><td style="padding:6px;font-family:monospace;font-size:12px">${t.token.slice(0,12)}...</td><td style="padding:6px">${t.used_count||0}次</td><td style="padding:6px">${t.status==='active'?'🟢':'🔴'} ${t.status}</td><td style="padding:6px">${t.status==='active'?`<button class="btn btn-sm" onclick="revokeDeployToken('${t.id}')">撤销</button>`:''}</td></tr>`).join('') +
+      '</tbody></table>';
+  } catch(e) { el.innerHTML = '加载失败: ' + e.message; }
+}
+
+async function createDeployToken() {
+  const name = prompt('Token名称:', '新Token');
+  if (!name) return;
+  try {
+    await apiFetch('/api/v1/deploy/tokens', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, expires_hours:720}) });
+    await loadDeployTokens();
+    await loadDeployCommand();
+    showToast('Token已生成');
+  } catch(e) { showToast('生成失败: ' + e.message); }
+}
+
+async function revokeDeployToken(id) {
+  if (!confirm('确认撤销此Token？')) return;
+  try {
+    await apiFetch('/api/v1/deploy/tokens/' + id, { method:'DELETE' });
+    await loadDeployTokens();
+    showToast('已撤销');
+  } catch(e) { showToast('撤销失败: ' + e.message); }
+}
 </script>
 </body>
 </html>
