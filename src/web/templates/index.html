@@ -4,287 +4,512 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Spider - 智能爬虫平台</title>
-<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
 <style>
-  body { background: #0f1117; color: #e0e0e0; }
-  .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-  .btn-primary { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); }
-  .btn-primary:hover { background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%); }
-  .code-area { background: #1a1b26; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
-  .chat-user { background: rgba(99,102,241,0.15); border-left: 3px solid #6366f1; }
-  .chat-ai { background: rgba(16,185,129,0.1); border-left: 3px solid #10b981; }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .status-draft { background: #fbbf24; }
-  .status-tested { background: #10b981; }
-  .status-failed { background: #ef4444; }
-  .status-running { background: #3b82f6; animation: pulse 1.5s infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .result-card { transition: all 0.2s; }
-  .result-card:hover { background: rgba(255,255,255,0.08); }
+  body { background: #0a0b10; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .glass { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+  .glass-hover:hover { background: rgba(255,255,255,0.08); }
+  .btn-primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+  .btn-primary:hover { background: linear-gradient(135deg, #818cf8, #a78bfa); }
+  .btn-danger { background: #dc2626; } .btn-danger:hover { background: #ef4444; }
+  .btn-success { background: #059669; } .btn-success:hover { background: #10b981; }
+  .btn-outline { border: 1px solid #374151; background: transparent; }
+  .btn-outline:hover { background: rgba(255,255,255,0.06); }
+  .code-area { background: #12131a; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.6; }
+  .chat-user { background: rgba(99,102,241,0.12); border-left: 3px solid #6366f1; }
+  .chat-ai { background: rgba(16,185,129,0.08); border-left: 3px solid #10b981; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-draft { background: #fbbf24; } .dot-testing { background: #3b82f6; animation: pulse 1.5s infinite; }
+  .dot-tested { background: #10b981; } .dot-failed { background: #ef4444; }
+  .dot-approved { background: #8b5cf6; } .dot-running { background: #3b82f6; animation: pulse 1.5s infinite; }
+  .dot-completed { background: #10b981; } .dot-queued { background: #fbbf24; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .tab-active { border-bottom: 2px solid #6366f1; color: #fff; }
+  .tab-inactive { color: #6b7280; }
+  .tab-inactive:hover { color: #9ca3af; }
+  .sidebar-item.active { background: rgba(99,102,241,0.15); border-left: 3px solid #6366f1; }
+  .modal-bg { background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); }
+  .toast { animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } }
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
 </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen flex flex-col">
+
+<!-- Toast container -->
+<div id="toasts" class="fixed top-4 right-4 z-50 space-y-2"></div>
 
 <!-- Header -->
-<nav class="glass border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+<nav class="flex items-center justify-between px-6 py-3 border-b border-gray-800/60">
   <div class="flex items-center gap-3">
     <span class="text-2xl">🕷️</span>
-    <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">AI Spider</h1>
+    <h1 class="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">AI Spider</h1>
   </div>
-  <div class="flex items-center gap-4">
-    <span class="text-sm text-gray-400" id="projectCount">0 个项目</span>
+  <div class="flex items-center gap-4 text-sm">
+    <span class="text-gray-500" id="statsBar">加载中...</span>
+    <a href="/admin" class="text-gray-400 hover:text-white transition">⚙️ 管理后台</a>
   </div>
 </nav>
 
-<div class="flex h-screen" style="height: calc(100vh - 52px);">
+<div class="flex flex-1 overflow-hidden">
 
-  <!-- Sidebar: Project List -->
-  <div class="w-72 glass border-r border-gray-800 overflow-y-auto p-4">
-    <button onclick="showNewProject()" class="btn-primary w-full py-2 px-4 rounded-lg text-white font-medium mb-4">
-      + 新建爬虫
-    </button>
-    <div id="projectList" class="space-y-2"></div>
-  </div>
+  <!-- ══ Sidebar ══ -->
+  <aside class="w-64 border-r border-gray-800/60 flex flex-col">
+    <!-- Tabs -->
+    <div class="flex border-b border-gray-800/60">
+      <button onclick="switchTab('projects')" id="tabProjects" class="flex-1 py-3 text-sm font-medium tab-active">🧪 爬虫项目</button>
+      <button onclick="switchTab('tasks')" id="tabTasks" class="flex-1 py-3 text-sm font-medium tab-inactive">📋 任务</button>
+    </div>
 
-  <!-- Main Content -->
-  <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- Projects list -->
+    <div id="panelProjects" class="flex-1 overflow-y-auto p-3 space-y-1">
+      <button onclick="showCreate()" class="btn-primary w-full py-2 rounded-lg text-white text-sm font-medium mb-3">+ 新建爬虫</button>
+      <div id="projectList"></div>
+    </div>
 
-    <!-- New Project / Empty State -->
-    <div id="emptyState" class="flex-1 flex items-center justify-center">
-      <div class="text-center">
-        <div class="text-6xl mb-4">🕷️</div>
-        <h2 class="text-2xl font-bold mb-2">AI Spider 智能爬虫平台</h2>
-        <p class="text-gray-400 mb-6">用自然语言描述你的爬取需求，AI自动生成爬虫代码</p>
-        <button onclick="showNewProject()" class="btn-primary py-3 px-8 rounded-lg text-white font-medium text-lg">
-          开始创建
+    <!-- Tasks list -->
+    <div id="panelTasks" class="flex-1 overflow-y-auto p-3 space-y-1 hidden">
+      <div id="taskList"></div>
+    </div>
+  </aside>
+
+  <!-- ══ Main Content ══ -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Empty state -->
+    <div id="viewEmpty" class="flex-1 flex items-center justify-center">
+      <div class="text-center max-w-md">
+        <div class="text-7xl mb-6">🕷️</div>
+        <h2 class="text-2xl font-bold mb-2">AI 智能爬虫平台</h2>
+        <p class="text-gray-400 mb-8 leading-relaxed">用自然语言描述你想要的数据，AI 自动生成爬虫代码。<br>测试、迭代、一键部署。</p>
+        <button onclick="showCreate()" class="btn-primary py-3 px-10 rounded-xl text-white font-medium text-lg">🚀 开始创建</button>
+      </div>
+    </div>
+
+    <!-- Create view -->
+    <div id="viewCreate" class="flex-1 p-8 overflow-y-auto hidden">
+      <div class="max-w-2xl mx-auto space-y-6">
+        <h2 class="text-xl font-bold">🆕 创建新爬虫</h2>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1.5">名称 <span class="text-gray-600">(可选)</span></label>
+          <input id="inName" type="text" placeholder="给爬虫起个名字..."
+            class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:border-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1.5">目标网址</label>
+          <input id="inUrl" type="url" placeholder="https://example.com/products"
+            class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:border-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1.5">描述你想爬取什么数据</label>
+          <textarea id="inDesc" rows="5" placeholder="例如：爬取所有商品的名称、价格、销量和评分，支持翻页，爬取前10页的数据"
+            class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-white focus:border-indigo-500 focus:outline-none resize-none"></textarea>
+        </div>
+        <button onclick="doCreate()" id="btnCreate" class="btn-primary w-full py-3 rounded-xl text-white font-medium text-lg transition">
+          🤖 AI 生成爬虫代码
         </button>
       </div>
     </div>
 
-    <!-- Create Panel -->
-    <div id="createPanel" class="flex-1 p-6 overflow-y-auto hidden">
-      <div class="max-w-2xl mx-auto">
-        <h2 class="text-xl font-bold mb-4">🆕 新建爬虫</h2>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">目标网址</label>
-            <input id="inputUrl" type="url" placeholder="https://example.com/..." 
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-indigo-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">描述你想爬取什么</label>
-            <textarea id="inputDesc" rows="4" placeholder="例如：爬取这个页面所有商品的名称、价格、销量和评分，翻页爬取前10页"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-indigo-500 focus:outline-none resize-none"></textarea>
-          </div>
-          <button onclick="createProject()" id="btnCreate" class="btn-primary w-full py-3 rounded-lg text-white font-medium">
-            🚀 AI 生成爬虫代码
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Project Detail Panel -->
-    <div id="detailPanel" class="flex-1 flex flex-col hidden">
-      <!-- Top bar -->
-      <div class="glass border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+    <!-- Project detail view -->
+    <div id="viewProject" class="flex-1 flex flex-col hidden">
+      <!-- Project header -->
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-800/60">
         <div class="flex items-center gap-3">
-          <span class="status-dot" id="detailStatus"></span>
-          <h2 class="font-bold" id="detailName"></h2>
-          <span class="text-sm text-gray-500" id="detailVersion"></span>
+          <span class="dot" id="pDot"></span>
+          <h3 class="font-bold text-base" id="pName"></h3>
+          <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded" id="pVersion"></span>
+          <span class="text-xs text-gray-500" id="pStatus"></span>
         </div>
         <div class="flex gap-2">
-          <button onclick="testProject()" class="bg-green-600 hover:bg-green-700 px-4 py-1.5 rounded-lg text-sm text-white">▶ 测试</button>
-          <button onclick="approveProject()" class="bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded-lg text-sm text-white">✅ 上线</button>
+          <button onclick="doTest()" class="btn-success px-4 py-1.5 rounded-lg text-sm text-white">▶ 测试运行</button>
+          <button onclick="doApprove()" class="btn-outline px-4 py-1.5 rounded-lg text-sm text-gray-300">✅ 审核通过</button>
+          <button onclick="showDeployModal()" class="btn-primary px-4 py-1.5 rounded-lg text-sm text-white">🚀 部署任务</button>
+          <button onclick="doDeleteProject()" class="btn-outline px-3 py-1.5 rounded-lg text-sm text-red-400 border-red-900 hover:bg-red-900/30">🗑</button>
         </div>
       </div>
 
-      <!-- Split: Code + Chat/Results -->
+      <!-- Split view -->
       <div class="flex-1 flex overflow-hidden">
-        <!-- Code Editor -->
-        <div class="flex-1 flex flex-col border-r border-gray-800">
-          <div class="px-4 py-2 text-sm text-gray-400 bg-gray-900">📝 爬虫代码</div>
-          <textarea id="codeEditor" class="flex-1 code-area p-4 text-green-300 resize-none focus:outline-none w-full"></textarea>
+        <!-- Code editor -->
+        <div class="flex-1 flex flex-col border-r border-gray-800/60 min-w-0">
+          <div class="px-4 py-2 text-xs text-gray-500 bg-gray-900/50 flex justify-between items-center">
+            <span>📝 crawler.py</span>
+            <span id="codeLen" class="text-gray-600"></span>
+          </div>
+          <textarea id="codeEditor" class="flex-1 code-area p-4 text-green-300 resize-none focus:outline-none w-full" spellcheck="false"></textarea>
         </div>
 
-        <!-- Right Panel: Chat + Results -->
-        <div class="w-96 flex flex-col">
-          <!-- Test Results -->
-          <div class="flex-1 overflow-y-auto p-4 border-b border-gray-800">
-            <h3 class="text-sm text-gray-400 mb-2">📊 测试结果</h3>
-            <div id="testResults" class="space-y-2 text-sm">
-              <p class="text-gray-600">还未运行测试</p>
+        <!-- Right panel -->
+        <div class="w-[380px] flex flex-col min-w-0">
+          <!-- Test results -->
+          <div class="flex-1 overflow-y-auto border-b border-gray-800/60">
+            <div class="px-4 py-2 text-xs text-gray-500 bg-gray-900/50 sticky top-0">📊 测试结果</div>
+            <div id="testResults" class="p-3 text-sm space-y-2">
+              <p class="text-gray-600 text-center py-8">尚未运行测试</p>
             </div>
           </div>
 
-          <!-- Chat / Feedback -->
-          <div class="h-64 flex flex-col">
+          <!-- Chat -->
+          <div class="h-[280px] flex flex-col">
+            <div class="px-4 py-2 text-xs text-gray-500 bg-gray-900/50">💬 对话优化</div>
             <div id="chatHistory" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
-            <div class="p-3 border-t border-gray-800">
-              <div class="flex gap-2">
-                <input id="feedbackInput" type="text" placeholder="告诉AI怎么改..."
-                  class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
-                  onkeydown="if(event.key==='Enter')sendFeedback()">
-                <button onclick="sendFeedback()" class="btn-primary px-4 py-2 rounded-lg text-sm text-white">发送</button>
-              </div>
+            <div class="p-3 border-t border-gray-800/60 flex gap-2">
+              <input id="chatInput" type="text" placeholder="告诉 AI 怎么修改代码..."
+                class="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey)doRefine()">
+              <button onclick="doRefine()" class="btn-primary px-4 py-2 rounded-lg text-sm text-white">发送</button>
             </div>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- Task detail view -->
+    <div id="viewTask" class="flex-1 p-6 overflow-y-auto hidden">
+      <div class="max-w-4xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-3">
+            <span class="dot" id="tDot"></span>
+            <h3 class="text-xl font-bold" id="tName"></h3>
+            <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded" id="tType"></span>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="doCancelTask()" class="btn-outline px-4 py-1.5 rounded-lg text-sm text-gray-300">⏹ 取消</button>
+            <button onclick="doDeleteTask()" class="btn-outline px-3 py-1.5 rounded-lg text-sm text-red-400 border-red-900 hover:bg-red-900/30">🗑 删除</button>
+          </div>
+        </div>
+
+        <!-- Task stats -->
+        <div class="grid grid-cols-4 gap-4 mb-6" id="tStats"></div>
+
+        <!-- Task config -->
+        <div class="glass rounded-xl p-5 mb-6">
+          <h4 class="text-sm font-bold text-gray-400 mb-3">配置</h4>
+          <div id="tConfig" class="grid grid-cols-2 gap-3 text-sm"></div>
+        </div>
+
+        <!-- Run history -->
+        <div class="glass rounded-xl p-5">
+          <h4 class="text-sm font-bold text-gray-400 mb-3">运行记录</h4>
+          <div id="tRuns" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Deploy Modal -->
+<div id="deployModal" class="fixed inset-0 modal-bg z-40 hidden flex items-center justify-center">
+  <div class="glass rounded-2xl p-6 w-[480px] max-h-[80vh] overflow-y-auto">
+    <h3 class="text-lg font-bold mb-4">🚀 部署爬虫任务</h3>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">任务名称</label>
+        <input id="dName" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1">目标URL（每行一个）</label>
+        <textarea id="dUrls" rows="3" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none resize-none"></textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">任务类型</label>
+          <select id="dType" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
+            <option value="one_time">单次运行</option>
+            <option value="scheduled">定时运行</option>
+            <option value="continuous">持续运行</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">优先级 (1最高)</label>
+          <input id="dPriority" type="number" value="5" min="1" max="10" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
+        </div>
+      </div>
+      <div id="cronRow" class="hidden">
+        <label class="block text-sm text-gray-400 mb-1">Cron 表达式</label>
+        <input id="dCron" placeholder="0 */6 * * *" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none">
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">最大页数</label>
+          <input id="dMaxPages" type="number" value="100" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">最大数据量</label>
+          <input id="dMaxItems" type="number" value="10000" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">超时(秒)</label>
+          <input id="dTimeout" type="number" value="300" class="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-white">
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-6">
+      <button onclick="closeModal()" class="btn-outline flex-1 py-2.5 rounded-lg text-sm text-gray-300">取消</button>
+      <button onclick="doDeploy()" class="btn-primary flex-1 py-2.5 rounded-lg text-sm text-white font-medium">确认部署</button>
+    </div>
   </div>
 </div>
 
 <script>
-// Auto-detect base path from current URL
-const API = (() => {
-  const p = window.location.pathname;
-  // If served under /spider/, API calls go to /spider/api/...
-  if (p.startsWith('/spider')) return '/spider';
-  return '';
-})();
-let currentProject = null;
+// ── State ──
+const B = (() => { const p = window.location.pathname; return p.startsWith('/spider') ? '/spider' : ''; })();
+let curProject = null, curTask = null, curTab = 'projects';
 
+// ── API ──
 async function api(method, path, body) {
-  const opts = { method, headers: {'Content-Type': 'application/json'} };
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(API + path, opts);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  const o = { method, headers: {'Content-Type':'application/json'} };
+  if (body) o.body = JSON.stringify(body);
+  const r = await fetch(B + path, o);
+  if (!r.ok) { const t = await r.text(); throw new Error(t); }
   return r.json();
 }
 
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  const colors = { info: 'bg-gray-800 border-gray-700', success: 'bg-green-900/80 border-green-700', error: 'bg-red-900/80 border-red-700' };
+  el.className = `toast ${colors[type]||colors.info} border rounded-lg px-4 py-2.5 text-sm shadow-lg`;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Views ──
+function showView(name) {
+  ['Empty','Create','Project','Task'].forEach(v => document.getElementById('view'+v).classList.toggle('hidden', v!==name));
+}
+function switchTab(tab) {
+  curTab = tab;
+  document.getElementById('tabProjects').className = `flex-1 py-3 text-sm font-medium ${tab==='projects'?'tab-active':'tab-inactive'}`;
+  document.getElementById('tabTasks').className = `flex-1 py-3 text-sm font-medium ${tab==='tasks'?'tab-active':'tab-inactive'}`;
+  document.getElementById('panelProjects').classList.toggle('hidden', tab!=='projects');
+  document.getElementById('panelTasks').classList.toggle('hidden', tab!=='tasks');
+  if (tab==='tasks') loadTasks();
+}
+function showCreate() { showView('Create'); document.getElementById('inDesc').focus(); }
+
+// ── Projects ──
 async function loadProjects() {
   const projects = await api('GET', '/api/projects');
-  document.getElementById('projectCount').textContent = `${projects.length} 个项目`;
-  const list = document.getElementById('projectList');
-  list.innerHTML = projects.map(p => `
-    <div class="glass p-3 rounded-lg cursor-pointer result-card" onclick="openProject('${p.id}')">
+  const stats = `${projects.length} 个项目`;
+  document.getElementById('statsBar').textContent = stats;
+  const html = projects.map(p => `
+    <div class="glass glass-hover rounded-lg px-3 py-2.5 cursor-pointer sidebar-item ${curProject?.id===p.id?'active':''}" onclick="openProject('${p.id}')">
       <div class="flex items-center gap-2">
-        <span class="status-dot status-${p.status}"></span>
-        <span class="text-sm font-medium truncate">${p.name}</span>
+        <span class="dot dot-${p.status}"></span>
+        <span class="text-sm truncate flex-1">${esc(p.name)}</span>
       </div>
-      <p class="text-xs text-gray-500 mt-1 truncate">${p.description}</p>
+      <p class="text-xs text-gray-600 mt-1 truncate">${esc(p.description)}</p>
     </div>
   `).join('');
-}
-
-function showNewProject() {
-  document.getElementById('emptyState').classList.add('hidden');
-  document.getElementById('detailPanel').classList.add('hidden');
-  document.getElementById('createPanel').classList.remove('hidden');
-  document.getElementById('inputDesc').focus();
-}
-
-async function createProject() {
-  const btn = document.getElementById('btnCreate');
-  btn.disabled = true;
-  btn.textContent = '⏳ AI 正在生成...';
-  try {
-    const desc = document.getElementById('inputDesc').value;
-    const url = document.getElementById('inputUrl').value;
-    const proj = await api('POST', '/api/projects', { description: desc, target_url: url });
-    await loadProjects();
-    openProject(proj.id);
-  } catch(e) {
-    alert('生成失败: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🚀 AI 生成爬虫代码';
-  }
+  document.getElementById('projectList').innerHTML = html;
 }
 
 async function openProject(id) {
-  const proj = await api('GET', `/api/projects/${id}`);
-  currentProject = proj;
-
-  document.getElementById('createPanel').classList.add('hidden');
-  document.getElementById('emptyState').classList.add('hidden');
-  document.getElementById('detailPanel').classList.remove('hidden');
-
-  document.getElementById('detailName').textContent = proj.name;
-  document.getElementById('detailVersion').textContent = `v${proj.version}`;
-  document.getElementById('detailStatus').className = `status-dot status-${proj.status}`;
-  document.getElementById('codeEditor').value = proj.code;
-
-  // Render chat
-  const chat = document.getElementById('chatHistory');
-  chat.innerHTML = (proj.messages || []).map(m => `
-    <div class="px-3 py-2 rounded text-sm ${m.role === 'user' ? 'chat-user' : 'chat-ai'}">
-      ${m.content}
-    </div>
-  `).join('');
-  chat.scrollTop = chat.scrollHeight;
-
-  // Render test results
-  renderTestResults(proj.test_results || []);
+  curProject = await api('GET', `/api/projects/${id}`);
+  showView('Project');
+  document.getElementById('pName').textContent = curProject.name;
+  document.getElementById('pVersion').textContent = `v${curProject.version}`;
+  document.getElementById('pStatus').textContent = curProject.status;
+  document.getElementById('pDot').className = `dot dot-${curProject.status}`;
+  document.getElementById('codeEditor').value = curProject.code;
+  document.getElementById('codeLen').textContent = `${curProject.code.length} chars`;
+  renderChat(curProject.messages || []);
+  renderResults(curProject.test_results || []);
+  loadProjects(); // Refresh sidebar highlight
 }
 
-function renderTestResults(results) {
+function renderChat(msgs) {
+  const el = document.getElementById('chatHistory');
+  el.innerHTML = msgs.map(m => `<div class="px-3 py-2 rounded-lg text-sm ${m.role==='user'?'chat-user':'chat-ai'}">${esc(m.content)}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderResults(results) {
   const el = document.getElementById('testResults');
-  if (!results.length) { el.innerHTML = '<p class="text-gray-600">还未运行测试</p>'; return; }
-  const last = results[results.length - 1];
-  let html = `<div class="text-xs text-gray-400">v${last.version} · ${last.duration_ms}ms · ${last.pages_crawled}条</div>`;
-  if (last.error) {
-    html += `<div class="bg-red-900 bg-opacity-30 rounded p-2 text-red-300 text-xs mt-2">${last.error}</div>`;
-  }
-  if (last.output && last.output.length) {
-    html += last.output.map((item, i) => `
-      <div class="result-card glass rounded p-2 mt-1">
-        <pre class="text-xs text-gray-300 whitespace-pre-wrap">${JSON.stringify(item, null, 2)}</pre>
-      </div>
-    `).join('');
+  if (!results.length) { el.innerHTML = '<p class="text-gray-600 text-center py-8">尚未运行测试</p>'; return; }
+  const last = results[results.length-1];
+  let html = `<div class="flex items-center gap-2 mb-2">
+    <span class="dot dot-${last.status==='success'?'tested':'failed'}"></span>
+    <span class="text-xs text-gray-400">v${last.version} · ${last.duration_ms}ms · ${last.pages_crawled}条数据</span>
+  </div>`;
+  if (last.error) html += `<div class="bg-red-900/30 rounded-lg p-3 text-red-300 text-xs mb-2 font-mono">${esc(last.error)}</div>`;
+  if (last.output?.length) {
+    html += last.output.map(item => `<div class="glass rounded-lg p-2.5 text-xs"><pre class="text-gray-300 whitespace-pre-wrap overflow-x-auto">${esc(JSON.stringify(item,null,2))}</pre></div>`).join('');
   }
   el.innerHTML = html;
 }
 
-async function testProject() {
-  if (!currentProject) return;
-  // Save any code edits
-  const code = document.getElementById('codeEditor').value;
-  if (code !== currentProject.code) {
-    await api('POST', `/api/projects/${currentProject.id}/refine`, { feedback: '用户直接修改了代码' });
-  }
+async function doCreate() {
+  const btn = document.getElementById('btnCreate');
+  btn.disabled = true; btn.textContent = '⏳ AI 正在生成代码...';
   try {
-    document.getElementById('testResults').innerHTML = '<p class="text-yellow-400">⏳ 正在测试...</p>';
-    const result = await api('POST', `/api/projects/${currentProject.id}/test`, { max_pages: 5 });
-    await openProject(currentProject.id);
-  } catch(e) {
-    document.getElementById('testResults').innerHTML = `<p class="text-red-400">❌ ${e.message}</p>`;
-  }
+    const p = await api('POST', '/api/projects', {
+      name: document.getElementById('inName').value,
+      description: document.getElementById('inDesc').value,
+      target_url: document.getElementById('inUrl').value,
+    });
+    toast('爬虫代码已生成！', 'success');
+    await loadProjects();
+    openProject(p.id);
+  } catch(e) { toast('生成失败: '+e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '🤖 AI 生成爬虫代码'; }
 }
 
-async function sendFeedback() {
-  if (!currentProject) return;
-  const input = document.getElementById('feedbackInput');
+async function doTest() {
+  if (!curProject) return;
+  document.getElementById('testResults').innerHTML = '<p class="text-yellow-400 text-center py-8">⏳ 正在沙箱中运行测试...</p>';
+  try {
+    await api('POST', `/api/projects/${curProject.id}/test`, { max_pages: 5 });
+    toast('测试完成', 'success');
+    await openProject(curProject.id);
+  } catch(e) { toast('测试失败: '+e.message, 'error'); }
+}
+
+async function doRefine() {
+  if (!curProject) return;
+  const input = document.getElementById('chatInput');
   const feedback = input.value.trim();
   if (!feedback) return;
   input.value = '';
-
-  // Show user message immediately
   const chat = document.getElementById('chatHistory');
-  chat.innerHTML += `<div class="px-3 py-2 rounded text-sm chat-user">${feedback}</div>`;
-  chat.innerHTML += `<div class="px-3 py-2 rounded text-sm chat-ai">⏳ AI 正在修改代码...</div>`;
+  chat.innerHTML += `<div class="px-3 py-2 rounded-lg text-sm chat-user">${esc(feedback)}</div>`;
+  chat.innerHTML += `<div class="px-3 py-2 rounded-lg text-sm chat-ai text-gray-500">⏳ AI 正在修改...</div>`;
   chat.scrollTop = chat.scrollHeight;
-
   try {
-    const proj = await api('POST', `/api/projects/${currentProject.id}/refine`, { feedback });
-    await openProject(proj.id);
-  } catch(e) {
-    chat.innerHTML += `<div class="px-3 py-2 rounded text-sm bg-red-900 bg-opacity-30">❌ ${e.message}</div>`;
-  }
+    const p = await api('POST', `/api/projects/${curProject.id}/refine`, { feedback });
+    toast('代码已更新', 'success');
+    await openProject(p.id);
+  } catch(e) { toast('修改失败: '+e.message, 'error'); }
 }
 
-async function approveProject() {
-  if (!currentProject) return;
-  await api('POST', `/api/projects/${currentProject.id}/approve`);
-  await openProject(currentProject.id);
+async function doApprove() {
+  if (!curProject) return;
+  await api('POST', `/api/projects/${curProject.id}/approve`);
+  toast('已审核通过 ✅', 'success');
+  await openProject(curProject.id);
+}
+
+async function doDeleteProject() {
+  if (!curProject || !confirm('确认删除该项目？')) return;
+  await api('DELETE', `/api/projects/${curProject.id}`);
+  curProject = null;
+  showView('Empty');
   await loadProjects();
+  toast('已删除', 'info');
 }
 
-// Init
+// ── Tasks ──
+async function loadTasks() {
+  const tasks = await api('GET', '/api/tasks');
+  const html = tasks.length ? tasks.map(t => `
+    <div class="glass glass-hover rounded-lg px-3 py-2.5 cursor-pointer sidebar-item ${curTask?.id===t.id?'active':''}" onclick="openTask('${t.id}')">
+      <div class="flex items-center gap-2">
+        <span class="dot dot-${t.status}"></span>
+        <span class="text-sm truncate flex-1">${esc(t.name)}</span>
+      </div>
+      <div class="flex gap-2 text-xs text-gray-600 mt-1">
+        <span>${t.task_type}</span>
+        <span>·</span>
+        <span>${t.total_runs} 次运行</span>
+      </div>
+    </div>
+  `).join('') : '<p class="text-gray-600 text-center py-8 text-sm">暂无任务<br><span class="text-gray-700">在项目中点击"部署任务"创建</span></p>';
+  document.getElementById('taskList').innerHTML = html;
+}
+
+async function openTask(id) {
+  curTask = await api('GET', `/api/tasks/${id}`);
+  showView('Task');
+  document.getElementById('tName').textContent = curTask.name;
+  document.getElementById('tDot').className = `dot dot-${curTask.status}`;
+  document.getElementById('tType').textContent = {one_time:'单次',scheduled:'定时',continuous:'持续'}[curTask.task_type]||curTask.task_type;
+  document.getElementById('tStats').innerHTML = [
+    ['总运行', curTask.total_runs, '📊'],
+    ['成功', curTask.successful_runs, '✅'],
+    ['失败', curTask.failed_runs, '❌'],
+    ['数据量', curTask.total_items, '📦'],
+  ].map(([l,v,i]) => `<div class="glass rounded-xl p-4 text-center"><div class="text-2xl mb-1">${i}</div><div class="text-lg font-bold">${v}</div><div class="text-xs text-gray-500">${l}</div></div>`).join('');
+  document.getElementById('tConfig').innerHTML = [
+    ['状态', curTask.status], ['URLs', curTask.target_urls.length],
+    ['最大页数', curTask.max_pages], ['最大数据量', curTask.max_items],
+    ['超时', curTask.timeout_seconds+'s'], ['并发', curTask.concurrency],
+    ['优先级', curTask.priority], ['Cron', curTask.cron_expr||'—'],
+  ].map(([k,v]) => `<div><span class="text-gray-500">${k}:</span> <span class="text-gray-300">${v}</span></div>`).join('');
+  const runs = (curTask.runs||[]).slice(-20).reverse();
+  document.getElementById('tRuns').innerHTML = runs.length ? runs.map(r => `
+    <div class="glass rounded-lg p-3 text-sm flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="dot dot-${r.status}"></span>
+        <span>${r.id}</span>
+      </div>
+      <div class="flex gap-4 text-xs text-gray-500">
+        <span>${r.items_crawled} 条</span>
+        <span>${r.duration_ms}ms</span>
+        <span>${new Date(r.created_at).toLocaleString('zh-CN')}</span>
+      </div>
+    </div>
+  `).join('') : '<p class="text-gray-600 text-sm">暂无运行记录</p>';
+  loadTasks();
+}
+
+async function doCancelTask() {
+  if (!curTask) return;
+  await api('POST', `/api/tasks/${curTask.id}/cancel`);
+  toast('任务已取消', 'info');
+  await openTask(curTask.id);
+}
+async function doDeleteTask() {
+  if (!curTask || !confirm('确认删除？')) return;
+  await api('DELETE', `/api/tasks/${curTask.id}`);
+  curTask = null; showView('Empty'); loadTasks();
+  toast('已删除', 'info');
+}
+
+// ── Deploy modal ──
+function showDeployModal() {
+  if (!curProject) return;
+  document.getElementById('dName').value = curProject.name;
+  document.getElementById('dUrls').value = curProject.target_url;
+  document.getElementById('deployModal').classList.remove('hidden');
+}
+function closeModal() { document.getElementById('deployModal').classList.add('hidden'); }
+document.getElementById('dType').addEventListener('change', e => {
+  document.getElementById('cronRow').classList.toggle('hidden', e.target.value !== 'scheduled');
+});
+
+async function doDeploy() {
+  if (!curProject) return;
+  const urls = document.getElementById('dUrls').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  try {
+    const task = await api('POST', '/api/tasks', {
+      project_id: curProject.id,
+      name: document.getElementById('dName').value,
+      target_urls: urls,
+      task_type: document.getElementById('dType').value,
+      cron_expr: document.getElementById('dCron').value,
+      max_pages: +document.getElementById('dMaxPages').value,
+      max_items: +document.getElementById('dMaxItems').value,
+      timeout_seconds: +document.getElementById('dTimeout').value,
+      priority: +document.getElementById('dPriority').value,
+    });
+    closeModal();
+    toast('任务已创建！', 'success');
+    switchTab('tasks');
+    await loadTasks();
+    openTask(task.id);
+  } catch(e) { toast('部署失败: '+e.message, 'error'); }
+}
+
+// ── Util ──
+function esc(s) { const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML; }
+
+// ── Init ──
 loadProjects();
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 </body>
 </html>
