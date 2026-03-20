@@ -295,7 +295,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="form-group">
         <label>任务类型</label>
         <select class="form-input" id="deploy-type" onchange="document.getElementById('deploy-cron-group').classList.toggle('hidden',this.value!=='cron')">
-          <option value="once">单次执行</option>
+          <option value="one_time">单次执行</option>
           <option value="cron">定时任务</option>
         </select>
       </div>
@@ -403,7 +403,7 @@ async function doAuth() {
     } else {
       const res = await api('POST', '/api/v1/auth/login', { email, password });
       localStorage.setItem('api_key', res.api_key);
-      localStorage.setItem('username', res.username || email.split('@')[0]);
+      localStorage.setItem('username', res.user?.username || email.split('@')[0]);
       toast('登录成功');
     }
     enterApp();
@@ -421,7 +421,57 @@ function enterApp() {
   document.getElementById('page-auth').classList.add('hidden');
   document.getElementById('app-main').classList.remove('hidden');
   document.getElementById('display-username').textContent = localStorage.getItem('username') || '';
+  connectWS();
   switchPage('projects');
+}
+
+// WebSocket
+let _ws = null;
+function connectWS() {
+  if (_ws) { try { _ws.close(); } catch(e){} }
+  const apiKey = localStorage.getItem('api_key');
+  if (!apiKey) return;
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsPath = API_BASE + '/ws/' + apiKey;
+  const wsUrl = wsProtocol + '//' + location.host + wsPath;
+  _ws = new WebSocket(wsUrl);
+  _ws.onopen = () => { console.log('WS connected'); };
+  _ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      handleWSMessage(msg);
+    } catch(err) { console.warn('WS parse error', err); }
+  };
+  _ws.onclose = () => {
+    console.log('WS disconnected, reconnecting in 5s...');
+    setTimeout(connectWS, 5000);
+  };
+  _ws.onerror = (e) => { console.warn('WS error', e); };
+  // Keepalive ping every 30s
+  setInterval(() => {
+    if (_ws && _ws.readyState === WebSocket.OPEN) {
+      _ws.send(JSON.stringify({type: 'ping'}));
+    }
+  }, 30000);
+}
+
+function handleWSMessage(msg) {
+  switch(msg.type) {
+    case 'task_update':
+      toast('任务 ' + (msg.task_id||'').slice(0,8) + ' ' + (msg.status === 'success' ? '完成' : '失败'), msg.status === 'success' ? 'success' : 'error');
+      if (document.getElementById('page-tasks') && !document.getElementById('page-tasks').classList.contains('hidden')) loadTasks();
+      break;
+    case 'test_complete':
+      toast('测试' + (msg.status === 'success' ? '成功' : '失败'), msg.status === 'success' ? 'success' : 'error');
+      break;
+    case 'project_created':
+      if (document.getElementById('page-projects') && !document.getElementById('page-projects').classList.contains('hidden')) loadProjects();
+      break;
+    case 'pong':
+      break;
+    default:
+      console.log('WS message:', msg);
+  }
 }
 
 // Navigation
@@ -435,7 +485,7 @@ function switchPage(page) {
 }
 
 function statusBadge(status) {
-  const map = {active:'badge-green',running:'badge-blue',pending:'badge-yellow',failed:'badge-red',completed:'badge-green',cancelled:'badge-muted',draft:'badge-muted'};
+  const map = {active:'badge-green',running:'badge-blue',pending:'badge-yellow',failed:'badge-red',completed:'badge-green',cancelled:'badge-muted',draft:'badge-muted',generating:'badge-yellow',generated:'badge-green',testing:'badge-blue',tested:'badge-green',approved:'badge-green',queued:'badge-yellow',success:'badge-green',paused:'badge-muted'};
   return `<span class="badge ${map[status]||'badge-muted'}">${status||'unknown'}</span>`;
 }
 
@@ -482,7 +532,7 @@ async function createProject() {
 async function openProject(id) {
   try {
     const p = await api('GET', `/api/v1/projects/${id}`);
-    currentProject = p.project || p;
+    currentProject = p;
     document.getElementById('detail-name').textContent = currentProject.name;
     document.getElementById('detail-badge').innerHTML = statusBadge(currentProject.status);
     // editor mode
@@ -491,14 +541,24 @@ async function openProject(id) {
     document.getElementById('editor-code').classList.toggle('hidden', isSmart);
     if (isSmart) {
       document.getElementById('editor-description').value = currentProject.extraction_description || currentProject.description || '';
-      document.getElementById('editor-extracted').textContent = currentProject.extracted_data ? JSON.stringify(currentProject.extracted_data, null, 2) : '暂无数据';
+      let extracted = currentProject.extracted_data || '';
+      if (typeof extracted === 'string') { try { extracted = JSON.parse(extracted); } catch(e) {} }
+      document.getElementById('editor-extracted').textContent = extracted ? JSON.stringify(extracted, null, 2) : '暂无数据';
     } else {
       document.getElementById('editor-code-area').value = currentProject.code || '';
+      // Load chat history
+      let msgs = currentProject.messages || [];
+      if (typeof msgs === 'string') { try { msgs = JSON.parse(msgs); } catch(e) { msgs = []; } }
+      const box = document.getElementById('chat-messages');
+      box.innerHTML = msgs.map(m => `<div class="chat-msg ${m.role==='user'?'user':'ai'}">${esc(m.content)}</div>`).join('');
+      box.scrollTop = box.scrollHeight;
     }
     document.getElementById('test-url').value = currentProject.target_url || '';
     // sink
-    if (currentProject.sink) {
-      document.getElementById('sink-type').value = currentProject.sink.sink_type || 'sqlite';
+    const sinkCfg = currentProject.sink_config || {};
+    if (typeof sinkCfg === 'string') { try { currentProject.sink_config = JSON.parse(sinkCfg); } catch(e) { currentProject.sink_config = {}; } }
+    if (currentProject.sink_config && currentProject.sink_config.sink_type) {
+      document.getElementById('sink-type').value = currentProject.sink_config.sink_type;
     }
     updateSinkFields();
     switchDetailTab('editor');
@@ -521,10 +581,17 @@ async function sendChat() {
   box.innerHTML += `<div class="chat-msg user">${esc(msg)}</div>`;
   box.scrollTop = box.scrollHeight;
   try {
-    const res = await api('POST', `/api/v1/projects/${currentProject.id}/refine`, { message: msg });
-    const reply = res.message || res.response || JSON.stringify(res);
+    const res = await api('POST', `/api/v1/projects/${currentProject.id}/refine`, { feedback: msg });
+    // Backend returns updated project object; extract last assistant message
+    let reply = '';
+    try {
+      const msgs = typeof res.messages === 'string' ? JSON.parse(res.messages) : (res.messages || []);
+      const lastAi = msgs.filter(m=>m.role==='assistant').pop();
+      reply = lastAi ? lastAi.content : JSON.stringify(res);
+    } catch(e) { reply = JSON.stringify(res); }
     box.innerHTML += `<div class="chat-msg ai">${esc(reply)}</div>`;
     if (res.code) document.getElementById('editor-code-area').value = res.code;
+    currentProject = res;
   } catch(e) {
     box.innerHTML += `<div class="chat-msg ai" style="color:var(--red)">错误: ${esc(e.message)}</div>`;
   }
@@ -541,8 +608,13 @@ async function runTest() {
   try {
     const res = await api('POST', `/api/v1/projects/${currentProject.id}/test`, { target_url: url });
     const elapsed = ((Date.now()-start)/1000).toFixed(1);
-    const data = res.data || res.result || res;
-    let html = `<p style="color:var(--green);margin-bottom:8px">✓ 测试完成 (${elapsed}s)</p>`;
+    const data = res.output || res.data || res.result || res;
+    const error = res.error;
+    let html = '';
+    if (error) {
+      html = `<p style="color:var(--red);margin-bottom:8px">✗ 测试失败 (${elapsed}s)</p><pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;overflow:auto;max-height:300px;color:var(--red)">${esc(error)}</pre>`;
+    } else {
+      html = `<p style="color:var(--green);margin-bottom:8px">✓ 测试完成 (${elapsed}s)</p>`;
     if (Array.isArray(data) && data.length) {
       const keys = Object.keys(data[0]);
       html += `<div class="table-wrap"><table><thead><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>`;
@@ -550,6 +622,7 @@ async function runTest() {
       html += '</tbody></table></div>';
     } else {
       html += `<pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;overflow:auto;max-height:300px">${esc(JSON.stringify(data,null,2))}</pre>`;
+    }
     }
     document.getElementById('test-result').innerHTML = html;
   } catch(e) {
@@ -561,7 +634,7 @@ async function runTest() {
 // Sink
 function updateSinkFields() {
   const type = document.getElementById('sink-type').value;
-  const sink = currentProject?.sink || {};
+  const sink = currentProject?.sink_config || {};
   let html = '';
   if (type === 'local_file') {
     html = `
@@ -595,24 +668,24 @@ function updateSinkFields() {
 async function saveSink() {
   if (!currentProject) return;
   const sink_type = document.getElementById('sink-type').value;
-  const body = { sink_type };
+  const sink_config = { sink_type };
   if (sink_type === 'local_file') {
-    body.output_dir = document.getElementById('sink-dir').value;
-    body.format = document.getElementById('sink-format').value;
+    sink_config.output_dir = document.getElementById('sink-dir').value;
+    sink_config.format = document.getElementById('sink-format').value;
   } else if (sink_type === 'kafka') {
-    body.bootstrap_servers = document.getElementById('sink-kafka-servers').value;
-    body.topic = document.getElementById('sink-kafka-topic').value;
-    body.key_field = document.getElementById('sink-kafka-key').value || undefined;
+    sink_config.bootstrap_servers = document.getElementById('sink-kafka-servers').value;
+    sink_config.topic = document.getElementById('sink-kafka-topic').value;
+    sink_config.key_field = document.getElementById('sink-kafka-key').value || undefined;
   } else if (sink_type === 's3') {
-    body.bucket = document.getElementById('sink-s3-bucket').value;
-    body.prefix = document.getElementById('sink-s3-prefix').value;
-    body.region = document.getElementById('sink-s3-region').value;
-    body.access_key = document.getElementById('sink-s3-ak').value;
-    body.secret_key = document.getElementById('sink-s3-sk').value;
-    body.format = document.getElementById('sink-s3-format').value;
+    sink_config.bucket = document.getElementById('sink-s3-bucket').value;
+    sink_config.prefix = document.getElementById('sink-s3-prefix').value;
+    sink_config.region = document.getElementById('sink-s3-region').value;
+    sink_config.access_key = document.getElementById('sink-s3-ak').value;
+    sink_config.secret_key = document.getElementById('sink-s3-sk').value;
+    sink_config.format = document.getElementById('sink-s3-format').value;
   }
   try {
-    await api('PUT', `/api/v1/projects/${currentProject.id}/sink`, body);
+    await api('PUT', `/api/v1/projects/${currentProject.id}/sink`, { sink_config });
     toast('Sink 配置已保存');
   } catch(e) { toast(e.message,'error'); }
 }
@@ -678,7 +751,7 @@ let dataPage = 1;
 async function loadData(page) {
   dataPage = page || 1;
   const pid = document.getElementById('data-project-filter').value;
-  let url = `/api/v1/data?page=${dataPage}&limit=20`;
+  let url = `/api/v1/data?page=${dataPage}&page_size=20`;
   if (pid) url += `&project_id=${pid}`;
   try {
     const res = await api('GET', url);
@@ -701,20 +774,10 @@ async function loadData(page) {
 }
 
 function exportData(fmt) {
-  if (!allData.length) return toast('无数据可导出','error');
-  let content, mime, ext;
-  if (fmt==='json') {
-    content = JSON.stringify(allData, null, 2); mime = 'application/json'; ext = 'json';
-  } else {
-    const keys = Object.keys(allData[0]);
-    content = keys.join(',') + '\n' + allData.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(',')).join('\n');
-    mime = 'text/csv'; ext = 'csv';
-  }
-  const blob = new Blob([content], {type:mime});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `data.${ext}`;
-  a.click();
+  const pid = document.getElementById('data-project-filter').value;
+  let url = API_BASE + `/api/v1/data/export?format=${fmt}`;
+  if (pid) url += `&project_id=${pid}`;
+  window.open(url, '_blank');
 }
 
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }

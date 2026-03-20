@@ -1,26 +1,38 @@
 """FastAPI application - main entry point."""
+from __future__ import annotations
+
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
 from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.core.config import settings, BASE_DIR
-from src.core.database import init_db
+from src.core.logging import setup_logging
+from src.core.database import init_db, db
 from src.api.v1 import projects, tasks, workers, data, system, auth, admin
-from src.api.ws import router as ws_router
+from src.api.ws import ws_manager
+
+# Configure logging before anything else
+setup_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     from src.scheduler.queue import task_queue
+    from src.scheduler.cron_scheduler import cron_scheduler
     await task_queue.connect()
+    await cron_scheduler.start()
     logger.info("AI Spider started")
     yield
+    await cron_scheduler.stop()
     await task_queue.close()
     logger.info("AI Spider stopped")
 
@@ -35,11 +47,41 @@ app.include_router(workers.router, prefix="/api/v1", tags=["workers"])
 app.include_router(data.router, prefix="/api/v1", tags=["data"])
 app.include_router(system.router, prefix="/api/v1", tags=["system"])
 app.include_router(admin.router, prefix="/api/v1")
-app.include_router(ws_router)
 
 # Also mount under /api/ for backward compat
 app.include_router(projects.router, prefix="/api", tags=["projects-compat"], include_in_schema=False)
 app.include_router(tasks.router, prefix="/api", tags=["tasks-compat"], include_in_schema=False)
+
+# ── Request logging middleware ──
+class RequestLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        duration = (time.monotonic() - start) * 1000
+        if not request.url.path.startswith("/static"):
+            logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration:.0f}ms)")
+        return response
+
+app.add_middleware(RequestLogMiddleware)
+
+
+# ── Global exception handlers ──
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail},
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled error: {request.method} {request.url}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": str(exc), "detail": "Internal server error"},
+    )
+
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -111,11 +153,33 @@ async def admin_heartbeat(wid: str, req: dict):
 
 @app.get("/admin/api/logs")
 async def admin_logs(limit: int = 100):
-    log_path = BASE_DIR / "data" / "app.log"
-    if not log_path.exists():
+    from src.core.logging import LOG_DIR
+    # Find latest spider log file
+    log_files = sorted(LOG_DIR.glob("spider_*.log"), reverse=True)
+    if not log_files:
         return {"lines": []}
-    lines = log_path.read_text("utf-8").strip().split("\n")
+    lines = log_files[0].read_text("utf-8").strip().split("\n")
     return {"lines": lines[-limit:]}
+
+
+@app.websocket("/ws/{api_key}")
+async def websocket_endpoint(websocket: WebSocket, api_key: str):
+    """WebSocket endpoint for real-time updates."""
+    users = await db.query("SELECT * FROM users WHERE api_key = ?", [api_key])
+    if not users:
+        await websocket.close(code=4001)
+        return
+
+    is_admin = users[0].get("role") == "admin"
+    await ws_manager.connect(websocket, api_key, is_admin)
+    try:
+        while True:
+            data_msg = await websocket.receive_text()
+            msg = json.loads(data_msg)
+            if msg.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(websocket, api_key)
 
 
 def main():

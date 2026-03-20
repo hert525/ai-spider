@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Spider Master
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace/ai-spider
+ExecStart=/www/python311/bin/python3.11 -m uvicorn src.api.app:app --host 0.0.0.0 --port 8901
+Restart=always
+RestartSec=5
+EnvironmentFile=/root/.openclaw/workspace/ai-spider/.env
+Environment=PYTHONPATH=/root/.openclaw/workspace/ai-spider
+
+[Install]
+WantedBy=multi-user.target

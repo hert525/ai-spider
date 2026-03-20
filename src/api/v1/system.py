@@ -62,17 +62,25 @@ async def system_info(user: dict = Depends(require_admin)):
 
 @router.get("/system/logs")
 async def system_logs(limit: int = 100, level: str = ""):
-    log_path = BASE_DIR / "data" / "app.log"
-    if not log_path.exists():
+    from src.core.logging import LOG_DIR
+
+    # Find latest spider log file
+    log_files = sorted(LOG_DIR.glob("spider_*.log"), reverse=True)
+    if not log_files:
         return []
-    lines = log_path.read_text("utf-8").strip().split("\n")
+    lines = log_files[0].read_text("utf-8").strip().split("\n")
     results = []
     for line in reversed(lines):
         if len(results) >= limit:
             break
-        # Parse loguru format: "2026-03-20 21:43:01.123 | INFO | ..."
-        parts = line.split(" | ", 2)
-        if len(parts) >= 3:
+        # Parse format: "2026-03-20 21:43:01.123 | INFO     | name:func:line - message"
+        parts = line.split(" | ", 3)
+        if len(parts) >= 4:
+            log_time = parts[0].strip()
+            log_level = parts[1].strip()
+            log_source = parts[2].strip()
+            log_msg = parts[3].strip()
+        elif len(parts) >= 3:
             log_time = parts[0].strip()
             log_level = parts[1].strip()
             log_msg = parts[2].strip()

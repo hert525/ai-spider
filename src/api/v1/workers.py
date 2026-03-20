@@ -141,6 +141,30 @@ async def worker_report(worker_id: str, req: WorkerReportReq):
         else:
             w["total_failed"] = w.get("total_failed", 0) + 1
 
+    # WebSocket push: notify task owner and admins
+    try:
+        from src.api.ws import ws_manager
+        task_data = await db.get("tasks", req.task_id)
+        if task_data:
+            user_id = task_data.get("user_id")
+            if user_id:
+                user_rows = await db.query("SELECT api_key FROM users WHERE id = ?", [user_id])
+                if user_rows:
+                    await ws_manager.send_to_user(user_rows[0]["api_key"], {
+                        "type": "task_update",
+                        "task_id": req.task_id,
+                        "status": req.status,
+                        "items_count": req.items_count or len(req.items),
+                    })
+            await ws_manager.broadcast_admin({
+                "type": "task_update",
+                "task_id": req.task_id,
+                "status": req.status,
+                "items_count": req.items_count or len(req.items),
+            })
+    except Exception as e:
+        logger.warning(f"WS push failed in report: {e}")
+
     return {"ok": True}
 
 

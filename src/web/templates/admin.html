@@ -299,8 +299,32 @@ async function checkAuth() {
 }
 
 function showLogin() { document.getElementById('login-page').classList.remove('hidden'); document.getElementById('app').classList.add('hidden'); }
-function showApp() { document.getElementById('login-page').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }
-function doLogout() { API_KEY=''; localStorage.removeItem('admin_api_key'); showLogin(); }
+function showApp() { document.getElementById('login-page').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); connectAdminWS(); }
+function doLogout() { API_KEY=''; localStorage.removeItem('admin_api_key'); showLogin(); if(_adminWs) { try{_adminWs.close();}catch(e){} } }
+
+// WebSocket for admin
+let _adminWs = null;
+function connectAdminWS() {
+  if (_adminWs) { try { _adminWs.close(); } catch(e){} }
+  if (!API_KEY) return;
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsPath = API_BASE + '/ws/' + API_KEY;
+  const wsUrl = wsProtocol + '//' + location.host + wsPath;
+  _adminWs = new WebSocket(wsUrl);
+  _adminWs.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'task_update') {
+        toast('任务 ' + (msg.task_id||'').slice(0,8) + ' ' + (msg.status === 'success' ? '完成' : '失败'), msg.status === 'success' ? 'success' : 'error');
+        loadDashboard();
+      } else if (msg.type === 'project_created') {
+        loadDashboard();
+      }
+    } catch(err) {}
+  };
+  _adminWs.onclose = () => { setTimeout(connectAdminWS, 5000); };
+  setInterval(() => { if (_adminWs && _adminWs.readyState === WebSocket.OPEN) _adminWs.send(JSON.stringify({type:'ping'})); }, 30000);
+}
 
 // --- Navigation ---
 function switchPage(name) {
@@ -314,37 +338,31 @@ function switchPage(name) {
 
 // --- Dashboard ---
 async function loadDashboard() {
-  // Users
-  try { const d = await api('/api/v1/auth/users'); document.getElementById('s-users').textContent = d ? (Array.isArray(d) ? d.length : (d.total||d.count||'-')) : '-'; } catch(e) { document.getElementById('s-users').textContent = '-'; }
-  // Projects
-  try { const d = await api('/api/v1/projects'); document.getElementById('s-projects').textContent = d ? (Array.isArray(d) ? d.length : (d.total||d.count||'-')) : '-'; } catch(e) { document.getElementById('s-projects').textContent = '-'; }
-  // Tasks
+  // Use admin stats endpoint
+  try {
+    const stats = await api('/api/v1/admin/stats');
+    if (stats) {
+      document.getElementById('s-users').textContent = stats.users ?? '-';
+      document.getElementById('s-projects').textContent = stats.projects ?? '-';
+      document.getElementById('s-tasks').textContent = stats.tasks ?? '-';
+      document.getElementById('s-tasks-sub').textContent = stats.tasks_running ? stats.tasks_running+' 运行中' : '';
+      document.getElementById('s-workers').textContent = stats.workers ?? '-';
+      document.getElementById('s-workers-sub').textContent = stats.workers_online ? stats.workers_online+' 在线' : '';
+    }
+  } catch(e) {}
+
+  // Recent tasks
   try {
     const d = await api('/api/v1/tasks');
     if (d) {
       const list = Array.isArray(d) ? d : (d.tasks||d.items||[]);
-      const total = d.total || list.length;
-      const running = list.filter(t=>t.status==='running').length;
-      document.getElementById('s-tasks').textContent = total;
-      document.getElementById('s-tasks-sub').textContent = running ? running+' 运行中' : '';
-      // Recent tasks
       const recent = list.slice(0,8);
       document.getElementById('recent-tasks').innerHTML = recent.length ? recent.map(t =>
         `<tr><td>${(t.id||t.task_id||'').toString().slice(0,8)}</td><td>${t.project_name||t.project_id||'-'}</td><td>${statusBadge(t.status)}</td><td>${t.type||t.task_type||'-'}</td><td>${fmtTime(t.created_at)}</td></tr>`
       ).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
-    } else { document.getElementById('s-tasks').textContent = '-'; }
-  } catch(e) { document.getElementById('s-tasks').textContent = '-'; }
-  // Workers
-  try {
-    const d = await api('/api/v1/workers');
-    if (d) {
-      const list = Array.isArray(d) ? d : (d.workers||d.items||[]);
-      const total = d.total || list.length;
-      const online = list.filter(w=>w.status==='online'||w.is_online).length;
-      document.getElementById('s-workers').textContent = total;
-      document.getElementById('s-workers-sub').textContent = online ? online+' 在线' : '';
-    } else { document.getElementById('s-workers').textContent = '-'; }
-  } catch(e) { document.getElementById('s-workers').textContent = '-'; }
+    }
+  } catch(e) {}
+
   // System info
   try {
     const d = await api('/api/v1/system/info');
@@ -361,26 +379,27 @@ async function loadDashboard() {
 async function loadUsers() {
   const tbody = document.getElementById('users-tbody');
   try {
-    const d = await api('/api/v1/auth/users');
+    const d = await api('/api/v1/admin/users');
     if (!d) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">接口不可用</td></tr>'; return; }
     const list = Array.isArray(d) ? d : (d.users||d.items||[]);
     tbody.innerHTML = list.length ? list.map(u => `<tr>
       <td>${(u.id||'').toString().slice(0,8)}</td>
       <td>${u.email||'-'}</td><td>${u.username||'-'}</td>
       <td>${roleBadge(u.role)}</td>
-      <td>${u.quota||u.credits||'-'}</td>
-      <td>${u.is_active===false||u.status==='banned'?'<span class="badge badge-red">已封禁</span>':'<span class="badge badge-green">正常</span>'}</td>
+      <td>${u.quota_projects||'-'}/${u.quota_tasks||'-'}</td>
+      <td>${u.status==='suspended'?'<span class="badge badge-red">已封禁</span>':'<span class="badge badge-green">正常</span>'}</td>
       <td>${fmtTime(u.created_at)}</td>
       <td class="actions">
-        <button class="btn btn-sm ${u.is_active===false||u.status==='banned'?'btn-success':'btn-warn'}" onclick="toggleBan('${u.id}')">${u.is_active===false||u.status==='banned'?'解封':'封禁'}</button>
+        <button class="btn btn-sm ${u.status==='suspended'?'btn-success':'btn-warn'}" onclick="toggleBan('${u.id}','${u.status}')">${u.status==='suspended'?'解封':'封禁'}</button>
         <button class="btn btn-sm btn-outline" onclick="changeRole('${u.id}')">改角色</button>
         <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">删除</button>
       </td></tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">暂无用户</td></tr>';
   } catch(e) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
 }
 
-async function toggleBan(id) {
-  try { const r = await api(`/api/v1/admin/users/${id}/ban`, {method:'POST'}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('操作成功','success'); loadUsers(); } } catch(e) { toast('操作失败','error'); }
+async function toggleBan(id, currentStatus) {
+  const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
+  try { const r = await api(`/api/v1/admin/users/${id}/status`, {method:'PUT', body:JSON.stringify({status: newStatus})}); if(r===null) toast('接口暂不可用(404)','warn'); else { toast('操作成功','success'); loadUsers(); } } catch(e) { toast('操作失败','error'); }
 }
 async function changeRole(id) {
   const role = prompt('输入新角色 (admin/user):');

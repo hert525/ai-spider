@@ -2,17 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import platform
 from datetime import datetime
 
 from loguru import logger
-
-try:
-    import aiohttp
-except ImportError:
-    aiohttp = None
 
 try:
     import psutil
@@ -21,7 +15,6 @@ except ImportError:
 
 
 def _get_system_info() -> dict:
-    """Get basic system info, with or without psutil."""
     info: dict = {"cpu_percent": 0.0, "memory_mb": 0.0}
     if psutil:
         info["cpu_percent"] = psutil.cpu_percent(interval=0.1)
@@ -45,7 +38,7 @@ class WorkerProcess:
         max_concurrency: int = 3,
         tags: list[str] | None = None,
     ):
-        self.worker_id = worker_id or f"worker-{platform.node()}"
+        self.worker_id = worker_id or f"worker-{platform.node()}-{os.getpid()}"
         self.master_url = master_url.rstrip("/")
         self.max_concurrency = max_concurrency
         self.tags = tags or []
@@ -53,17 +46,15 @@ class WorkerProcess:
         self.total_completed = 0
         self.total_failed = 0
         self._running = False
-        self._session: aiohttp.ClientSession | None = None
+        self._client = None
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            if aiohttp is None:
-                raise RuntimeError("aiohttp is required for worker. pip install aiohttp")
-            self._session = aiohttp.ClientSession()
-        return self._session
+    async def _get_client(self):
+        import httpx
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=30.0)
+        return self._client
 
     async def start(self) -> None:
-        """Register with master and start polling loop."""
         await self._register()
         self._running = True
         asyncio.create_task(self._heartbeat_loop())
@@ -72,12 +63,11 @@ class WorkerProcess:
 
     async def stop(self) -> None:
         self._running = False
-        if self._session and not self._session.closed:
-            await self._session.close()
+        if self._client:
+            await self._client.aclose()
 
     async def _register(self) -> None:
-        """POST /api/v1/workers/register"""
-        session = await self._get_session()
+        client = await self._get_client()
         payload = {
             "worker_id": self.worker_id,
             "hostname": platform.node(),
@@ -86,18 +76,17 @@ class WorkerProcess:
             "tags": self.tags,
         }
         try:
-            async with session.post(f"{self.master_url}/api/v1/workers/register", json=payload) as resp:
-                data = await resp.json()
-                logger.info(f"Registered with master: {data.get('id', self.worker_id)}")
+            resp = await client.post(f"{self.master_url}/api/v1/workers/register", json=payload)
+            data = resp.json()
+            logger.info(f"Registered with master: {data.get('id', self.worker_id)}")
         except Exception as e:
             logger.error(f"Failed to register: {e}")
 
     async def _heartbeat_loop(self) -> None:
-        """Send heartbeat every 15 seconds."""
         while self._running:
             await asyncio.sleep(15)
             try:
-                session = await self._get_session()
+                client = await self._get_client()
                 info = _get_system_info()
                 payload = {
                     "status": "busy" if self.active_jobs >= self.max_concurrency else "online",
@@ -107,76 +96,64 @@ class WorkerProcess:
                     "total_completed": self.total_completed,
                     "total_failed": self.total_failed,
                 }
-                async with session.post(
+                resp = await client.post(
                     f"{self.master_url}/api/v1/workers/{self.worker_id}/heartbeat",
                     json=payload,
-                ) as resp:
-                    if resp.status != 200:
-                        logger.warning(f"Heartbeat failed: {resp.status}")
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"Heartbeat failed: {resp.status_code}")
             except Exception as e:
                 logger.error(f"Heartbeat error: {e}")
 
     async def _poll_loop(self) -> None:
-        """Poll for tasks from master."""
         while self._running:
             if self.active_jobs >= self.max_concurrency:
                 await asyncio.sleep(2)
                 continue
             try:
-                session = await self._get_session()
-                async with session.post(
+                client = await self._get_client()
+                resp = await client.post(
                     f"{self.master_url}/api/v1/workers/{self.worker_id}/poll"
-                ) as resp:
-                    if resp.status == 404:
-                        await asyncio.sleep(3)
-                        continue
-                    if resp.status != 200:
-                        await asyncio.sleep(5)
-                        continue
-                    task = await resp.json()
-                    if not task or not task.get("task_id"):
-                        await asyncio.sleep(3)
-                        continue
-                    self.active_jobs += 1
-                    asyncio.create_task(self._execute_task(task))
+                )
+                if resp.status_code == 404:
+                    await asyncio.sleep(3)
+                    continue
+                if resp.status_code != 200:
+                    await asyncio.sleep(5)
+                    continue
+                task = resp.json()
+                if not task or not task.get("task_id"):
+                    await asyncio.sleep(3)
+                    continue
+                self.active_jobs += 1
+                asyncio.create_task(self._execute_task(task))
             except Exception as e:
                 logger.error(f"Poll error: {e}")
                 await asyncio.sleep(5)
 
     async def _execute_task(self, task: dict) -> None:
-        """Execute a single task and report results."""
         task_id = task["task_id"]
         run_id = task["run_id"]
-        logger.info(f"Executing task {task_id}")
+        mode = task.get("mode", "code_generator")
+        logger.info(f"Executing task {task_id} (mode={mode})")
 
         try:
-            code = task.get("code", "")
             target_urls = task.get("target_urls", [])
             timeout = task.get("timeout_seconds", 300)
-
-            if not code:
-                raise ValueError("No code in task")
-
-            total_items = 0
-            total_pages = 0
             all_items: list[dict] = []
+            total_pages = 0
 
-            # Import sandbox runner
-            from src.engine.sandbox import run_code_in_sandbox
+            if mode == "smart_scraper":
+                all_items, total_pages = await self._run_smart_scraper(task, target_urls, timeout)
+            else:
+                all_items, total_pages = await self._run_code(task, target_urls, timeout)
 
-            for url in target_urls:
-                result = await run_code_in_sandbox(code, url, timeout=timeout)
-                output = result.get("output", [])
-                if output:
-                    all_items.extend(output)
-                    total_items += len(output)
-                total_pages += result.get("pages_crawled", 0)
-
-            # Report success
-            await self._report(task_id, run_id, "success", items=all_items,
-                               items_count=total_items, pages_crawled=total_pages)
+            await self._report(task_id, run_id, "success",
+                               items=all_items,
+                               items_count=len(all_items),
+                               pages_crawled=total_pages)
             self.total_completed += 1
-            logger.info(f"Task {task_id} done: {total_items} items")
+            logger.info(f"Task {task_id} done: {len(all_items)} items")
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}")
@@ -185,17 +162,73 @@ class WorkerProcess:
         finally:
             self.active_jobs -= 1
 
-    async def _report(self, task_id: str, run_id: str, status: str, **kwargs) -> None:
-        """POST /api/v1/workers/{id}/report"""
+    async def _run_code(self, task: dict, target_urls: list[str], timeout: int) -> tuple[list[dict], int]:
+        code = task.get("code", "")
+        if not code:
+            raise ValueError("No code in task")
+
+        from src.engine.sandbox import run_code_in_sandbox
+
+        all_items: list[dict] = []
+        total_pages = 0
+        for url in target_urls:
+            result = await run_code_in_sandbox(code, url, timeout=timeout)
+            output = result.get("output", [])
+            if output:
+                all_items.extend(output)
+            total_pages += result.get("pages_crawled", 0)
+        return all_items, total_pages
+
+    async def _run_smart_scraper(self, task: dict, target_urls: list[str], timeout: int) -> tuple[list[dict], int]:
+        description = task.get("description", "")
+        if not description:
+            raise ValueError("No description for smart_scraper mode")
+
+        all_items: list[dict] = []
+        total_pages = 0
+
         try:
-            session = await self._get_session()
+            from scrapegraphai.graphs import SmartScraperGraph
+        except ImportError:
+            raise RuntimeError("scrapegraphai not installed")
+
+        from src.core.config import settings
+
+        for url in target_urls:
+            try:
+                graph = SmartScraperGraph(
+                    prompt=description,
+                    source=url,
+                    config={
+                        "llm": {
+                            "model": settings.llm_model or "openai/gpt-4o-mini",
+                            "api_key": settings.llm_api_key or os.environ.get("OPENAI_API_KEY", ""),
+                            "base_url": settings.llm_base_url or None,
+                        },
+                        "verbose": False,
+                    },
+                )
+                result = await asyncio.to_thread(graph.run)
+                if isinstance(result, dict):
+                    all_items.append(result)
+                elif isinstance(result, list):
+                    all_items.extend(result)
+                total_pages += 1
+            except Exception as e:
+                logger.warning(f"SmartScraper failed for {url}: {e}")
+
+        return all_items, total_pages
+
+    async def _report(self, task_id: str, run_id: str, status: str, **kwargs) -> None:
+        try:
+            client = await self._get_client()
             payload = {"task_id": task_id, "run_id": run_id, "status": status, **kwargs}
-            async with session.post(
+            resp = await client.post(
                 f"{self.master_url}/api/v1/workers/{self.worker_id}/report",
                 json=payload,
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning(f"Report failed: {resp.status}")
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Report failed: {resp.status_code}")
         except Exception as e:
             logger.error(f"Report error: {e}")
 

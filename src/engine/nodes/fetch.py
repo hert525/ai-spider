@@ -31,16 +31,25 @@ class FetchNode(BaseNode):
 
     async def _fetch_httpx(self, url: str) -> str:
         headers = {"User-Agent": settings.user_agent}
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            return resp.text
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                return resp.text
+        except Exception as e:
+            if not self.use_browser:
+                self.logger.warning(f"httpx failed ({e}), falling back to playwright")
+                return await self._fetch_browser(url)
+            raise
 
     async def _fetch_browser(self, url: str) -> str:
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-dev-shm-usage'],
+                )
                 page = await browser.new_page()
                 await page.goto(url, wait_until="networkidle", timeout=30000)
                 html = await page.content()
@@ -48,4 +57,8 @@ class FetchNode(BaseNode):
                 return html
         except ImportError:
             self.logger.warning("Playwright not available, falling back to httpx")
-            return await self._fetch_httpx(url)
+            headers = {"User-Agent": settings.user_agent}
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                return resp.text

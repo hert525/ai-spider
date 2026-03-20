@@ -19,6 +19,7 @@ class CreateProjectReq(BaseModel):
     name: str = ""
     mode: str = "code_generator"  # "smart_scraper" or "code_generator"
     sink_config: dict = {}
+    use_browser: bool = False
 
 
 class UpdateSinkReq(BaseModel):
@@ -57,12 +58,13 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
     project_data = project.model_dump()
     project_data["user_id"] = user["id"]
     project_data["sink_config"] = req.sink_config
+    project_data["use_browser"] = 1 if req.use_browser else 0
     await db.insert("projects", project_data)
     
     try:
         if mode == ProjectMode.SMART_SCRAPER:
             from src.engine.graphs import SmartScraperGraph
-            graph = SmartScraperGraph()
+            graph = SmartScraperGraph(use_browser=req.use_browser)
             state = await graph.run(req.target_url, req.description)
             extracted = state.get("extracted_data", [])
             await db.update("projects", project.id, {
@@ -76,7 +78,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
             })
         else:
             from src.engine.graphs import CodeGeneratorGraph
-            graph = CodeGeneratorGraph()
+            graph = CodeGeneratorGraph(use_browser=req.use_browser)
             state = await graph.run(req.target_url, req.description)
             code = state.get("generated_code", "")
             v_status = state.get("validation_status", "unknown")
@@ -99,6 +101,23 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
             ], ensure_ascii=False),
             "updated_at": datetime.now().isoformat(),
         })
+
+    # WS push: project created
+    try:
+        from src.api.ws import ws_manager
+        created_proj = await db.get("projects", project.id)
+        api_key = user.get("api_key", "")
+        if api_key:
+            await ws_manager.send_to_user(api_key, {
+                "type": "project_created",
+                "project": {"id": project.id, "name": created_proj.get("name", ""), "status": created_proj.get("status", "")},
+            })
+        await ws_manager.broadcast_admin({
+            "type": "project_created",
+            "project": {"id": project.id, "name": created_proj.get("name", ""), "status": created_proj.get("status", "")},
+        })
+    except Exception as e:
+        logger.warning(f"WS push failed in create_project: {e}")
 
     return await db.get("projects", project.id)
 
@@ -149,7 +168,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
     if mode == "smart_scraper":
         # Re-run LLM extraction
         from src.engine.graphs.smart_scraper import SmartScraperGraph
-        graph = SmartScraperGraph()
+        graph = SmartScraperGraph(use_browser=bool(proj.get("use_browser")))
         state = await graph.run(url=url, description=proj.get("description", ""))
         extracted = state.get("extracted_data", [])
         result = {
@@ -180,7 +199,23 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
         "test_results": json.dumps(test_results, ensure_ascii=False),
         "updated_at": datetime.now().isoformat(),
     })
-    
+
+    # WS push: test complete
+    try:
+        from src.api.ws import ws_manager
+        api_key = user.get("api_key", "")
+        test_msg = {
+            "type": "test_complete",
+            "project_id": pid,
+            "status": "success" if not result.get("error") else "failed",
+            "output_count": len(result.get("output", [])),
+        }
+        if api_key:
+            await ws_manager.send_to_user(api_key, test_msg)
+        await ws_manager.broadcast_admin(test_msg)
+    except Exception as e:
+        logger.warning(f"WS push failed in test_project: {e}")
+
     return result
 
 

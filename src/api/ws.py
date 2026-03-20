@@ -1,75 +1,58 @@
-"""WebSocket endpoints."""
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+"""WebSocket manager for real-time updates."""
+from __future__ import annotations
+
+import json
+import asyncio
+from typing import Dict, Set
+from fastapi import WebSocket, WebSocketDisconnect
 from loguru import logger
 
-router = APIRouter()
 
+class ConnectionManager:
+    """Manages WebSocket connections per user."""
 
-@router.websocket("/ws/generate")
-async def ws_generate(ws: WebSocket):
-    """Stream code generation via WebSocket."""
-    await ws.accept()
-    try:
-        while True:
-            data = await ws.receive_json()
-            description = data.get("description", "")
-            target_url = data.get("target_url", "")
-            mode = data.get("mode", "code_generator")
+    def __init__(self):
+        self._connections: Dict[str, Set[WebSocket]] = {}
+        self._admin_connections: Set[WebSocket] = set()
 
-            await ws.send_json({"type": "start", "mode": mode})
+    async def connect(self, ws: WebSocket, api_key: str, is_admin: bool = False):
+        await ws.accept()
+        if api_key not in self._connections:
+            self._connections[api_key] = set()
+        self._connections[api_key].add(ws)
+        if is_admin:
+            self._admin_connections.add(ws)
+        logger.info(f"WS connected: {api_key[:10]}... (admin={is_admin})")
 
+    async def disconnect(self, ws: WebSocket, api_key: str):
+        self._connections.get(api_key, set()).discard(ws)
+        self._admin_connections.discard(ws)
+        logger.info(f"WS disconnected: {api_key[:10]}...")
+
+    async def send_to_user(self, api_key: str, message: dict):
+        """Send message to all connections of a user."""
+        for ws in list(self._connections.get(api_key, [])):
             try:
-                if mode == "smart_scraper":
-                    from src.engine.graphs import SmartScraperGraph
-                    graph = SmartScraperGraph()
-                    state = await graph.run(target_url, description)
-                    extracted = state.get("extracted_data", [])
-                    await ws.send_json({"type": "done", "mode": mode, "data": extracted})
-                else:
-                    from src.engine.graphs import CodeGeneratorGraph
-                    graph = CodeGeneratorGraph()
-                    state = await graph.run(target_url, description)
-                    code = state.get("generated_code", "")
-                    v_status = state.get("validation_status", "unknown")
-                    await ws.send_json({
-                        "type": "done",
-                        "mode": mode,
-                        "code": code,
-                        "validation_status": v_status,
-                    })
-            except Exception as e:
-                logger.error(f"WS generation error: {e}")
-                await ws.send_json({"type": "error", "error": str(e)})
+                await ws.send_json(message)
+            except Exception:
+                self._connections.get(api_key, set()).discard(ws)
 
-    except WebSocketDisconnect:
-        pass
+    async def broadcast_admin(self, message: dict):
+        """Send to all admin connections."""
+        for ws in list(self._admin_connections):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self._admin_connections.discard(ws)
+
+    async def broadcast_all(self, message: dict):
+        """Send to everyone."""
+        for conns in self._connections.values():
+            for ws in list(conns):
+                try:
+                    await ws.send_json(message)
+                except Exception:
+                    conns.discard(ws)
 
 
-@router.websocket("/ws/stream")
-async def ws_stream(ws: WebSocket):
-    """Stream LLM responses for chat/refine."""
-    await ws.accept()
-    try:
-        while True:
-            data = await ws.receive_json()
-            action = data.get("action", "")
-
-            if action == "chat":
-                messages = data.get("messages", [])
-                from litellm import acompletion
-                from src.core.config import settings
-
-                params = settings.get_llm_params()
-                resp = await acompletion(
-                    **params,
-                    messages=messages,
-                    stream=True,
-                )
-                async for chunk in resp:
-                    delta = chunk.choices[0].delta
-                    if delta.content:
-                        await ws.send_json({"type": "chunk", "content": delta.content})
-                await ws.send_json({"type": "done"})
-
-    except WebSocketDisconnect:
-        pass
+ws_manager = ConnectionManager()

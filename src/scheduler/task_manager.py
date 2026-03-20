@@ -85,6 +85,9 @@ class TaskManager:
             "concurrency": task_data.get("concurrency", 3),
             "max_pages": task_data.get("max_pages", 100),
             "code": project.get("code", "") if project else "",
+            "mode": project.get("mode", "code_generator") if project else "code_generator",
+            "description": project.get("description", "") if project else "",
+            "target_url": task_data.get("target_urls", [""])[0] if task_data.get("target_urls") else "",
         }
 
     # ── completion ──

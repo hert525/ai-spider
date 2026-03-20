@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     retry_count INTEGER DEFAULT 0,
     max_retries INTEGER DEFAULT 3,
     worker_id TEXT,
+    last_run_at TEXT DEFAULT '',
+    next_run_at TEXT DEFAULT '',
     created_at TEXT,
     updated_at TEXT
 );
@@ -129,6 +131,21 @@ async def get_db() -> aiosqlite.Connection:
 
 async def init_db():
     db = await get_db()
+    # Run migrations for new columns (ignore if already exist)
+    for col in ["last_run_at", "next_run_at"]:
+        try:
+            await db.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
+            await db.commit()
+            logger.info(f"Added column tasks.{col}")
+        except Exception:
+            pass  # column already exists
+    # Add use_browser to projects
+    try:
+        await db.execute("ALTER TABLE projects ADD COLUMN use_browser INTEGER DEFAULT 0")
+        await db.commit()
+        logger.info("Added column projects.use_browser")
+    except Exception:
+        pass
     await db.close()
     logger.info(f"Database initialized at {DB_PATH}")
 
