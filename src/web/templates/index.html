@@ -656,7 +656,7 @@ function renderSeeds() {
 async function useSeed(sid, params={}) {
   try {
     const proj = await api('POST', `/api/v1/seeds/${sid}/use`, {params});
-    if (proj && proj.id) { await loadProjects(); switchPage('detail'); showProjectDetail(proj.id); }
+    if (proj && proj.id) { await loadProjects(); await openProject(proj.id); }
   } catch(e) { alert('使用模板失败: ' + e.message); }
 }
 
