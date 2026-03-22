@@ -24,6 +24,7 @@ from src.api.v1.deploy import router as deploy_router
 from src.api.v1.seeds import router as seeds_router
 from src.api.v1.browser_sessions import router as browser_sessions_router
 from src.api.v1.stats import router as stats_router
+from src.api.v1.monitoring import router as monitoring_router
 from src.api.v1.export import router as export_router
 from src.api.v1.notifications import router as notifications_router
 from src.api.v1.quota import router as quota_router
@@ -96,6 +97,7 @@ app.include_router(deploy_router, prefix="/api/v1")
 app.include_router(seeds_router, prefix="/api/v1")
 app.include_router(browser_sessions_router, prefix="/api/v1")
 app.include_router(stats_router, prefix="/api/v1")
+app.include_router(monitoring_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(quota_router, prefix="/api/v1")

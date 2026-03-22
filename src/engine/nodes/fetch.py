@@ -1,9 +1,18 @@
-"""FetchNode - Fetches web page content using httpx or playwright."""
+"""
+FetchNode - 抓取网页内容。
+
+集成增强功能（从 wukong 移植）：
+- 增强版代理管理（健康检测、自动失败切换、质量统计）
+- 流控限速（全局QPS + 域名维度限速）
+- 监控指标（请求计数/成功率/延迟自动上报）
+- User-Agent 智能轮换
+"""
 from __future__ import annotations
 
 import asyncio
 import json
 import random
+import time
 from urllib.parse import urlparse
 
 import httpx
@@ -11,14 +20,41 @@ from loguru import logger
 from .base import BaseNode
 from src.core.config import settings
 from src.engine.proxy import ProxyManager
+from src.engine.proxy_manager import EnhancedProxyManager, ua_manager
+from src.engine.rate_limiter import AsyncRateLimiter
+from src.engine import metrics
+
+
+# 全局限速器实例（可通过配置调整）
+_rate_limiter: AsyncRateLimiter | None = None
+
+
+def get_rate_limiter() -> AsyncRateLimiter:
+    """获取全局限速器（懒初始化）"""
+    global _rate_limiter
+    if _rate_limiter is None:
+        _rate_limiter = AsyncRateLimiter(
+            global_qps=int(getattr(settings, "global_qps", 100)),
+            enabled=getattr(settings, "rate_limit_enabled", False),
+        )
+    return _rate_limiter
 
 
 class FetchNode(BaseNode):
-    """Fetch a URL and store raw HTML in state."""
+    """
+    抓取节点 - 使用 httpx 或 playwright 抓取网页。
+
+    增强功能：
+    - 代理健康检测 + 自动失败切换
+    - 全局/域名级限速
+    - 自动指标上报
+    - User-Agent 智能轮换 + Client Hints
+    """
 
     def __init__(self, use_browser: bool = False, proxy_config: dict | None = None,
                  proxy_pool_id: str = "", stealth_level: str = "off",
-                 enable_screenshot: bool = False, user_id: str = ""):
+                 enable_screenshot: bool = False, user_id: str = "",
+                 rate_limit_enabled: bool = False, enhanced_proxy: bool = False):
         super().__init__("FetchNode")
         self.use_browser = use_browser
         self.proxy_config = proxy_config
@@ -26,9 +62,15 @@ class FetchNode(BaseNode):
         self.stealth_level = stealth_level
         self.enable_screenshot = enable_screenshot
         self.user_id = user_id
+        self.enhanced_proxy = enhanced_proxy
         self._proxy_manager: ProxyManager | None = None
+        self._enhanced_proxy_manager: EnhancedProxyManager | None = None
+
         if proxy_config and not proxy_pool_id:
-            self._proxy_manager = ProxyManager(proxy_config)
+            if enhanced_proxy:
+                self._enhanced_proxy_manager = EnhancedProxyManager(proxy_config)
+            else:
+                self._proxy_manager = ProxyManager(proxy_config)
         elif not proxy_pool_id:
             self._proxy_manager = self._make_default_proxy_manager()
 
@@ -41,9 +83,20 @@ class FetchNode(BaseNode):
         self._proxy_manager = ProxyManager()
         return self._proxy_manager
 
+    async def _get_enhanced_proxy(self) -> EnhancedProxyManager | None:
+        """获取增强版代理管理器"""
+        if not self.enhanced_proxy:
+            return None
+        if self._enhanced_proxy_manager is not None:
+            return self._enhanced_proxy_manager
+        if self.proxy_pool_id:
+            self._enhanced_proxy_manager = await EnhancedProxyManager.from_pool_id(self.proxy_pool_id)
+            return self._enhanced_proxy_manager
+        return None
+
     @staticmethod
     def _make_default_proxy_manager() -> ProxyManager:
-        """Create proxy manager from global default if set."""
+        """从全局默认配置创建代理管理器"""
         if settings.default_proxy:
             return ProxyManager({
                 "enabled": True,
@@ -74,26 +127,72 @@ class FetchNode(BaseNode):
         if not url:
             raise ValueError("No URL provided in state")
 
-        self.logger.info(f"Fetching: {url}")
+        self.logger.info(f"抓取: {url}")
 
-        # Pass proxy_config through state for downstream nodes
+        # 通过state传递代理配置给下游节点
         if self.proxy_config:
             state["proxy_config"] = self.proxy_config
 
-        if self.use_browser:
-            html = await self._fetch_browser(url, state)
-        else:
-            html = await self._fetch_httpx(url)
+        # 限速等待
+        limiter = get_rate_limiter()
+        wait_time = await limiter.acquire(url)
+        if wait_time > 0:
+            self.logger.debug(f"限速等待: {wait_time:.2f}s")
+
+        # 记录开始时间
+        start_time = time.time()
+
+        try:
+            if self.use_browser:
+                html = await self._fetch_browser(url, state)
+            else:
+                html = await self._fetch_httpx(url)
+
+            # 上报成功指标
+            duration = time.time() - start_time
+            await metrics.incr_fetch_success(url=url, status=200)
+            await metrics.observe_fetch_duration(duration, url=url)
+            await metrics.incr_requests_total(method="GET", status=200)
+
+            # 增强代理管理器上报成功
+            epm = await self._get_enhanced_proxy()
+            if epm and state.get("_last_proxy"):
+                epm.report_success(state["_last_proxy"], duration * 1000)
+
+        except Exception as e:
+            # 上报失败指标
+            duration = time.time() - start_time
+            await metrics.incr_fetch_failure(url=url, reason=type(e).__name__)
+            await metrics.incr_requests_total(method="GET", status=0)
+
+            # 增强代理管理器上报失败
+            epm = await self._get_enhanced_proxy()
+            if epm and state.get("_last_proxy"):
+                epm.report_failure(state["_last_proxy"])
+
+            raise
 
         state["raw_html"] = html
         state["fetch_url"] = url
-        self.logger.info(f"Fetched {len(html)} chars")
+        state["fetch_duration"] = round(duration, 3)
+        self.logger.info(f"抓取完成: {len(html)} 字符, 耗时 {duration:.2f}s")
         return state
 
-    async def _fetch_httpx(self, url: str) -> str:
-        headers = {"User-Agent": settings.user_agent}
+    async def _fetch_httpx(self, url: str, state: dict | None = None) -> str:
+        if state is None:
+            state = {}
 
-        # Load cookies for domain if available
+        # User-Agent 智能轮换（使用增强UA管理器）
+        if self.stealth_level and self.stealth_level != "off":
+            user_agent = ua_manager.random()
+            headers = {"User-Agent": user_agent}
+            # 生成 Client Hints 头部
+            hints = ua_manager.generate_client_hints(user_agent)
+            headers.update(hints)
+        else:
+            headers = {"User-Agent": settings.user_agent}
+
+        # 加载域名Cookie
         domain = urlparse(url).netloc
         saved_cookies = await self._load_cookies_for_domain(domain)
         cookie_jar = None
@@ -101,17 +200,24 @@ class FetchNode(BaseNode):
             cookie_jar = httpx.Cookies()
             for c in saved_cookies:
                 cookie_jar.set(c.get("name", ""), c.get("value", ""), domain=c.get("domain", domain))
-            self.logger.info(f"Loaded {len(saved_cookies)} cookies for {domain}")
+            self.logger.info(f"已加载 {len(saved_cookies)} 个Cookie ({domain})")
 
-        # Apply stealth user-agent if enabled
-        if self.stealth_level and self.stealth_level != "off":
-            from src.engine.stealth import USER_AGENTS
-            headers["User-Agent"] = random.choice(USER_AGENTS)
+        # 获取代理（优先使用增强版代理管理器）
+        proxies = None
+        proxy_url = None
+        epm = await self._get_enhanced_proxy()
+        if epm:
+            proxies = await epm.get_httpx_proxies()
+            if proxies:
+                proxy_url = list(proxies.values())[0]
+                state["_last_proxy"] = proxy_url
+                self.logger.info(f"使用增强代理: {proxy_url[:40]}...")
+        else:
+            pm = await self._get_proxy_manager()
+            proxies = await pm.get_httpx_proxies_async()
+            if proxies:
+                self.logger.info(f"使用代理进行httpx请求")
 
-        pm = await self._get_proxy_manager()
-        proxies = await pm.get_httpx_proxies_async()
-        if proxies:
-            self.logger.info(f"Using proxy for httpx request")
         try:
             async with httpx.AsyncClient(
                 follow_redirects=True,
@@ -124,8 +230,8 @@ class FetchNode(BaseNode):
                 return resp.text
         except Exception as e:
             if not self.use_browser:
-                self.logger.warning(f"httpx failed ({e}), falling back to playwright")
-                return await self._fetch_browser(url, {})
+                self.logger.warning(f"httpx失败 ({e}), 降级到playwright")
+                return await self._fetch_browser(url, state or {})
             raise
 
     async def _fetch_browser(self, url: str, state: dict) -> str:

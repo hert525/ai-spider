@@ -33,6 +33,32 @@ class Settings(BaseModel):
     ))
     default_proxy: str = Field(default_factory=lambda: os.getenv("DEFAULT_PROXY", ""))
 
+    # === 从 wukong 移植的增强配置 ===
+
+    # 限速配置
+    rate_limit_enabled: bool = Field(
+        default_factory=lambda: os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
+    )
+    global_qps: int = Field(default_factory=lambda: int(os.getenv("GLOBAL_QPS", "100")))
+
+    # 去重配置
+    dedup_strategy: str = Field(default_factory=lambda: os.getenv("DEDUP_STRATEGY", "memory"))
+    dedup_capacity: int = Field(default_factory=lambda: int(os.getenv("DEDUP_CAPACITY", "1000000")))
+
+    # 监控配置
+    metrics_enabled: bool = Field(
+        default_factory=lambda: os.getenv("METRICS_ENABLED", "false").lower() == "true"
+    )
+    pushgateway_url: str = Field(default_factory=lambda: os.getenv("PUSHGATEWAY_URL", "http://localhost:9091"))
+
+    # 火山引擎代理
+    volcano_http_endpoint: str = Field(default_factory=lambda: os.getenv("VOL_HTTP_ENDPOINT", ""))
+    volcano_https_endpoint: str = Field(default_factory=lambda: os.getenv("VOL_HTTPS_ENDPOINT", ""))
+
+    # 存储配置
+    parquet_output_dir: str = Field(default_factory=lambda: os.getenv("PARQUET_OUTPUT_DIR", "data/parquet_output"))
+    parquet_compression: str = Field(default_factory=lambda: os.getenv("PARQUET_COMPRESSION", "zstd"))
+
     def get_llm_model(self) -> str:
         """Return model string with provider prefix for litellm."""
         model = self.llm_model

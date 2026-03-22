@@ -1,4 +1,4 @@
-# Requirements
+# Requirements - 核心依赖
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 litellm>=1.0.0
@@ -11,4 +11,18 @@ redis>=5.0.0
 aiosqlite>=0.19.0
 playwright>=1.40.0
 openpyxl>=3.1.0
+
+# === 从 wukong 移植的增强模块依赖 ===
+
+# P3: 监控指标 (可选)
+prometheus_client>=0.20.0
+
+# P4: 存储增强 (可选)
+pyarrow>=14.0.0
+zstandard>=0.22.0
+lz4>=4.3.0
+
+# 去重增强 (可选)
+# rbloom>=1.2.0         # 可选: 布隆过滤器加速
+
 # scrapegraphai  # optional: AI scraping graphs
