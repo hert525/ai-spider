@@ -275,3 +275,54 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ── 健康检查 ──
+@app.get("/health")
+async def health_check():
+    """健康检查端点 — 用于负载均衡器/K8s探针"""
+    import time
+    checks = {"status": "ok", "timestamp": time.time()}
+
+    # 数据库
+    try:
+        from src.core.database import db, USE_PG
+        cnt = await db.count("users")
+        checks["database"] = {"ok": True, "backend": "postgresql" if USE_PG else "sqlite", "users": cnt}
+    except Exception as e:
+        checks["database"] = {"ok": False, "error": str(e)}
+        checks["status"] = "degraded"
+
+    # Redis
+    try:
+        from src.scheduler.queue import task_queue
+        if task_queue._redis:
+            await task_queue._redis.ping()
+            checks["redis"] = {"ok": True}
+        else:
+            checks["redis"] = {"ok": False, "error": "not connected"}
+    except Exception as e:
+        checks["redis"] = {"ok": False, "error": str(e)}
+
+    # Worker
+    try:
+        workers = await db.list("workers", where={"status": "online"}, order="registered_at DESC")
+        checks["workers"] = {"ok": len(workers) > 0, "online": len(workers)}
+    except Exception:
+        checks["workers"] = {"ok": False, "online": 0}
+
+    # PG连接池
+    if USE_PG:
+        try:
+            from src.core.database import _pool
+            if _pool:
+                checks["pg_pool"] = {
+                    "size": _pool.get_size(),
+                    "free": _pool.get_idle_size(),
+                    "min": _pool.get_min_size(),
+                    "max": _pool.get_max_size(),
+                }
+        except Exception:
+            pass
+
+    return checks

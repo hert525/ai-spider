@@ -33,11 +33,25 @@ class CronScheduler:
         logger.info("CronScheduler stopped")
 
     async def _loop(self):
+        # 每日凌晨3点自动清理(用计数器近似: 每1440次循环≈24小时)
+        cleanup_counter = 0
         while self._running:
             try:
                 await self._check_and_enqueue()
             except Exception as e:
                 logger.error(f"CronScheduler error: {e}")
+            
+            # 每24小时执行一次数据清理
+            cleanup_counter += 1
+            if cleanup_counter >= 1440:  # 60s * 1440 = 24h
+                cleanup_counter = 0
+                try:
+                    from src.core.data_cleanup import cleanup_expired_data
+                    stats = await cleanup_expired_data()
+                    logger.info(f"自动数据清理完成: {stats}")
+                except Exception as e:
+                    logger.error(f"自动数据清理失败: {e}")
+            
             await asyncio.sleep(60)
 
     async def _check_and_enqueue(self):

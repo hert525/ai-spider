@@ -109,3 +109,13 @@ async def update_user_quota(user_id: str, req: UpdateQuotaReq, user: dict = Depe
         update["updated_at"] = datetime.now(timezone.utc).isoformat()
         await db.update("users", user_id, update)
     return {"ok": True}
+
+
+@router.post("/admin/cleanup")
+async def trigger_cleanup(user: dict = Depends(require_admin)):
+    """手动触发数据清理（仅管理员）"""
+    from src.core.data_cleanup import cleanup_expired_data
+    from src.core.settings_manager import settings_manager
+    retention = int(await settings_manager.get("data_retention_days") or 90)
+    stats = await cleanup_expired_data(retention_days=retention)
+    return {"retention_days": retention, "cleaned": stats}

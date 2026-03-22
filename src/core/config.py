@@ -59,12 +59,17 @@ class Settings(BaseModel):
     parquet_output_dir: str = Field(default_factory=lambda: os.getenv("PARQUET_OUTPUT_DIR", "data/parquet_output"))
     parquet_compression: str = Field(default_factory=lambda: os.getenv("PARQUET_COMPRESSION", "zstd"))
 
-    def get_llm_model(self) -> str:
-        """Return model string with provider prefix for litellm."""
+    @property
+    def llm_model_string(self) -> str:
+        """返回带provider前缀的模型名（供litellm使用）"""
         model = self.llm_model
         if self.llm_provider and "/" not in model:
             model = f"{self.llm_provider}/{model}"
         return model
+
+    def get_llm_model(self) -> str:
+        """Return model string with provider prefix for litellm."""
+        return self.llm_model_string
 
     def get_llm_params(self) -> dict:
         """Build LiteLLM completion params."""
