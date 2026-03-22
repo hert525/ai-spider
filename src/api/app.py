@@ -78,12 +78,15 @@ async def lifespan(app: FastAPI):
     logger.info("AI Spider stopped")
 
 
+import os as _os
+_debug = _os.getenv("DEBUG", "false").lower() == "true"
+
 app = FastAPI(
     title="AI Spider API",
     description="AI驱动的智能爬虫平台",
     version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if _debug else None,
+    redoc_url="/redoc" if _debug else None,
     lifespan=lifespan,
 )
 
@@ -140,6 +143,21 @@ app.add_middleware(RateLimitMiddleware)
 # ── IP限流中间件 ──
 from src.api.middleware.rate_limit import IPRateLimitMiddleware
 app.add_middleware(IPRateLimitMiddleware, minute_limit=60, hour_limit=1000)
+
+# ── CORS ──
+from starlette.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://rthe525.top",
+        "https://www.rthe525.top",
+        "http://127.0.0.1:8901",
+        "http://localhost:8901",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["X-API-Key", "Content-Type", "Authorization"],
+)
 
 
 # ── Global exception handlers ──
