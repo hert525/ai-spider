@@ -36,8 +36,11 @@ async def get_metrics_summary(user: dict = Depends(get_current_user)):
 
     summary = {
         "total_requests": 0,
-        "fetch_success": 0,
-        "fetch_failures": 0,
+        "successful_requests": 0,
+        "failed_requests": 0,
+        "total_extracted": 0,
+        "total_deduped": 0,
+        "active_tasks": 0,
         "success_rate": 0.0,
     }
 
@@ -48,15 +51,27 @@ async def get_metrics_summary(user: dict = Depends(get_current_user)):
 
     success_metric = all_metrics.get("spider_fetch_success_total")
     if success_metric:
-        summary["fetch_success"] = int(sum(success_metric._values.values()))
+        summary["successful_requests"] = int(sum(success_metric._values.values()))
 
     fail_metric = all_metrics.get("spider_fetch_failures_total")
     if fail_metric:
-        summary["fetch_failures"] = int(sum(fail_metric._values.values()))
+        summary["failed_requests"] = int(sum(fail_metric._values.values()))
 
-    total = summary["fetch_success"] + summary["fetch_failures"]
+    extract_metric = all_metrics.get("spider_extracted_items_total")
+    if extract_metric:
+        summary["total_extracted"] = int(sum(extract_metric._values.values()))
+
+    dedup_metric = all_metrics.get("spider_deduped_items_total")
+    if dedup_metric:
+        summary["total_deduped"] = int(sum(dedup_metric._values.values()))
+
+    task_metric = all_metrics.get("spider_active_tasks")
+    if task_metric:
+        summary["active_tasks"] = int(sum(task_metric._values.values()))
+
+    total = summary["successful_requests"] + summary["failed_requests"]
     if total > 0:
-        summary["success_rate"] = round(summary["fetch_success"] / total * 100, 1)
+        summary["success_rate"] = round(summary["successful_requests"] / total * 100, 1)
 
     return summary
 
@@ -74,10 +89,27 @@ async def get_rate_limiter_status(user: dict = Depends(get_current_user)):
     from src.engine.nodes.fetch import get_rate_limiter
     limiter = get_rate_limiter()
     global_count = await limiter._global.count()
+
+    # 域名维度限速状态
+    dimensions = {}
+    if hasattr(limiter, '_domain_limiter') and limiter._domain_limiter:
+        dl = limiter._domain_limiter
+        for domain, counter in dl._counters.items():
+            cnt = await counter.count()
+            dimensions[domain] = {
+                "limit": counter.max_requests,
+                "current": cnt,
+                "waiting": 0,
+            }
+
     return {
         "enabled": limiter.enabled,
-        "global_qps_current": global_count,
-        "global_qps_limit": limiter._global.max_requests,
+        "global": {
+            "default_qps": limiter._global.max_requests,
+            "current_concurrency": global_count,
+            "pressure_level": "正常",
+        },
+        "dimensions": dimensions,
     }
 
 
