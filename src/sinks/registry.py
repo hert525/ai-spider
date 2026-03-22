@@ -42,8 +42,10 @@ from src.sinks.sqlite_sink import SQLiteSink
 from src.sinks.local_file_sink import LocalFileSink
 from src.sinks.kafka_sink import KafkaSink
 from src.sinks.s3_sink import S3Sink
+from src.sinks.parquet_sink import ParquetSink
 
 register_sink("sqlite", SQLiteSink)
 register_sink("local_file", LocalFileSink)
 register_sink("kafka", KafkaSink)
 register_sink("s3", S3Sink)
+register_sink("parquet", ParquetSink)
