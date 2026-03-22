@@ -191,7 +191,7 @@ async def worker_poll(worker_id: str):
 
     assignment = await task_manager.assign_task(worker_id)
     if not assignment:
-        raise HTTPException(404, "No tasks available")
+        return {"task": None}  # 无任务时返回200+空，不是404
     return assignment
 
 

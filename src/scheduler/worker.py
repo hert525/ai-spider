@@ -138,13 +138,17 @@ class WorkerProcess:
                     f"{self.master_url}/api/v1/workers/{self.worker_id}/poll"
                 )
                 if resp.status_code == 404:
-                    await asyncio.sleep(3)
+                    # worker未注册，尝试重新注册
+                    logger.warning("Worker未注册，尝试重新注册...")
+                    await self._register()
+                    await asyncio.sleep(5)
                     continue
                 if resp.status_code != 200:
                     await asyncio.sleep(5)
                     continue
                 task = resp.json()
                 if not task or not task.get("task_id"):
+                    # 无任务，安静等待
                     await asyncio.sleep(3)
                     continue
                 self.active_jobs += 1
