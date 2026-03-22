@@ -125,6 +125,58 @@ async def delete_task(tid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+class BatchCreateItem(BaseModel):
+    project_id: str
+    config: dict = {}
+
+
+class BatchCreateReq(BaseModel):
+    tasks: list[BatchCreateItem]
+
+
+@router.post("/tasks/batch")
+async def batch_create_tasks(body: BatchCreateReq, user: dict = Depends(get_current_user)):
+    """批量创建任务并入队"""
+    from src.core.quota import quota_manager
+
+    results = []
+    for item in body.tasks:
+        try:
+            # 检查配额
+            quota = await quota_manager.check_daily_quota(user.get("id", ""))
+            if not quota["allowed"]:
+                results.append({"project_id": item.project_id, "ok": False, "error": "每日任务配额已用完"})
+                continue
+
+            proj = await db.get("projects", item.project_id)
+            if not proj:
+                results.append({"project_id": item.project_id, "ok": False, "error": "项目不存在"})
+                continue
+
+            cfg = item.config
+            urls = cfg.get("target_urls") or ([proj.get("target_url")] if proj.get("target_url") else [])
+
+            task_data = await task_manager.create_task(
+                project_id=item.project_id,
+                user_id=user.get("id", ""),
+                task_type=cfg.get("task_type", "one_time"),
+                target_urls=urls,
+                priority=cfg.get("priority", 5),
+                cron_expr=cfg.get("cron_expr", ""),
+                max_pages=cfg.get("max_pages", 100),
+                max_items=cfg.get("max_items", 10000),
+                timeout_seconds=cfg.get("timeout_seconds", 300),
+                concurrency=cfg.get("concurrency", 3),
+                name=cfg.get("name", proj.get("name", "")),
+            )
+            results.append({"project_id": item.project_id, "ok": True, "task": task_data})
+        except Exception as e:
+            results.append({"project_id": item.project_id, "ok": False, "error": str(e)[:120]})
+
+    success_count = sum(1 for r in results if r.get("ok"))
+    return {"total": len(body.tasks), "success": success_count, "failed": len(body.tasks) - success_count, "results": results}
+
+
 class BatchTaskIds(BaseModel):
     task_ids: list[str]
 

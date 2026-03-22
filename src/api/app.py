@@ -18,6 +18,7 @@ from src.core.config import settings, BASE_DIR
 from src.core.logging import setup_logging
 from src.core.database import init_db, db
 from src.api.v1 import projects, tasks, workers, data, system, auth, admin
+from src.api.v1.probe import router as probe_router
 from src.api.v1.proxy_admin import router as proxy_admin_router
 from src.api.v1.settings import router as settings_router
 from src.api.v1.deploy import router as deploy_router
@@ -104,6 +105,7 @@ app.include_router(monitoring_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(quota_router, prefix="/api/v1")
+app.include_router(probe_router, prefix="/api/v1", tags=["probe"])
 
 # Also mount under /api/ for backward compat
 app.include_router(projects.router, prefix="/api", tags=["projects-compat"], include_in_schema=False)
@@ -134,6 +136,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(RateLimitMiddleware)
+
+# ── IP限流中间件 ──
+from src.api.middleware.rate_limit import IPRateLimitMiddleware
+app.add_middleware(IPRateLimitMiddleware, minute_limit=60, hour_limit=1000)
 
 
 # ── Global exception handlers ──
@@ -244,7 +250,7 @@ async def admin_logs(limit: int = 100):
 
 @app.websocket("/ws/{api_key}")
 async def websocket_endpoint(websocket: WebSocket, api_key: str):
-    """WebSocket endpoint for real-time updates."""
+    """WebSocket endpoint for real-time updates — 含服务端心跳检测。"""
     await websocket.accept()
     users = await db.query("SELECT * FROM users WHERE api_key = ?", [api_key])
     if not users:
@@ -252,19 +258,47 @@ async def websocket_endpoint(websocket: WebSocket, api_key: str):
         return
 
     is_admin = users[0].get("role") == "admin"
-    # Already accepted above, just register
+    # 注册连接
     if api_key not in ws_manager._connections:
         ws_manager._connections[api_key] = set()
     ws_manager._connections[api_key].add(websocket)
     if is_admin:
         ws_manager._admin_connections.add(websocket)
+
+    import asyncio as _asyncio
+
+    last_pong_time = time.monotonic()
+
+    async def _heartbeat_loop():
+        """服务端每30秒发送ping，检测客户端存活"""
+        nonlocal last_pong_time
+        while True:
+            await _asyncio.sleep(30)
+            # 检查是否超过90秒无pong响应
+            if time.monotonic() - last_pong_time > 90:
+                logger.warning(f"WS心跳超时(90s)，断开: {api_key[:10]}...")
+                await websocket.close(code=4002, reason="Heartbeat timeout")
+                return
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                return
+
+    heartbeat_task = _asyncio.create_task(_heartbeat_loop())
+
     try:
         while True:
             data_msg = await websocket.receive_text()
             msg = json.loads(data_msg)
             if msg.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
+            elif msg.get("type") == "pong":
+                # 客户端回复pong，更新存活时间
+                last_pong_time = time.monotonic()
     except WebSocketDisconnect:
+        pass
+    finally:
+        heartbeat_task.cancel()
         await ws_manager.disconnect(websocket, api_key)
 
 

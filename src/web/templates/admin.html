@@ -463,6 +463,23 @@ async function api(path, opts={}) {
     return await r.json();
   } catch(e) { if(e.message!=='未授权') throw e; return null; }
 }
+// apiFetch 兼容别名
+const apiFetch = api;
+
+// Loading辅助：在目标元素内显示"加载中..."
+function showLoading(el) {
+  if (typeof el === 'string') el = document.getElementById(el);
+  if (el) el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">⏳ 加载中...</div>';
+}
+// 空数据提示
+function showEmpty(el, cols) {
+  if (typeof el === 'string') el = document.getElementById(el);
+  if (!el) return;
+  if (cols) el.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;padding:20px;color:var(--text-muted)">暂无数据</td></tr>`;
+  else el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">暂无数据</div>';
+}
+// 错误提示（红色toast，3秒消失）
+function showError(msg) { toast(msg || '加载失败，请重试', 'error'); }
 
 function fmtTime(t) {
   if (!t) return '-';
@@ -507,19 +524,40 @@ function showLogin() { document.getElementById('login-page').classList.remove('h
 function showApp() { document.getElementById('login-page').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); connectAdminWS(); }
 function doLogout() { API_KEY=''; localStorage.removeItem('admin_api_key'); location.href = API_BASE + '/login'; if(_adminWs) { try{_adminWs.close();}catch(e){} } }
 
-// WebSocket for admin
+// WebSocket for admin — 指数退避自动重连
 let _adminWs = null;
+let _wsReconnectDelay = 1000; // 初始1秒
+let _wsReconnectTimer = null;
+let _wsPingTimer = null;
+
 function connectAdminWS() {
   if (_adminWs) { try { _adminWs.close(); } catch(e){} }
+  if (_wsPingTimer) { clearInterval(_wsPingTimer); _wsPingTimer = null; }
   if (!API_KEY) return;
   const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsPath = API_BASE + '/ws/' + API_KEY;
   const wsUrl = wsProtocol + '//' + location.host + wsPath;
   _adminWs = new WebSocket(wsUrl);
+
+  _adminWs.onopen = () => {
+    _wsReconnectDelay = 1000; // 连接成功，重置退避时间
+    // 客户端每30秒发ping保持连接
+    _wsPingTimer = setInterval(() => {
+      if (_adminWs && _adminWs.readyState === WebSocket.OPEN) {
+        _adminWs.send(JSON.stringify({type:'ping'}));
+      }
+    }, 30000);
+  };
+
   _adminWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'task_update') {
+      if (msg.type === 'ping') {
+        // 服务端发来ping，回复pong
+        if (_adminWs && _adminWs.readyState === WebSocket.OPEN) {
+          _adminWs.send(JSON.stringify({type:'pong'}));
+        }
+      } else if (msg.type === 'task_update') {
         toast('任务 ' + (msg.task_id||'').slice(0,8) + ' ' + (msg.status === 'success' ? '完成' : '失败'), msg.status === 'success' ? 'success' : 'error');
         loadDashboard();
       } else if (msg.type === 'project_created') {
@@ -527,8 +565,17 @@ function connectAdminWS() {
       }
     } catch(err) {}
   };
-  _adminWs.onclose = () => { setTimeout(connectAdminWS, 5000); };
-  setInterval(() => { if (_adminWs && _adminWs.readyState === WebSocket.OPEN) _adminWs.send(JSON.stringify({type:'ping'})); }, 30000);
+
+  _adminWs.onclose = () => {
+    if (_wsPingTimer) { clearInterval(_wsPingTimer); _wsPingTimer = null; }
+    // 指数退避重连，最大60秒
+    _wsReconnectTimer = setTimeout(() => {
+      connectAdminWS();
+    }, _wsReconnectDelay);
+    _wsReconnectDelay = Math.min(_wsReconnectDelay * 2, 60000);
+  };
+
+  _adminWs.onerror = () => {}; // onclose会处理重连
 }
 
 // --- Navigation ---
@@ -543,6 +590,10 @@ function switchPage(name) {
 
 // --- Dashboard ---
 async function loadDashboard() {
+  // 显示加载状态
+  ['s-users','s-projects','s-tasks','s-success-rate','s-data','s-workers'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.textContent = '...';
+  });
   // Enhanced stats from /api/v1/stats/overview
   try {
     const ov = await api('/api/v1/stats/overview');
@@ -646,6 +697,7 @@ async function loadDashboard() {
 // --- Users ---
 async function loadUsers() {
   const tbody = document.getElementById('users-tbody');
+  showLoading(tbody);
   try {
     const d = await api('/api/v1/admin/users');
     if (!d) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">接口不可用</td></tr>'; return; }
@@ -663,7 +715,7 @@ async function loadUsers() {
         <button class="btn btn-sm btn-outline" onclick="editQuota('${u.id}',${u.daily_task_limit||100},${u.storage_limit_mb||500},${u.max_concurrent_tasks||5})">配额</button>
         <button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">删除</button>
       </td></tr>`).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">暂无用户</td></tr>';
-  } catch(e) { tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
+  } catch(e) { showError('用户列表加载失败'); tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
 }
 
 async function toggleBan(id, currentStatus) {
@@ -692,6 +744,7 @@ async function editQuota(id, daily, storage, concurrent) {
 // --- Tasks ---
 async function loadTasks() {
   const tbody = document.getElementById('tasks-tbody');
+  showLoading(tbody);
   const status = document.getElementById('task-status-filter').value;
   try {
     let url = '/api/v1/tasks';
@@ -714,7 +767,7 @@ async function loadTasks() {
         <button class="btn btn-sm btn-outline" onclick="taskAction('${t.id||t.task_id}','retry')">重试</button>
         <button class="btn btn-sm btn-danger" onclick="taskAction('${t.id||t.task_id}','delete')">删除</button>
       </td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
-  } catch(e) { tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
+  } catch(e) { showError('任务列表加载失败'); tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
 }
 
 function toggleAllTasks(el) {
@@ -764,6 +817,7 @@ function _statusLabel(st) {
 async function loadWorkers() {
   const grid = document.getElementById('workers-grid');
   const statsBar = document.getElementById('worker-stats-bar');
+  showLoading(grid);
   try {
     const d = await api('/api/v1/workers');
     if (!d) { grid.innerHTML='<div style="color:var(--text-muted)">无数据</div>'; return; }
@@ -871,12 +925,13 @@ async function removeWorker(id) {
 
 // --- Logs ---
 async function loadLogs() {
+  showLoading('log-container');
   try {
     const d = await api('/api/v1/system/logs');
     if (!d) { document.getElementById('log-container').textContent = '接口不可用'; return; }
     allLogs = Array.isArray(d) ? d : (d.logs||d.items||[]);
     filterLogs();
-  } catch(e) { document.getElementById('log-container').textContent = '加载失败'; }
+  } catch(e) { showError('日志加载失败'); document.getElementById('log-container').textContent = '加载失败'; }
 }
 
 function filterLogs() {
