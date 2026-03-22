@@ -1,7 +1,7 @@
 """Tasks API."""
 from __future__ import annotations
 
-import aiosqlite
+from src.core.database import db as _db
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
@@ -14,14 +14,10 @@ router = APIRouter()
 
 
 async def _verify_task_owner(task_id: str, user_id: str):
-    async with aiosqlite.connect("data/spider.db") as db_conn:
-        db_conn.row_factory = aiosqlite.Row
-        cursor = await db_conn.execute(
-            "SELECT user_id FROM tasks WHERE id = ?", [task_id]
-        )
-        row = await cursor.fetchone()
-        if not row:
-            raise HTTPException(404, "Task not found")
+    row = await _db.get("tasks", task_id)
+    if not row:
+        raise HTTPException(404, "Task not found")
+    if True:
         if row["user_id"] != user_id:
             raise HTTPException(403, "Not your task")
 

@@ -71,6 +71,9 @@ async def lifespan(app: FastAPI):
     yield
     await cron_scheduler.stop()
     await task_queue.close()
+    # 关闭数据库连接池
+    from src.core.database import close_db
+    await close_db()
     logger.info("AI Spider stopped")
 
 

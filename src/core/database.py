@@ -1,14 +1,26 @@
-"""SQLite database with aiosqlite."""
+"""
+数据库层 — 支持 PostgreSQL (asyncpg) 和 SQLite (aiosqlite) 双后端。
+
+默认使用 PostgreSQL，通过 DATABASE_URL 环境变量配置:
+  DATABASE_URL=postgresql://ai_spider:password@localhost:5432/ai_spider
+
+如果 DATABASE_URL 以 sqlite:// 开头或未设置，回退到 SQLite。
+"""
 from __future__ import annotations
+
 import json
-import aiosqlite
+import os
 from pathlib import Path
 from loguru import logger
 from src.core.config import settings
 
-DB_PATH = settings.db_path
+# 检测数据库类型
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+USE_PG = DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")
 
-_SCHEMA = """
+
+# ---- PostgreSQL Schema ----
+_PG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -19,10 +31,12 @@ CREATE TABLE IF NOT EXISTS users (
     quota_projects INTEGER DEFAULT 20,
     quota_tasks INTEGER DEFAULT 100,
     status TEXT DEFAULT 'active',
+    daily_task_limit INTEGER DEFAULT 100,
+    storage_limit_mb INTEGER DEFAULT 500,
+    max_concurrent_tasks INTEGER DEFAULT 5,
     created_at TEXT,
     updated_at TEXT
 );
-
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);
 
@@ -40,6 +54,10 @@ CREATE TABLE IF NOT EXISTS projects (
     test_results TEXT DEFAULT '[]',
     sink_config TEXT DEFAULT '{}',
     user_id TEXT DEFAULT '',
+    use_browser INTEGER DEFAULT 0,
+    proxy_config TEXT DEFAULT '{}',
+    stealth_level TEXT DEFAULT 'off',
+    enable_screenshot INTEGER DEFAULT 0,
     created_at TEXT,
     updated_at TEXT
 );
@@ -66,15 +84,21 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TEXT,
     updated_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
 CREATE TABLE IF NOT EXISTS task_runs (
     id TEXT PRIMARY KEY,
     task_id TEXT,
     worker_id TEXT,
+    user_id TEXT DEFAULT '',
     status TEXT DEFAULT 'running',
     items_count INTEGER DEFAULT 0,
     pages_crawled INTEGER DEFAULT 0,
     error TEXT DEFAULT '',
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    next_retry_at TEXT DEFAULT '',
     started_at TEXT,
     finished_at TEXT,
     duration_ms INTEGER DEFAULT 0
@@ -108,13 +132,12 @@ CREATE TABLE IF NOT EXISTS data_records (
     task_id TEXT,
     task_run_id TEXT,
     data TEXT DEFAULT '{}',
+    data_hash TEXT DEFAULT '',
     created_at TEXT
 );
-
-CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_data_project ON data_records(project_id);
 CREATE INDEX IF NOT EXISTS idx_data_task ON data_records(task_id);
+CREATE INDEX IF NOT EXISTS idx_data_hash ON data_records(data_hash);
 
 CREATE TABLE IF NOT EXISTS proxy_pools (
     id TEXT PRIMARY KEY,
@@ -218,7 +241,7 @@ CREATE TABLE IF NOT EXISTS proxy_permissions (
 );
 """
 
-# JSON fields that need serialization
+# JSON字段需要序列化/反序列化
 _JSON_FIELDS = {
     "projects": ["extracted_data", "messages", "test_results", "sink_config", "proxy_config"],
     "tasks": ["target_urls"],
@@ -229,113 +252,24 @@ _JSON_FIELDS = {
     "seed_templates": ["tags", "extract_schema"],
 }
 
+# 合法表名白名单
+_ALLOWED_TABLES = {
+    "users", "projects", "tasks", "task_runs", "workers",
+    "data_records", "proxy_pools", "system_config", "seed_templates",
+    "browser_sessions", "notification_configs", "notification_logs",
+    "proxy_permissions",
+}
 
-async def get_db() -> aiosqlite.Connection:
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(DB_PATH)
-    db.row_factory = aiosqlite.Row
-    await db.executescript(_SCHEMA)
-    return db
 
-
-async def init_db():
-    db = await get_db()
-    # Run migrations for new columns (ignore if already exist)
-    for col in ["last_run_at", "next_run_at"]:
-        try:
-            await db.execute(f"ALTER TABLE tasks ADD COLUMN {col} TEXT DEFAULT ''")
-            await db.commit()
-            logger.info(f"Added column tasks.{col}")
-        except Exception:
-            pass  # column already exists
-    # Add use_browser to projects
-    try:
-        await db.execute("ALTER TABLE projects ADD COLUMN use_browser INTEGER DEFAULT 0")
-        await db.commit()
-        logger.info("Added column projects.use_browser")
-    except Exception:
-        pass
-    # Add proxy_config to projects
-    try:
-        await db.execute("ALTER TABLE projects ADD COLUMN proxy_config TEXT DEFAULT '{}'")
-        await db.commit()
-        logger.info("Added column projects.proxy_config")
-    except Exception:
-        pass
-    # Add stealth_level to projects
-    try:
-        await db.execute("ALTER TABLE projects ADD COLUMN stealth_level TEXT DEFAULT 'off'")
-        await db.commit()
-        logger.info("Added column projects.stealth_level")
-    except Exception:
-        pass
-    # Add enable_screenshot to projects
-    try:
-        await db.execute("ALTER TABLE projects ADD COLUMN enable_screenshot INTEGER DEFAULT 0")
-        await db.commit()
-        logger.info("Added column projects.enable_screenshot")
-    except Exception:
-        pass
-    # Add data_hash to data_records for dedup
-    try:
-        await db.execute("ALTER TABLE data_records ADD COLUMN data_hash TEXT DEFAULT ''")
-        await db.commit()
-        logger.info("Added column data_records.data_hash")
-    except Exception:
-        pass
-    # Dedup indexes
-    for idx_sql in [
-        "CREATE INDEX IF NOT EXISTS idx_data_records_hash ON data_records(data_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_data_records_project ON data_records(project_id)",
-    ]:
-        try:
-            await db.execute(idx_sql)
-            await db.commit()
-        except Exception:
-            pass
-    # Add new worker columns
-    for col, coltype in [
-        ("memory_total_mb", "REAL DEFAULT 0"),
-        ("disk_percent", "REAL DEFAULT 0"),
-        ("python_version", "TEXT DEFAULT ''"),
-        ("os_info", "TEXT DEFAULT ''"),
-        ("current_tasks", "TEXT DEFAULT '[]'"),
-        ("updated_at", "TEXT DEFAULT ''"),
-    ]:
-        try:
-            await db.execute(f"ALTER TABLE workers ADD COLUMN {col} {coltype}")
-            await db.commit()
-        except Exception:
-            pass
-    # Add retry columns to task_runs
-    for col, coltype in [
-        ("retry_count", "INTEGER DEFAULT 0"),
-        ("max_retries", "INTEGER DEFAULT 3"),
-        ("next_retry_at", "TEXT DEFAULT ''"),
-        ("user_id", "TEXT DEFAULT ''"),
-    ]:
-        try:
-            await db.execute(f"ALTER TABLE task_runs ADD COLUMN {col} {coltype}")
-            await db.commit()
-        except Exception:
-            pass
-    # Add quota columns to users
-    for col, coltype in [
-        ("daily_task_limit", "INTEGER DEFAULT 100"),
-        ("storage_limit_mb", "INTEGER DEFAULT 500"),
-        ("max_concurrent_tasks", "INTEGER DEFAULT 5"),
-    ]:
-        try:
-            await db.execute(f"ALTER TABLE users ADD COLUMN {col} {coltype}")
-            await db.commit()
-        except Exception:
-            pass
-    await db.close()
-    logger.info(f"Database initialized at {DB_PATH}")
+def _check_table(table: str) -> str:
+    """校验表名，防止SQL注入"""
+    if table not in _ALLOWED_TABLES:
+        raise ValueError(f"非法表名: {table}")
+    return table
 
 
 def _serialize(table: str, data: dict) -> dict:
-    """Convert lists/dicts to JSON strings for storage."""
+    """将list/dict字段序列化为JSON字符串"""
     result = dict(data)
     for field in _JSON_FIELDS.get(table, []):
         if field in result and not isinstance(result[field], str):
@@ -344,7 +278,7 @@ def _serialize(table: str, data: dict) -> dict:
 
 
 def _deserialize(table: str, row: dict) -> dict:
-    """Convert JSON strings back to Python objects."""
+    """将JSON字符串反序列化回Python对象"""
     result = dict(row)
     for field in _JSON_FIELDS.get(table, []):
         if field in result and isinstance(result[field], str):
@@ -355,119 +289,330 @@ def _deserialize(table: str, row: dict) -> dict:
     return result
 
 
-class DB:
-    """Async database helper."""
+# ════════════════════════════════════════
+#  PostgreSQL 后端 (asyncpg)
+# ════════════════════════════════════════
 
-    async def insert(self, table: str, data: dict):
-        data = _serialize(table, data)
-        cols = ", ".join(data.keys())
-        placeholders = ", ".join(["?"] * len(data))
-        db = await get_db()
-        try:
-            await db.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", list(data.values()))
-            await db.commit()
-        finally:
-            await db.close()
+if USE_PG:
+    import asyncpg
 
-    async def get(self, table: str, id: str) -> dict | None:
-        db = await get_db()
-        try:
-            cursor = await db.execute(f"SELECT * FROM {table} WHERE id = ?", [id])
-            row = await cursor.fetchone()
+    _pool: asyncpg.Pool | None = None
+
+    async def _get_pool() -> asyncpg.Pool:
+        global _pool
+        if _pool is None:
+            _pool = await asyncpg.create_pool(
+                DATABASE_URL,
+                min_size=2,
+                max_size=10,
+                command_timeout=30,
+            )
+        return _pool
+
+    async def init_db():
+        """初始化PostgreSQL: 建表 + 连接池"""
+        pool = await _get_pool()
+        # 逐条执行建表（asyncpg不支持executemany for DDL）
+        for stmt in _PG_SCHEMA.split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                try:
+                    await pool.execute(stmt)
+                except Exception as e:
+                    # 忽略已存在的表/索引
+                    if "already exists" not in str(e):
+                        logger.warning(f"Schema执行警告: {e}")
+        logger.info(f"Database initialized (PostgreSQL: {DATABASE_URL.split('@')[-1]})")
+
+    async def close_db():
+        """关闭连接池"""
+        global _pool
+        if _pool:
+            await _pool.close()
+            _pool = None
+
+    class DB:
+        """异步数据库操作 — PostgreSQL后端"""
+
+        async def insert(self, table: str, data: dict):
+            _check_table(table)
+            data = _serialize(table, data)
+            cols = ", ".join(data.keys())
+            placeholders = ", ".join(f"${i+1}" for i in range(len(data)))
+            pool = await _get_pool()
+            await pool.execute(
+                f"INSERT INTO {table} ({cols}) VALUES ({placeholders})",
+                *data.values(),
+            )
+
+        async def get(self, table: str, id: str) -> dict | None:
+            _check_table(table)
+            pool = await _get_pool()
+            row = await pool.fetchrow(f"SELECT * FROM {table} WHERE id = $1", id)
             if row:
                 return _deserialize(table, dict(row))
             return None
-        finally:
-            await db.close()
 
-    async def list(self, table: str, where: dict | None = None, order: str = "created_at DESC", limit: int = 200) -> list[dict]:
-        db = await get_db()
-        try:
+        async def list(self, table: str, where: dict | None = None, order: str = "created_at DESC", limit: int = 200) -> list[dict]:
+            _check_table(table)
+            pool = await _get_pool()
             sql = f"SELECT * FROM {table}"
             params = []
+            idx = 1
             if where:
                 conditions = []
                 for k, v in where.items():
                     if v is not None:
-                        conditions.append(f"{k} = ?")
+                        conditions.append(f"{k} = ${idx}")
                         params.append(v)
+                        idx += 1
                 if conditions:
                     sql += " WHERE " + " AND ".join(conditions)
             sql += f" ORDER BY {order} LIMIT {limit}"
-            cursor = await db.execute(sql, params)
-            rows = await cursor.fetchall()
+            rows = await pool.fetch(sql, *params)
             return [_deserialize(table, dict(r)) for r in rows]
-        finally:
-            await db.close()
 
-    async def update(self, table: str, id: str, data: dict):
-        data = _serialize(table, data)
-        sets = ", ".join(f"{k} = ?" for k in data.keys())
-        db = await get_db()
-        try:
-            await db.execute(f"UPDATE {table} SET {sets} WHERE id = ?", list(data.values()) + [id])
-            await db.commit()
-        finally:
-            await db.close()
+        async def update(self, table: str, id: str, data: dict):
+            _check_table(table)
+            data = _serialize(table, data)
+            idx = 1
+            sets = []
+            params = []
+            for k, v in data.items():
+                sets.append(f"{k} = ${idx}")
+                params.append(v)
+                idx += 1
+            params.append(id)
+            pool = await _get_pool()
+            await pool.execute(
+                f"UPDATE {table} SET {', '.join(sets)} WHERE id = ${idx}",
+                *params,
+            )
 
-    async def delete(self, table: str, id: str) -> bool:
-        db = await get_db()
-        try:
-            cursor = await db.execute(f"DELETE FROM {table} WHERE id = ?", [id])
-            await db.commit()
-            return cursor.rowcount > 0
-        finally:
-            await db.close()
+        async def delete(self, table: str, id: str) -> bool:
+            _check_table(table)
+            pool = await _get_pool()
+            result = await pool.execute(f"DELETE FROM {table} WHERE id = $1", id)
+            return result.split()[-1] != "0"
 
-    async def count(self, table: str, where: dict | None = None) -> int:
-        db = await get_db()
-        try:
+        async def count(self, table: str, where: dict | None = None) -> int:
+            _check_table(table)
+            pool = await _get_pool()
             sql = f"SELECT COUNT(*) FROM {table}"
             params = []
+            idx = 1
             if where:
                 conditions = []
                 for k, v in where.items():
                     if v is not None:
-                        conditions.append(f"{k} = ?")
+                        conditions.append(f"{k} = ${idx}")
                         params.append(v)
+                        idx += 1
                 if conditions:
                     sql += " WHERE " + " AND ".join(conditions)
-            cursor = await db.execute(sql, params)
-            row = await cursor.fetchone()
-            return row[0]
-        finally:
-            await db.close()
+            row = await pool.fetchval(sql, *params)
+            return row or 0
 
-    async def insert_many(self, table: str, records: list[dict]):
-        if not records:
-            return
-        db = await get_db()
-        try:
-            for data in records:
-                data = _serialize(table, data)
-                cols = ", ".join(data.keys())
-                placeholders = ", ".join(["?"] * len(data))
-                await db.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", list(data.values()))
-            await db.commit()
-        finally:
-            await db.close()
+        async def insert_many(self, table: str, records: list[dict]):
+            if not records:
+                return
+            _check_table(table)
+            pool = await _get_pool()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    for data in records:
+                        data = _serialize(table, data)
+                        cols = ", ".join(data.keys())
+                        placeholders = ", ".join(f"${i+1}" for i in range(len(data)))
+                        await conn.execute(
+                            f"INSERT INTO {table} ({cols}) VALUES ({placeholders})",
+                            *data.values(),
+                        )
 
-    async def execute(self, sql: str, params: list | None = None):
+        async def execute(self, sql: str, params: list | None = None):
+            """执行原始SQL（支持?占位符，自动转$N）"""
+            sql, params = sql_param(sql, params)
+            pool = await _get_pool()
+            await pool.execute(sql, *params)
+
+        async def query(self, sql: str, params: list | None = None) -> list[dict]:
+            """执行原始SQL查询（支持?占位符，自动转$N）"""
+            sql, params = sql_param(sql, params)
+            pool = await _get_pool()
+            rows = await pool.fetch(sql, *params)
+            return [dict(r) for r in rows]
+
+
+# ════════════════════════════════════════
+#  SQLite 后端 (aiosqlite) — 回退方案
+# ════════════════════════════════════════
+
+else:
+    import aiosqlite
+
+    DB_PATH = settings.db_path
+
+    # SQLite schema（和PG共用同一份定义）
+    _SQLITE_SCHEMA = _PG_SCHEMA.replace("$1", "?").replace("$2", "?")
+
+    async def get_db() -> aiosqlite.Connection:
+        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+        conn = await aiosqlite.connect(DB_PATH)
+        conn.row_factory = aiosqlite.Row
+        return conn
+
+    async def init_db():
         conn = await get_db()
         try:
-            await conn.execute(sql, params or [])
+            await conn.executescript(_SQLITE_SCHEMA)
             await conn.commit()
         finally:
             await conn.close()
+        logger.info(f"Database initialized (SQLite: {DB_PATH})")
 
-    async def query(self, sql: str, params: list | None = None) -> list[dict]:
-        db = await get_db()
-        try:
-            cursor = await db.execute(sql, params or [])
-            rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
-        finally:
-            await db.close()
+    async def close_db():
+        pass  # SQLite无连接池
+
+    class DB:
+        """异步数据库操作 — SQLite后端"""
+
+        async def insert(self, table: str, data: dict):
+            _check_table(table)
+            data = _serialize(table, data)
+            cols = ", ".join(data.keys())
+            placeholders = ", ".join(["?"] * len(data))
+            conn = await get_db()
+            try:
+                await conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", list(data.values()))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+        async def get(self, table: str, id: str) -> dict | None:
+            _check_table(table)
+            conn = await get_db()
+            try:
+                cursor = await conn.execute(f"SELECT * FROM {table} WHERE id = ?", [id])
+                row = await cursor.fetchone()
+                if row:
+                    return _deserialize(table, dict(row))
+                return None
+            finally:
+                await conn.close()
+
+        async def list(self, table: str, where: dict | None = None, order: str = "created_at DESC", limit: int = 200) -> list[dict]:
+            _check_table(table)
+            conn = await get_db()
+            try:
+                sql = f"SELECT * FROM {table}"
+                params = []
+                if where:
+                    conditions = []
+                    for k, v in where.items():
+                        if v is not None:
+                            conditions.append(f"{k} = ?")
+                            params.append(v)
+                    if conditions:
+                        sql += " WHERE " + " AND ".join(conditions)
+                sql += f" ORDER BY {order} LIMIT {limit}"
+                cursor = await conn.execute(sql, params)
+                rows = await cursor.fetchall()
+                return [_deserialize(table, dict(r)) for r in rows]
+            finally:
+                await conn.close()
+
+        async def update(self, table: str, id: str, data: dict):
+            _check_table(table)
+            data = _serialize(table, data)
+            sets = ", ".join(f"{k} = ?" for k in data.keys())
+            conn = await get_db()
+            try:
+                await conn.execute(f"UPDATE {table} SET {sets} WHERE id = ?", list(data.values()) + [id])
+                await conn.commit()
+            finally:
+                await conn.close()
+
+        async def delete(self, table: str, id: str) -> bool:
+            _check_table(table)
+            conn = await get_db()
+            try:
+                cursor = await conn.execute(f"DELETE FROM {table} WHERE id = ?", [id])
+                await conn.commit()
+                return cursor.rowcount > 0
+            finally:
+                await conn.close()
+
+        async def count(self, table: str, where: dict | None = None) -> int:
+            _check_table(table)
+            conn = await get_db()
+            try:
+                sql = f"SELECT COUNT(*) FROM {table}"
+                params = []
+                if where:
+                    conditions = []
+                    for k, v in where.items():
+                        if v is not None:
+                            conditions.append(f"{k} = ?")
+                            params.append(v)
+                    if conditions:
+                        sql += " WHERE " + " AND ".join(conditions)
+                cursor = await conn.execute(sql, params)
+                row = await cursor.fetchone()
+                return row[0]
+            finally:
+                await conn.close()
+
+        async def insert_many(self, table: str, records: list[dict]):
+            if not records:
+                return
+            _check_table(table)
+            conn = await get_db()
+            try:
+                for data in records:
+                    data = _serialize(table, data)
+                    cols = ", ".join(data.keys())
+                    placeholders = ", ".join(["?"] * len(data))
+                    await conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", list(data.values()))
+                await conn.commit()
+            finally:
+                await conn.close()
+
+        async def execute(self, sql: str, params: list | None = None):
+            conn = await get_db()
+            try:
+                await conn.execute(sql, params or [])
+                await conn.commit()
+            finally:
+                await conn.close()
+
+        async def query(self, sql: str, params: list | None = None) -> list[dict]:
+            conn = await get_db()
+            try:
+                cursor = await conn.execute(sql, params or [])
+                rows = await cursor.fetchall()
+                return [dict(r) for r in rows]
+            finally:
+                await conn.close()
 
 
 db = DB()
+
+
+def sql_param(sql: str, params: list | None = None) -> tuple[str, list | tuple]:
+    """
+    统一SQL参数占位符：代码统一写 ? 占位符，
+    PostgreSQL模式下自动转换为 $1, $2, ...
+    """
+    if not USE_PG or not params:
+        return sql, params or []
+
+    # 将 ? 替换为 $1, $2, ...
+    result = []
+    idx = 1
+    for char in sql:
+        if char == "?":
+            result.append(f"${idx}")
+            idx += 1
+        else:
+            result.append(char)
+    return "".join(result), params

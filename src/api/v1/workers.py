@@ -20,12 +20,9 @@ async def verify_worker_token(request: Request):
     token = request.headers.get("X-Worker-Token", "")
     if not token:
         raise HTTPException(401, "Worker token required")
-    import aiosqlite
-    async with aiosqlite.connect("data/spider.db") as db_conn:
-        db_conn.row_factory = aiosqlite.Row
-        cursor = await db_conn.execute("SELECT id FROM workers WHERE token = ?", [token])
-        if not await cursor.fetchone():
-            raise HTTPException(401, "Invalid worker token")
+    rows = await db.query("SELECT id FROM workers WHERE token = ?", [token])
+    if not rows:
+        raise HTTPException(401, "Invalid worker token")
     return {"token": token}
 
 

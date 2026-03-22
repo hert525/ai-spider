@@ -190,15 +190,8 @@ async def update_project(pid: str, body: dict = Body(...), user: dict = Depends(
     if not updates:
         raise HTTPException(400, "No valid fields to update")
 
-    set_clause = ", ".join(f"{k} = ?" for k in updates)
-
-    import aiosqlite
-    async with aiosqlite.connect("data/spider.db") as db_conn:
-        await db_conn.execute(
-            f"UPDATE projects SET {set_clause}, updated_at = ? WHERE id = ? AND user_id = ?",
-            [*updates.values(), datetime.now(timezone.utc).isoformat(), pid, user["id"]]
-        )
-        await db_conn.commit()
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.update("projects", pid, updates)
     return {"ok": True}
 
 
