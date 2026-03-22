@@ -183,6 +183,10 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div class="nav-item" data-page="logs" onclick="switchPage('logs')">📜 系统日志</div>
       <div class="nav-item" data-page="settings" onclick="switchPage('settings')">⚙️ 系统设置</div>
       <div class="nav-item" data-page="seeds" onclick="switchPage('seeds')">🌱 种子库</div>
+      <div style="margin:12px 20px 4px;font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">运维</div>
+      <div class="nav-item" data-page="monitoring" onclick="switchPage('monitoring')">📈 监控指标</div>
+      <div class="nav-item" data-page="ratelimit" onclick="switchPage('ratelimit')">⏱️ 流控限速</div>
+      <div class="nav-item" data-page="dedup" onclick="switchPage('dedup')">🔄 去重管理</div>
     </div>
     <div class="sidebar-footer">
       <div id="admin-email" style="margin-bottom:8px"></div>
@@ -386,6 +390,51 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       </div>
     </div>
 
+    <!-- Monitoring Page -->
+    <div class="page" id="page-monitoring" style="display:none">
+      <div class="page-title">📈 监控指标</div>
+      <div class="grid" id="metrics-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <button class="btn btn-outline" style="width:auto" onclick="loadMonitoring()">🔄 刷新</button>
+        <button class="btn btn-outline" style="width:auto" onclick="pushMetrics()">📤 推送到Pushgateway</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px">🖥️ 代理池状态</div>
+        <div id="proxy-stats-content">加载中...</div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:8px">📊 详细指标</div>
+        <div id="metrics-detail" style="max-height:400px;overflow:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;background:var(--bg-card);padding:12px;border-radius:8px"></div>
+      </div>
+    </div>
+
+    <!-- Rate Limiter Page -->
+    <div class="page" id="page-ratelimit" style="display:none">
+      <div class="page-title">⏱️ 流控限速</div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <button class="btn btn-outline" style="width:auto" onclick="loadRateLimit()">🔄 刷新</button>
+      </div>
+      <div id="ratelimit-content">加载中...</div>
+    </div>
+
+    <!-- Dedup Page -->
+    <div class="page" id="page-dedup" style="display:none">
+      <div class="page-title">🔄 去重管理</div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:12px">当前去重配置</div>
+        <div id="dedup-config" style="font-family:monospace;font-size:13px"></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:12px">去重策略说明</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+          <div><strong>🧠 Memory</strong> — 内存哈希+LRU淘汰，重启丢失，适合小任务</div>
+          <div><strong>📡 Redis</strong> — 分布式去重，支持TTL过期，多Worker共享</div>
+          <div><strong>🌸 Bloom Filter</strong> — 布隆过滤器，亿级数据内存友好，有极小误判率</div>
+          <div><strong>🔄 Rotation</strong> — 滚动分区布隆过滤器，磁盘持久化+自动轮换</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -488,7 +537,7 @@ function switchPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
-  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings, seeds:loadAdminSeeds};
+  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings, seeds:loadAdminSeeds, monitoring:loadMonitoring, ratelimit:loadRateLimit, dedup:loadDedup};
   if (loaders[name]) loaders[name]();
 }
 
@@ -1299,6 +1348,151 @@ async function doSeedImport() {
   } catch(e) { toast('导入失败: ' + e.message); }
 }
 
+
+// ============ 监控指标 ============
+async function loadMonitoring() {
+  try {
+    // 摘要卡片
+    const summary = await api('/api/v1/monitoring/metrics/summary');
+    const cards = document.getElementById('metrics-cards');
+    const items = [
+      {label:'总请求数', value:summary.total_requests||0, icon:'🌐'},
+      {label:'成功请求', value:summary.successful_requests||0, icon:'✅'},
+      {label:'失败请求', value:summary.failed_requests||0, icon:'❌'},
+      {label:'提取数据量', value:summary.total_extracted||0, icon:'📦'},
+      {label:'去重过滤', value:summary.total_deduped||0, icon:'🔄'},
+      {label:'活跃任务', value:summary.active_tasks||0, icon:'⚡'},
+    ];
+    cards.innerHTML = items.map(i => `
+      <div class="card" style="text-align:center;padding:16px">
+        <div style="font-size:28px;margin-bottom:4px">${i.icon}</div>
+        <div style="font-size:24px;font-weight:700;color:var(--accent-light)">${typeof i.value==='number'?i.value.toLocaleString():i.value}</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">${i.label}</div>
+      </div>
+    `).join('');
+
+    // 代理池状态
+    try {
+      const proxy = await api('/api/v1/monitoring/proxy/stats');
+      const el = document.getElementById('proxy-stats-content');
+      if (proxy.pools && proxy.pools.length > 0) {
+        el.innerHTML = proxy.pools.map(p => `
+          <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="font-weight:600">${p.name||p.id}</span>
+            <span>代理数: ${p.total||0}</span>
+            <span>健康: <span style="color:#4caf50">${p.healthy||0}</span></span>
+            <span>冷却: <span style="color:#ff9800">${p.cooldown||0}</span></span>
+            <span>成功率: ${((p.success_rate||0)*100).toFixed(1)}%</span>
+          </div>
+        `).join('');
+      } else {
+        el.innerHTML = '<span style="color:var(--text-secondary)">暂无代理池</span>';
+      }
+    } catch(e) {
+      document.getElementById('proxy-stats-content').innerHTML = '<span style="color:var(--text-secondary)">代理监控接口未响应</span>';
+    }
+
+    // 详细指标
+    const metrics = await api('/api/v1/monitoring/metrics');
+    document.getElementById('metrics-detail').textContent = JSON.stringify(metrics, null, 2);
+  } catch(e) {
+    document.getElementById('metrics-cards').innerHTML = `<div class="card" style="padding:20px;color:var(--text-secondary)">监控数据加载失败: ${e.message}</div>`;
+  }
+}
+
+async function pushMetrics() {
+  try {
+    await api('/api/v1/monitoring/metrics/push', {method:'POST'});
+    toast('指标已推送到Pushgateway', 'success');
+  } catch(e) { toast('推送失败: ' + e.message, 'error'); }
+}
+
+// ============ 流控限速 ============
+async function loadRateLimit() {
+  try {
+    const data = await api('/api/v1/monitoring/rate-limiter/status');
+    const el = document.getElementById('ratelimit-content');
+    
+    if (!data || (!data.dimensions && !data.global)) {
+      el.innerHTML = '<div class="card" style="padding:20px;color:var(--text-secondary)">暂无限速数据（任务运行后会产生）</div>';
+      return;
+    }
+
+    let html = '';
+    
+    // 全局状态
+    if (data.global) {
+      html += `<div class="card" style="margin-bottom:12px">
+        <div style="font-weight:600;margin-bottom:8px">🌍 全局限速</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div>默认QPS: <strong>${data.global.default_qps||'无限制'}</strong></div>
+          <div>当前并发: <strong>${data.global.current_concurrency||0}</strong></div>
+          <div>压力等级: <strong>${data.global.pressure_level||'正常'}</strong></div>
+        </div>
+      </div>`;
+    }
+
+    // 域名维度
+    if (data.dimensions && Object.keys(data.dimensions).length > 0) {
+      html += `<div class="card">
+        <div style="font-weight:600;margin-bottom:8px">🔗 域名维度限速</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>域名</th><th>QPS限制</th><th>当前窗口</th><th>等待中</th><th>状态</th></tr></thead>
+          <tbody>`;
+      for (const [domain, info] of Object.entries(data.dimensions)) {
+        const status = (info.current||0) >= (info.limit||999) ? '🔴 限速中' : '🟢 正常';
+        html += `<tr>
+          <td style="font-family:monospace">${domain}</td>
+          <td>${info.limit||'∞'}/s</td>
+          <td>${info.current||0}</td>
+          <td>${info.waiting||0}</td>
+          <td>${status}</td>
+        </tr>`;
+      }
+      html += '</tbody></table></div></div>';
+    } else {
+      html += '<div class="card" style="padding:16px;color:var(--text-secondary)">暂无域名维度数据</div>';
+    }
+
+    el.innerHTML = html;
+  } catch(e) {
+    document.getElementById('ratelimit-content').innerHTML = `<div class="card" style="padding:20px;color:var(--text-secondary)">加载失败: ${e.message}</div>`;
+  }
+}
+
+// ============ 去重管理 ============
+async function loadDedup() {
+  try {
+    const el = document.getElementById('dedup-config');
+    // 从settings读取去重配置
+    try {
+      const settings = await api('/api/v1/settings');
+      const dedupType = settings.dedup_backend || 'memory';
+      const redisUrl = settings.redis_url || 'redis://127.0.0.1:6379/2';
+      
+      el.innerHTML = `
+        <div style="display:grid;gap:8px">
+          <div>当前策略: <strong style="color:var(--accent-light)">${dedupType.toUpperCase()}</strong></div>
+          <div>Redis地址: <span style="font-family:monospace">${dedupType==='redis'?redisUrl:'N/A'}</span></div>
+          <div style="margin-top:8px;padding:10px;background:var(--bg-hover);border-radius:6px;font-size:12px">
+            💡 切换去重策略：修改 .env 中的 <code>DEDUP_BACKEND</code> 为 memory / redis / bloom / rotation，然后重启服务
+          </div>
+        </div>`;
+    } catch(e) {
+      el.innerHTML = `<div>配置读取失败: ${e.message}<br><br>
+        <div style="padding:10px;background:var(--bg-hover);border-radius:6px;font-size:12px">
+          💡 在 .env 中设置：<br>
+          <code>DEDUP_BACKEND=memory</code> (默认)<br>
+          <code>DEDUP_BACKEND=redis</code> (推荐生产环境)<br>
+          <code>DEDUP_BACKEND=bloom</code> (大规模场景)<br>
+          <code>DEDUP_BACKEND=rotation</code> (持久化布隆)
+        </div>
+      </div>`;
+    }
+  } catch(e) {
+    document.getElementById('dedup-config').textContent = '加载失败: ' + e.message;
+  }
+}
 
 </script>
 </body>
