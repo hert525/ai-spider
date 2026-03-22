@@ -1,11 +1,10 @@
 """ValidateNode - 4-round code validation (syntax → execution → schema → semantic)."""
 import ast
 import json
-from litellm import acompletion
 from .base import BaseNode
 from .generate import GenerateNode
 from src.engine.sandbox import run_code_in_sandbox
-from src.core.config import settings
+from src.core.llm import llm_completion
 
 
 class ValidateNode(BaseNode):
@@ -122,9 +121,7 @@ class ValidateNode(BaseNode):
 
 请判断提取结果是否满足用户需求。如果满足，回复 "PASS"。如果不满足，回复 "FAIL: " 加上具体原因。"""
 
-        params = settings.get_llm_params()
-        resp = await acompletion(
-            **params,
+        resp = await llm_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             max_tokens=200,

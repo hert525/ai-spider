@@ -69,14 +69,23 @@ async def llm_completion(
             seen.add(m)
             unique_models.append(m)
 
+    # 主模型的额外参数（api_key/api_base）
+    primary_params = settings.get_llm_params()
+    primary_params.pop("model", None)  # model单独传
+
     last_error = None
     for i, m in enumerate(unique_models):
         try:
+            # 主模型用配置的api_key/api_base；fallback模型走litellm自动路由
+            extra = primary_params if i == 0 else {}
+            # 过滤掉kwargs中已有的key
+            call_extra = {k: v for k, v in extra.items() if k not in kwargs}
             resp = await acompletion(
                 model=m,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                **call_extra,
                 **kwargs,
             )
             if i > 0:

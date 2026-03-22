@@ -285,8 +285,7 @@ async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_curr
     if not proj:
         raise HTTPException(404)
 
-    from litellm import acompletion
-    from src.core.config import settings
+    from src.core.llm import llm_completion
     from src.engine.prompts.refine import REFINE_WITH_FEEDBACK_PROMPT
 
     test_results = proj.get("test_results", [])
@@ -300,9 +299,7 @@ async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_curr
         feedback=req.feedback,
     )
 
-    params = settings.get_llm_params()
-    resp = await acompletion(
-        **params,
+    resp = await llm_completion(
         messages=[
             {"role": "system", "content": "你是Python爬虫专家。根据用户反馈修改代码。只输出代码。"},
             {"role": "user", "content": prompt},

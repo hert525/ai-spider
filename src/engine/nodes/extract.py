@@ -1,7 +1,7 @@
 """ExtractNode - LLM-based structured data extraction from HTML."""
 import json
-from litellm import acompletion
 from .base import BaseNode
+from src.core.llm import llm_completion
 from src.core.config import settings
 from src.engine.prompts.extract import EXTRACT_SYSTEM_PROMPT, EXTRACT_USER_PROMPT
 
@@ -29,9 +29,7 @@ class ExtractNode(BaseNode):
         )
 
         self.logger.info("Calling LLM for extraction...")
-        params = settings.get_llm_params()
-        resp = await acompletion(
-            **params,
+        resp = await llm_completion(
             messages=[
                 {"role": "system", "content": EXTRACT_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},

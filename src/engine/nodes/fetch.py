@@ -219,10 +219,12 @@ class FetchNode(BaseNode):
                 self.logger.info(f"使用代理进行httpx请求")
 
         try:
+            # httpx >= 0.28 用 proxy 参数（单个URL），旧版用 proxies（dict）
+            _proxy_arg = proxy_url if proxy_url else None
             async with httpx.AsyncClient(
                 follow_redirects=True,
                 timeout=30,
-                proxies=proxies,
+                proxy=_proxy_arg,
                 cookies=cookie_jar,
             ) as client:
                 resp = await client.get(url, headers=headers)

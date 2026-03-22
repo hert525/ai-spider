@@ -1,6 +1,6 @@
 """GenerateNode - LLM code generation for crawlers."""
-from litellm import acompletion
 from .base import BaseNode
+from src.core.llm import llm_completion
 from src.core.config import settings
 from src.engine.prompts.generate import CODE_GEN_SYSTEM_PROMPT, CODE_GEN_USER_PROMPT
 
@@ -26,9 +26,7 @@ class GenerateNode(BaseNode):
         )
 
         self.logger.info("Generating crawler code...")
-        params = settings.get_llm_params()
-        resp = await acompletion(
-            **params,
+        resp = await llm_completion(
             messages=[
                 {"role": "system", "content": CODE_GEN_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
@@ -54,9 +52,7 @@ class GenerateNode(BaseNode):
             html_content=state.get("reduced_html", "")[:15000],
         )
 
-        params = settings.get_llm_params()
-        resp = await acompletion(
-            **params,
+        resp = await llm_completion(
             messages=[
                 {"role": "system", "content": CODE_GEN_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
