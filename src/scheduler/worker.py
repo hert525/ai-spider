@@ -77,6 +77,7 @@ class WorkerProcess:
             await self._client.aclose()
 
     async def _register(self) -> None:
+        """注册到master，失败后指数退避重试（最多10次）"""
         client = await self._get_client()
         payload = {
             "worker_id": self.worker_id,
@@ -85,12 +86,18 @@ class WorkerProcess:
             "max_concurrency": self.max_concurrency,
             "tags": self.tags,
         }
-        try:
-            resp = await client.post(f"{self.master_url}/api/v1/workers/register", json=payload)
-            data = resp.json()
-            logger.info(f"Registered with master: {data.get('id', self.worker_id)}")
-        except Exception as e:
-            logger.error(f"Failed to register: {e}")
+        for attempt in range(10):
+            try:
+                resp = await client.post(f"{self.master_url}/api/v1/workers/register", json=payload)
+                data = resp.json()
+                logger.info(f"注册成功: {data.get('id', self.worker_id)}")
+                self._registered = True
+                return
+            except Exception as e:
+                wait = min(2 ** attempt + 1, 60)
+                logger.warning(f"注册失败 (第{attempt+1}次): {e}, {wait}s后重试")
+                await asyncio.sleep(wait)
+        logger.error(f"注册失败: 已重试10次，放弃。请检查master是否运行在 {self.master_url}")
 
     async def _heartbeat_loop(self) -> None:
         while self._running:
