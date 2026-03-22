@@ -229,10 +229,68 @@ class FetchNode(BaseNode):
                 resp.raise_for_status()
                 return resp.text
         except Exception as e:
+            self.logger.warning(f"httpx失败 ({e}), 尝试curl_cffi降级")
+            # 第二级降级：curl_cffi（TLS指纹模拟，绕过Cloudflare等）
+            try:
+                curl_text = await self._fetch_curl_cffi(url, proxies=proxies, cookies=cookie_jar)
+                if curl_text:
+                    return curl_text
+            except Exception as ce:
+                self.logger.warning(f"curl_cffi也失败 ({ce})")
+
+            # 第三级降级：playwright（完整浏览器渲染）
             if not self.use_browser:
-                self.logger.warning(f"httpx失败 ({e}), 降级到playwright")
+                self.logger.warning(f"curl_cffi失败, 最终降级到playwright")
                 return await self._fetch_browser(url, state or {})
             raise
+
+    async def _fetch_curl_cffi(
+        self,
+        url: str,
+        proxies: dict | None = None,
+        cookies: httpx.Cookies | None = None,
+    ) -> str | None:
+        """使用 curl_cffi 抓取（TLS指纹模拟，绕过反爬检测）"""
+        try:
+            from src.engine.curl_fetcher import get_curl_fetcher, HAS_CURL_CFFI
+            if not HAS_CURL_CFFI:
+                return None
+        except ImportError:
+            return None
+
+        # 转换代理格式
+        proxy_url = None
+        proxy_list = None
+        if proxies:
+            proxy_url = list(proxies.values())[0] if proxies else None
+        
+        fetcher = get_curl_fetcher(
+            proxy_url=proxy_url,
+            rotate_fingerprint=True,  # 自动轮换指纹
+        )
+
+        # 转换cookie
+        cookie_dict = None
+        if cookies:
+            cookie_dict = dict(cookies)
+
+        resp = await fetcher.get(
+            url,
+            cookies=cookie_dict,
+            max_retries=2,  # curl_cffi层再试2次
+        )
+
+        if resp.ok and resp.text:
+            self.logger.info(
+                f"curl_cffi成功: {url} → {resp.status_code}, "
+                f"{len(resp.text)}字符, fp={resp.fingerprint}, "
+                f"{resp.elapsed_ms:.0f}ms"
+            )
+            return resp.text
+
+        if resp.error:
+            self.logger.warning(f"curl_cffi失败: {url} → {resp.error}")
+        return None
 
     async def _fetch_browser(self, url: str, state: dict) -> str:
         try:

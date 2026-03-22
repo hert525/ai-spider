@@ -25,4 +25,7 @@ lz4>=4.3.0
 # 去重增强 (可选)
 # rbloom>=1.2.0         # 可选: 布隆过滤器加速
 
+# P0+: TLS指纹模拟（绕过Cloudflare/Akamai反爬）
+curl_cffi>=0.7.0
+
 # scrapegraphai  # optional: AI scraping graphs
