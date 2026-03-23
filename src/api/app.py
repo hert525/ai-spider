@@ -65,11 +65,19 @@ async def lifespan(app: FastAPI):
     from src.scheduler.cron_scheduler import cron_scheduler
     try:
         await task_queue.connect()
+        # Recover tasks that were running when server crashed
+        recovered = await task_queue.recover_running_tasks()
+        if recovered:
+            logger.info(f"Recovered {len(recovered)} tasks from previous crash: {recovered}")
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}. Task queue disabled.")
     await cron_scheduler.start()
+    # Start worker health sweeper (detects offline workers, recovers tasks)
+    from src.scheduler.worker import worker_manager
+    await worker_manager.start_sweeper()
     logger.info("AI Spider started")
     yield
+    await worker_manager.stop_sweeper()
     await cron_scheduler.stop()
     await task_queue.close()
     # 关闭数据库连接池

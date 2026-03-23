@@ -313,7 +313,86 @@ from src.core.models import Worker, WorkerStatus
 
 
 class WorkerManager:
-    """Manage worker registration and heartbeats (master side)."""
+    """Manage worker registration, heartbeats, and failover (master side)."""
+
+    HEARTBEAT_TIMEOUT = 60  # seconds before marking worker offline
+    _sweep_task: asyncio.Task | None = None
+
+    async def start_sweeper(self) -> None:
+        """Start background task to detect offline workers and recover their tasks."""
+        if self._sweep_task is None:
+            self._sweep_task = asyncio.create_task(self._sweep_loop())
+            logger.info("WorkerManager sweeper started")
+
+    async def stop_sweeper(self) -> None:
+        if self._sweep_task:
+            self._sweep_task.cancel()
+            self._sweep_task = None
+
+    async def _sweep_loop(self) -> None:
+        """Periodically check for offline workers and timed-out tasks."""
+        from src.scheduler.queue import task_queue
+        while True:
+            try:
+                await asyncio.sleep(30)
+                # 1. Mark offline workers
+                await self._detect_offline_workers()
+                # 2. Sweep timed-out tasks in queue
+                recovered = await task_queue.sweep_timed_out()
+                if recovered:
+                    # Update task status in DB
+                    for tid in recovered:
+                        try:
+                            task = await db.get("tasks", tid)
+                            if task and task.get("status") == "running":
+                                await db.update("tasks", tid, {
+                                    "status": "pending",
+                                    "updated_at": datetime.now().isoformat(),
+                                })
+                        except Exception:
+                            pass
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Sweeper error: {e}")
+                await asyncio.sleep(10)
+
+    async def _detect_offline_workers(self) -> None:
+        """Detect workers that missed heartbeats and recover their tasks."""
+        from src.scheduler.queue import task_queue
+        workers = await db.list("workers", order="last_heartbeat DESC")
+        now = datetime.now()
+        for w in workers:
+            if w.get("status") in ("offline", "disabled"):
+                continue
+            last_hb = w.get("last_heartbeat", "")
+            if not last_hb:
+                continue
+            try:
+                hb_time = datetime.fromisoformat(last_hb.replace("Z", "+00:00").replace("+00:00", ""))
+                elapsed = (now - hb_time).total_seconds()
+            except (ValueError, TypeError):
+                continue
+
+            if elapsed > self.HEARTBEAT_TIMEOUT:
+                wid = w["id"]
+                logger.warning(f"Worker {wid} offline (no heartbeat for {int(elapsed)}s)")
+                await db.update("workers", wid, {"status": "offline"})
+
+                # Recover tasks assigned to this worker
+                current_tasks = w.get("current_tasks", [])
+                if isinstance(current_tasks, str):
+                    import json as _json
+                    try:
+                        current_tasks = _json.loads(current_tasks)
+                    except Exception:
+                        current_tasks = []
+                for tid in current_tasks:
+                    logger.info(f"Recovering task {tid} from offline worker {wid}")
+                    try:
+                        await task_queue.fail(tid, f"Worker {wid} went offline")
+                    except Exception as e:
+                        logger.error(f"Failed to recover task {tid}: {e}")
 
     async def register(self, worker_id: str, **kwargs) -> Worker:
         w = Worker(id=worker_id, **kwargs)

@@ -78,6 +78,53 @@ async def create_task(req: CreateTaskReq, user: dict = Depends(get_current_user)
     return task_data
 
 
+# ── Dead Letter Queue & Queue Stats (must be before /tasks/{tid}) ──
+
+@router.get("/tasks/dead-letters")
+async def list_dead_letters(limit: int = 50, user: dict = Depends(get_current_user)):
+    """List dead-letter tasks (exceeded max retries)."""
+    from src.scheduler.queue import task_queue
+    try:
+        items = await task_queue.list_dead_letters(limit=limit)
+        for item in items:
+            tid = item.get("task_id", "")
+            task = await db.get("tasks", tid)
+            if task:
+                item["name"] = task.get("name", "")
+                item["project_id"] = task.get("project_id", "")
+        return items
+    except Exception:
+        return []
+
+
+class RetryDeadLetterReq(BaseModel):
+    task_id: str
+    priority: int = 5
+
+
+@router.post("/tasks/dead-letters/retry")
+async def retry_dead_letter(body: RetryDeadLetterReq, user: dict = Depends(get_current_user)):
+    from src.scheduler.queue import task_queue
+    ok = await task_queue.retry_dead_letter(body.task_id, body.priority)
+    if ok:
+        await db.update("tasks", body.task_id, {"status": "pending"})
+        return {"ok": True}
+    raise HTTPException(404, "Task not found in dead-letter queue")
+
+
+@router.delete("/tasks/dead-letters")
+async def clear_dead_letters(user: dict = Depends(get_current_user)):
+    from src.scheduler.queue import task_queue
+    count = await task_queue.clear_dead_letters()
+    return {"cleared": count}
+
+
+@router.get("/tasks/queue/stats")
+async def queue_stats(user: dict = Depends(get_current_user)):
+    from src.scheduler.queue import task_queue
+    return await task_queue.stats()
+
+
 @router.get("/tasks/{tid}")
 async def get_task(tid: str, user: dict = Depends(get_current_user)):
     task = await db.get("tasks", tid)
@@ -209,3 +256,5 @@ async def batch_delete_tasks(body: BatchTaskIds, user: dict = Depends(get_curren
         except Exception:
             results["failed"] += 1
     return results
+
+
