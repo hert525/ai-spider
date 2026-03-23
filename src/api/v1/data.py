@@ -180,3 +180,51 @@ async def preview_data(project_id: str = "", task_id: str = "", limit: int = 20,
         "showing": len(parsed_rows),
         "null_rates": null_rates,
     }
+
+
+@router.get("/scrape/markdown")
+async def scrape_to_markdown(url: str, user: dict = Depends(get_current_user)):
+    """Fetch a URL and return clean Markdown. LLM-ready output."""
+    if not url.startswith("http"):
+        raise HTTPException(400, "URL must start with http:// or https://")
+    try:
+        from src.engine.nodes import FetchNode, ParseNode
+        fetch = FetchNode()
+        parse = ParseNode(output_format="markdown")
+        state = {"url": url, "description": "", "output_format": "markdown"}
+        state = await fetch.execute(state)
+        state = await parse.execute(state)
+        markdown = state.get("markdown", "")
+        clean_text = state.get("clean_text", "")
+        links_count = len(state.get("links", []))
+        return {
+            "url": url,
+            "markdown": markdown,
+            "text_length": len(clean_text),
+            "markdown_length": len(markdown),
+            "links_count": links_count,
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Scrape failed: {str(e)}")
+
+
+@router.get("/scrape/markdown/raw")
+async def scrape_to_markdown_raw(url: str, user: dict = Depends(get_current_user)):
+    """Fetch a URL and return raw Markdown as plain text (for piping to LLMs)."""
+    if not url.startswith("http"):
+        raise HTTPException(400, "URL must start with http:// or https://")
+    try:
+        from src.engine.nodes import FetchNode, ParseNode
+        fetch = FetchNode()
+        parse = ParseNode(output_format="markdown")
+        state = {"url": url, "description": "", "output_format": "markdown"}
+        state = await fetch.execute(state)
+        state = await parse.execute(state)
+        markdown = state.get("markdown", "")
+        return StreamingResponse(
+            iter([markdown]),
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"inline; filename=page.md"},
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Scrape failed: {str(e)}")

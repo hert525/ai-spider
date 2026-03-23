@@ -40,7 +40,15 @@ class ParseNode(BaseNode):
         state["clean_text"] = clean_text
         state["links"] = links
         state["reduced_html"] = reduced_html
-        self.logger.info(f"Parsed: {len(clean_text)} chars text, {len(links)} links")
+
+        # Markdown output
+        if self.output_format == "markdown" or state.get("output_format") == "markdown":
+            from src.engine.html_to_markdown import html_to_markdown
+            base_url = state.get("url", "")
+            state["markdown"] = html_to_markdown(raw_html, base_url=base_url)
+            self.logger.info(f"Parsed: {len(clean_text)} chars text, {len(state['markdown'])} chars markdown, {len(links)} links")
+        else:
+            self.logger.info(f"Parsed: {len(clean_text)} chars text, {len(links)} links")
         return state
 
     def _html_to_clean_text(self, html: str) -> str:
