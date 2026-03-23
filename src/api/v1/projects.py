@@ -89,6 +89,8 @@ async def list_projects(user: dict = Depends(get_current_user)):
 
 @router.post("/projects")
 async def create_project(req: CreateProjectReq, user: dict = Depends(get_current_user)):
+    import asyncio
+
     mode = ProjectMode(req.mode)
     project = Project(
         name=req.name or req.description[:30],
@@ -103,66 +105,111 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
     project_data["proxy_config"] = req.proxy_config
     project_data["use_browser"] = 1 if req.use_browser else 0
     await db.insert("projects", project_data)
-    
-    try:
-        proxy_cfg = _resolve_proxy_config(project_data)
-        if mode == ProjectMode.SMART_SCRAPER:
-            from src.engine.graphs import SmartScraperGraph
-            graph = SmartScraperGraph(use_browser=req.use_browser, proxy_config=proxy_cfg)
-            state = await graph.run(req.target_url, req.description)
-            extracted = state.get("extracted_data", [])
-            await db.update("projects", project.id, {
-                "status": ProjectStatus.GENERATED,
-                "extracted_data": json.dumps(extracted, ensure_ascii=False),
-                "messages": json.dumps([
-                    {"role": "user", "content": req.description},
-                    {"role": "assistant", "content": f"已提取 {len(extracted) if isinstance(extracted, list) else 1} 条数据"},
-                ], ensure_ascii=False),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-        else:
-            from src.engine.graphs import CodeGeneratorGraph
-            graph = CodeGeneratorGraph(use_browser=req.use_browser, proxy_config=proxy_cfg)
-            state = await graph.run(req.target_url, req.description)
-            code = state.get("generated_code", "")
-            v_status = state.get("validation_status", "unknown")
-            await db.update("projects", project.id, {
-                "status": ProjectStatus.GENERATED,
-                "code": code,
-                "messages": json.dumps([
-                    {"role": "user", "content": req.description},
-                    {"role": "assistant", "content": f"已生成爬虫代码（验证状态: {v_status}）"},
-                ], ensure_ascii=False),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            })
-    except Exception as e:
-        logger.error(f"Generation failed: {e}")
-        await db.update("projects", project.id, {
-            "status": ProjectStatus.FAILED,
-            "messages": json.dumps([
-                {"role": "user", "content": req.description},
-                {"role": "assistant", "content": f"生成失败: {str(e)}"},
-            ], ensure_ascii=False),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        })
 
-    # WS push: project created
+    # WS push: project created (immediate, status=generating)
     try:
         from src.api.ws import ws_manager
-        created_proj = await db.get("projects", project.id)
         api_key = user.get("api_key", "")
-        if api_key:
-            await ws_manager.send_to_user(api_key, {
-                "type": "project_created",
-                "project": {"id": project.id, "name": created_proj.get("name", ""), "status": created_proj.get("status", "")},
-            })
-        await ws_manager.broadcast_admin({
+        msg = {
             "type": "project_created",
-            "project": {"id": project.id, "name": created_proj.get("name", ""), "status": created_proj.get("status", "")},
-        })
+            "project": {"id": project.id, "name": project_data.get("name", ""), "status": "generating"},
+        }
+        if api_key:
+            await ws_manager.send_to_user(api_key, msg)
+        await ws_manager.broadcast_admin(msg)
     except Exception as e:
         logger.warning(f"WS push failed in create_project: {e}")
 
+    # Run AI generation in background — return immediately
+    async def _generate_bg():
+        try:
+            proxy_cfg = _resolve_proxy_config(project_data)
+            if mode == ProjectMode.SMART_SCRAPER:
+                from src.engine.graphs import SmartScraperGraph
+                steps = ["抓取页面", "解析内容", "AI提取数据"]
+                graph = SmartScraperGraph(use_browser=req.use_browser, proxy_config=proxy_cfg)
+            else:
+                from src.engine.graphs import CodeGeneratorGraph
+                steps = ["抓取页面", "解析内容", "AI生成代码", "验证代码"]
+                graph = CodeGeneratorGraph(use_browser=req.use_browser, proxy_config=proxy_cfg)
+
+            # Execute nodes one by one with progress updates
+            state = {"url": req.target_url, "description": req.description}
+            total = len(graph.nodes)
+            for i, node in enumerate(graph.nodes):
+                step_label = steps[i] if i < len(steps) else node.node_name
+                progress = {"step": i + 1, "total": total, "label": step_label}
+                await db.update("projects", project.id, {
+                    "progress": json.dumps(progress, ensure_ascii=False),
+                })
+                # WS push progress
+                try:
+                    from src.api.ws import ws_manager
+                    await ws_manager.send_to_user(user.get("api_key", ""), {
+                        "type": "project_progress",
+                        "project_id": project.id,
+                        "progress": progress,
+                    })
+                except Exception:
+                    pass
+                state = await node.execute(state)
+
+            # Save final result
+            if mode == ProjectMode.SMART_SCRAPER:
+                extracted = state.get("extracted_data", [])
+                await db.update("projects", project.id, {
+                    "status": ProjectStatus.GENERATED,
+                    "extracted_data": json.dumps(extracted, ensure_ascii=False),
+                    "messages": json.dumps([
+                        {"role": "user", "content": req.description},
+                        {"role": "assistant", "content": f"已提取 {len(extracted) if isinstance(extracted, list) else 1} 条数据"},
+                    ], ensure_ascii=False),
+                    "progress": None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+            else:
+                code = state.get("generated_code", "")
+                v_status = state.get("validation_status", "unknown")
+                await db.update("projects", project.id, {
+                    "status": ProjectStatus.GENERATED,
+                    "code": code,
+                    "messages": json.dumps([
+                        {"role": "user", "content": req.description},
+                        {"role": "assistant", "content": f"已生成爬虫代码（验证状态: {v_status}）"},
+                    ], ensure_ascii=False),
+                    "progress": None,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+        except Exception as e:
+            logger.error(f"Generation failed for project {project.id}: {e}")
+            await db.update("projects", project.id, {
+                "status": ProjectStatus.FAILED,
+                "messages": json.dumps([
+                    {"role": "user", "content": req.description},
+                    {"role": "assistant", "content": f"生成失败: {str(e)}"},
+                ], ensure_ascii=False),
+                "progress": None,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        # WS push: generation complete
+        try:
+            from src.api.ws import ws_manager
+            updated_proj = await db.get("projects", project.id)
+            done_msg = {
+                "type": "project_updated",
+                "project": {"id": project.id, "name": updated_proj.get("name", ""), "status": updated_proj.get("status", "")},
+            }
+            api_key_bg = user.get("api_key", "")
+            if api_key_bg:
+                await ws_manager.send_to_user(api_key_bg, done_msg)
+            await ws_manager.broadcast_admin(done_msg)
+        except Exception as e:
+            logger.warning(f"WS push failed in _generate_bg: {e}")
+
+    asyncio.create_task(_generate_bg())
+
+    # Return immediately with generating status
     return await db.get("projects", project.id)
 
 

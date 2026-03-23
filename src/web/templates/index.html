@@ -26,6 +26,10 @@ a:hover{color:var(--accent-light)}
 .toast.success{background:var(--green);color:#000}
 .toast.error{background:var(--red);color:#fff}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.ri-spin{animation:spin 1s linear infinite}
+.mode-card:hover{border-color:var(--accent)!important;background:var(--bg-hover)}
+.mode-card.selected{border-color:var(--accent)!important;background:rgba(108,92,231,.1)}
 
 /* Layout */
 .app-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--bg-secondary);border-bottom:1px solid var(--border)}
@@ -169,6 +173,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <span id="quota-bar" style="font-size:12px;color:var(--text-secondary);margin-right:8px"></span>
       <span id="display-username"></span>
       <button onclick="showNotificationSettings()" title="通知设置"><i class="ri-notification-3-line"></i></button>
+      <button id="admin-btn" onclick="location.href='admin'" title="管理后台" style="display:none"><i class="ri-settings-3-line"></i> 管理</button>
       <button onclick="logout()"><i class="ri-logout-box-r-line"></i> 退出</button>
     </div>
   </header>
@@ -410,21 +415,41 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 
 <!-- New Project Modal -->
 <div id="modal-new-project" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
-  <div class="modal">
-    <h3>新建项目</h3>
-    <div class="form-group"><label>项目名称</label><input class="form-input" id="np-name" placeholder="我的爬虫项目"></div>
-    <div class="form-group"><label>描述</label><textarea class="form-input" id="np-desc" rows="2" placeholder="项目描述..."></textarea></div>
-    <div class="form-group"><label>目标 URL</label><input class="form-input" id="np-url" placeholder="https://example.com"></div>
-    <div class="form-group">
-      <label>模式</label>
-      <select class="form-input" id="np-mode">
-        <option value="smart_scraper">智能提取</option>
-        <option value="code_generator">代码生成</option>
-      </select>
+  <div class="modal" style="max-width:520px">
+    <h3>新建爬虫项目</h3>
+    
+    <!-- Step 1: 选模式 -->
+    <div id="np-step1">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">选择创建方式</p>
+      <div style="display:flex;gap:12px">
+        <div class="mode-card" onclick="selectMode('smart_scraper')" id="mode-smart" style="flex:1;padding:16px;border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:.2s">
+          <div style="font-size:28px;margin-bottom:8px">🧠</div>
+          <div style="font-weight:600;margin-bottom:4px">智能提取</div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">告诉AI你要什么数据，自动从页面提取。<br><b>适合：</b>快速抓取、不需要代码</div>
+        </div>
+        <div class="mode-card" onclick="selectMode('code_generator')" id="mode-code" style="flex:1;padding:16px;border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:.2s">
+          <div style="font-size:28px;margin-bottom:8px">⚡</div>
+          <div style="font-weight:600;margin-bottom:4px">代码生成</div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">AI生成Python爬虫代码，可编辑调试。<br><b>适合：</b>复杂场景、定时任务、批量爬取</div>
+        </div>
+      </div>
     </div>
+    
+    <!-- Step 2: 填信息 -->
+    <div id="np-step2" class="hidden" style="margin-top:4px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <span onclick="goStep1()" style="cursor:pointer;color:var(--text-secondary);font-size:18px">←</span>
+        <span id="np-mode-label" style="font-size:13px;color:var(--accent)"></span>
+      </div>
+      <div class="form-group"><label>目标网址 <span style="color:var(--red)">*</span></label><input class="form-input" id="np-url" placeholder="https://example.com/data"></div>
+      <div class="form-group"><label>你想要什么数据？ <span style="color:var(--red)">*</span></label><textarea class="form-input" id="np-desc" rows="2" placeholder="例如：提取所有文章的标题、链接、发布时间和摘要"></textarea></div>
+      <div class="form-group"><label>项目名称 <span style="color:var(--text-muted);font-weight:400">(可选，自动生成)</span></label><input class="form-input" id="np-name" placeholder="自动根据描述生成"></div>
+      <input type="hidden" id="np-mode" value="smart_scraper">
+    </div>
+
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="document.getElementById('modal-new-project').classList.add('hidden')">取消</button>
-      <button class="btn btn-primary" onclick="createProject()">创建</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('modal-new-project').classList.add('hidden');goStep1()">取消</button>
+      <button class="btn btn-primary hidden" id="np-create-btn" onclick="createProject()">开始创建</button>
     </div>
   </div>
 </div>
@@ -486,11 +511,13 @@ async function doAuth() {
       const res = await api('POST', '/api/v1/auth/register', { email, username, password });
       localStorage.setItem('api_key', res.api_key);
       localStorage.setItem('username', res.user?.username || username);
+      localStorage.setItem('user_role', res.user?.role || 'user');
       toast('注册成功');
     } else {
       const res = await api('POST', '/api/v1/auth/login', { email, password });
       localStorage.setItem('api_key', res.api_key);
       localStorage.setItem('username', res.user?.username || email.split('@')[0]);
+      localStorage.setItem('user_role', res.user?.role || 'user');
       toast('登录成功');
     }
     enterApp();
@@ -507,6 +534,10 @@ function enterApp() {
   document.getElementById('page-auth').classList.add('hidden');
   document.getElementById('app-main').classList.remove('hidden');
   document.getElementById('display-username').textContent = localStorage.getItem('username') || '';
+  // admin按钮: 只有admin角色可见
+  if (localStorage.getItem('user_role') === 'admin') {
+    document.getElementById('admin-btn').style.display = '';
+  }
   connectWS();
   loadQuotaBar();
   switchPage('projects');
@@ -688,14 +719,34 @@ function submitSeedUse(sid, fields) {
 }
 
 // Projects
+let _projectPollTimer = null;
 async function loadProjects() {
   try {
     const res = await api('GET', '/api/v1/projects');
     const list = Array.isArray(res) ? res : (res.projects || []);
     const el = document.getElementById('project-list');
     if (!list.length) { el.innerHTML = '<p style="color:var(--text-muted)">暂无项目，点击"新建项目"开始</p>'; return; }
-    el.innerHTML = list.map(p => `
-      <div class="card" onclick="openProject('${p.id}')">
+    el.innerHTML = list.map(p => {
+      let progressHtml = '';
+      if (p.status === 'generating') {
+        let prog = p.progress;
+        if (typeof prog === 'string') { try { prog = JSON.parse(prog); } catch(e) { prog = null; } }
+        if (prog && prog.step) {
+          const pct = Math.round((prog.step / prog.total) * 100);
+          progressHtml = `<div style="margin-top:8px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--yellow)">
+              <i class="ri-loader-4-line ri-spin"></i>
+              <span>步骤 ${prog.step}/${prog.total}: ${esc(prog.label)}</span>
+            </div>
+            <div style="background:var(--bg-input);border-radius:4px;height:4px;margin-top:4px;overflow:hidden">
+              <div style="background:var(--yellow);height:100%;width:${pct}%;transition:width .3s"></div>
+            </div>
+          </div>`;
+        } else {
+          progressHtml = `<div style="margin-top:8px;font-size:12px;color:var(--yellow)"><i class="ri-loader-4-line ri-spin"></i> 准备中...</div>`;
+        }
+      }
+      return `<div class="card" onclick="openProject('${p.id}')">
         <h3>${esc(p.name)}</h3>
         <p>${esc(p.description||'无描述')}</p>
         <div class="meta">
@@ -703,24 +754,68 @@ async function loadProjects() {
           ${statusBadge(p.status)}
           <span>${fmtTime(p.created_at)}</span>
         </div>
-      </div>`).join('');
+        ${progressHtml}
+      </div>`;
+    }).join('');
+    // 如果有 generating 状态的项目，2秒后自动刷新
+    if (_projectPollTimer) clearTimeout(_projectPollTimer);
+    if (list.some(p => p.status === 'generating')) {
+      _projectPollTimer = setTimeout(loadProjects, 2000);
+    }
   } catch(e) { toast(e.message,'error'); }
 }
 
-function showNewProjectModal() { document.getElementById('modal-new-project').classList.remove('hidden'); }
+function showNewProjectModal() { 
+  document.getElementById('modal-new-project').classList.remove('hidden');
+  goStep1();
+}
+
+function selectMode(mode) {
+  document.getElementById('np-mode').value = mode;
+  document.getElementById('np-step1').classList.add('hidden');
+  document.getElementById('np-step2').classList.remove('hidden');
+  document.getElementById('np-create-btn').classList.remove('hidden');
+  document.getElementById('np-mode-label').textContent = mode === 'smart_scraper' ? '🧠 智能提取模式' : '⚡ 代码生成模式';
+  // 更新描述 placeholder
+  const descEl = document.getElementById('np-desc');
+  if (mode === 'smart_scraper') {
+    descEl.placeholder = '例如：提取所有文章的标题、链接、发布时间和摘要';
+  } else {
+    descEl.placeholder = '例如：爬取所有商品的名称、价格、评分，支持翻页';
+  }
+}
+
+function goStep1() {
+  document.getElementById('np-step1').classList.remove('hidden');
+  document.getElementById('np-step2').classList.add('hidden');
+  document.getElementById('np-create-btn').classList.add('hidden');
+}
 
 async function createProject() {
   const name = document.getElementById('np-name').value.trim();
   const description = document.getElementById('np-desc').value.trim();
   const target_url = document.getElementById('np-url').value.trim();
   const mode = document.getElementById('np-mode').value;
-  if (!name) return toast('请填写项目名称','error');
+  if (!target_url) return toast('请填写目标网址','error');
+  if (!description) return toast('请描述你想要什么数据','error');
+  
+  // 防重复点击：禁用按钮 + loading
+  const btn = document.getElementById('np-create-btn');
+  const origText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> 创建中...'; }
+  
   try {
-    await api('POST', '/api/v1/projects', { name, description, target_url, mode });
+    await api('POST', '/api/v1/projects', { name: name || description.slice(0,30), description, target_url, mode });
     document.getElementById('modal-new-project').classList.add('hidden');
-    toast('项目创建成功');
+    // 清空表单 & 回到 step1
+    document.getElementById('np-name').value = '';
+    document.getElementById('np-desc').value = '';
+    document.getElementById('np-url').value = '';
+    goStep1();
+    toast('项目创建成功，AI 正在生成中...');
     loadProjects();
   } catch(e) { toast(e.message,'error'); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = origText; } }
 }
 
 async function openProject(id) {

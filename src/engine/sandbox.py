@@ -122,6 +122,7 @@ async def run_code_in_sandbox(
 
     sandbox_globals = {
         "__builtins__": safe_builtins,
+        "__name__": "__main__",
         "httpx": httpx,
         "parsel": parsel,
         "json": json,

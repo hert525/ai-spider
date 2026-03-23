@@ -49,7 +49,6 @@ a{color:var(--accent-light);text-decoration:none}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--text-secondary);cursor:pointer;font-size:14px;transition:all .15s;border-left:3px solid transparent}
 .nav-item:hover{background:var(--bg-hover);color:var(--text-primary)}
 .nav-item.active{color:var(--accent-light);background:var(--bg-hover);border-left-color:var(--accent)}
-.nav-group-label{padding:16px 20px 6px;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
 .sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
 .sidebar-footer .logout-btn{color:var(--red);cursor:pointer;font-size:13px}
 .sidebar-footer .logout-btn:hover{text-decoration:underline}
@@ -148,13 +147,6 @@ tr:hover td{background:var(--bg-hover)}
 .actions{display:flex;gap:6px}
 .checkbox-col{width:40px}
 input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
-
-/* Empty state */
-.empty-state{text-align:center;padding:60px 20px}
-.empty-state .empty-icon{font-size:48px;margin-bottom:16px;opacity:.7}
-.empty-state .empty-title{font-size:18px;font-weight:600;margin-bottom:8px;color:var(--text-primary)}
-.empty-state .empty-desc{font-size:14px;color:var(--text-secondary);max-width:420px;margin:0 auto 20px;line-height:1.6}
-.empty-state .btn{width:auto;display:inline-block}
 </style>
 </head>
 <body>
@@ -183,19 +175,18 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
   <div id="sidebar">
     <div class="sidebar-logo">🕷️ AI Spider 管理后台</div>
     <div class="sidebar-nav">
-      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">📊 总览</div>
-      <div class="nav-group-label">爬虫管理</div>
-      <div class="nav-item" data-page="tasks" onclick="switchPage('tasks')">📋 任务管理</div>
-      <div class="nav-item" data-page="workers" onclick="switchPage('workers')">🖥️ Worker 节点</div>
-      <div class="nav-item" data-page="seeds" onclick="switchPage('seeds')">🌱 种子模板库</div>
-      <div class="nav-group-label">网络 & 安全</div>
-      <div class="nav-item" data-page="proxies" onclick="switchPage('proxies')">📡 代理池</div>
-      <div class="nav-item" data-page="ratelimit" onclick="switchPage('ratelimit')">⏱️ 限速策略</div>
-      <div class="nav-item" data-page="dedup" onclick="switchPage('dedup')">🔄 去重策略</div>
-      <div class="nav-group-label">系统</div>
+      <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">📊 仪表盘</div>
       <div class="nav-item" data-page="users" onclick="switchPage('users')">👥 用户管理</div>
-      <div class="nav-item" data-page="monitoring" onclick="switchPage('monitoring')">📈 监控 & 日志</div>
+      <div class="nav-item" data-page="tasks" onclick="switchPage('tasks')">📋 任务管理</div>
+      <div class="nav-item" data-page="workers" onclick="switchPage('workers')">🖥️ Worker节点</div>
+      <div class="nav-item" data-page="proxies" onclick="switchPage('proxies')">📡 代理管理</div>
+      <div class="nav-item" data-page="logs" onclick="switchPage('logs')">📜 系统日志</div>
       <div class="nav-item" data-page="settings" onclick="switchPage('settings')">⚙️ 系统设置</div>
+      <div class="nav-item" data-page="seeds" onclick="switchPage('seeds')">🌱 种子库</div>
+      <div style="margin:12px 20px 4px;font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">运维</div>
+      <div class="nav-item" data-page="monitoring" onclick="switchPage('monitoring')">📈 监控指标</div>
+      <div class="nav-item" data-page="ratelimit" onclick="switchPage('ratelimit')">⏱️ 流控限速</div>
+      <div class="nav-item" data-page="dedup" onclick="switchPage('dedup')">🔄 去重管理</div>
     </div>
     <div class="sidebar-footer">
       <div id="admin-email" style="margin-bottom:8px"></div>
@@ -206,14 +197,14 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
   <div id="main">
     <!-- Dashboard -->
     <div class="page active" id="page-dashboard">
-      <div class="page-title">📊 总览</div>
+      <div class="page-title">仪表盘</div>
       <div class="stats-grid">
-        <div class="stat-card" style="border-top:3px solid var(--blue)"><div class="label">👥 用户数</div><div class="value" id="s-users">-</div><div class="sub" id="s-users-sub"></div></div>
-        <div class="stat-card" style="border-top:3px solid var(--accent)"><div class="label">📁 项目数</div><div class="value" id="s-projects">-</div></div>
-        <div class="stat-card" style="border-top:3px solid var(--yellow)"><div class="label">📋 任务数</div><div class="value" id="s-tasks">-</div><div class="sub" id="s-tasks-sub"></div></div>
-        <div class="stat-card" style="border-top:3px solid var(--green)"><div class="label">✅ 成功率</div><div class="value" id="s-success-rate">-</div></div>
-        <div class="stat-card" style="border-top:3px solid #e17055"><div class="label">📦 数据量</div><div class="value" id="s-data">-</div></div>
-        <div class="stat-card" style="border-top:3px solid #00cec9"><div class="label">🖥️ Worker</div><div class="value" id="s-workers">-</div><div class="sub" id="s-workers-sub"></div></div>
+        <div class="stat-card"><div class="label">👥 用户数</div><div class="value" id="s-users">-</div><div class="sub" id="s-users-sub"></div></div>
+        <div class="stat-card"><div class="label">📁 项目数</div><div class="value" id="s-projects">-</div></div>
+        <div class="stat-card"><div class="label">📋 任务数</div><div class="value" id="s-tasks">-</div><div class="sub" id="s-tasks-sub"></div></div>
+        <div class="stat-card"><div class="label">✅ 成功率</div><div class="value" id="s-success-rate">-</div></div>
+        <div class="stat-card"><div class="label">📦 数据量</div><div class="value" id="s-data">-</div></div>
+        <div class="stat-card"><div class="label">🖥️ Worker节点</div><div class="value" id="s-workers">-</div><div class="sub" id="s-workers-sub"></div></div>
       </div>
 
       <div class="page-title" style="font-size:16px;margin:24px 0 12px">📈 最近7天任务趋势</div>
@@ -307,7 +298,7 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 
     <!-- Proxies -->
     <div class="page" id="page-proxies">
-      <div class="page-title">📡 代理池</div>
+      <div class="page-title">📡 代理管理</div>
       <div class="toolbar">
         <button class="btn btn-sm btn-primary" onclick="showCreateProxy()">+ 创建代理池</button>
       </div>
@@ -401,46 +392,25 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 
     <!-- Monitoring Page -->
     <div class="page" id="page-monitoring" style="display:none">
-      <div class="page-title">📈 监控 & 日志</div>
-      <!-- Tab 切换 -->
-      <div class="tab-bar" style="display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0">
-        <div class="tab-item active" data-tab="metrics" onclick="switchMonTab('metrics')" style="padding:8px 20px;cursor:pointer;font-size:14px;border-bottom:2px solid var(--accent);color:var(--accent-light);transition:.2s">📊 指标</div>
-        <div class="tab-item" data-tab="realtime-log" onclick="switchMonTab('realtime-log')" style="padding:8px 20px;cursor:pointer;font-size:14px;border-bottom:2px solid transparent;color:var(--text-secondary);transition:.2s">📜 实时日志</div>
+      <div class="page-title">📈 监控指标</div>
+      <div class="grid" id="metrics-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <button class="btn btn-outline" style="width:auto" onclick="loadMonitoring()">🔄 刷新</button>
+        <button class="btn btn-outline" style="width:auto" onclick="pushMetrics()">📤 推送到Pushgateway</button>
       </div>
-      <!-- 指标面板 -->
-      <div id="mon-tab-metrics">
-        <div class="grid" id="metrics-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
-        <div style="display:flex;gap:12px;margin-bottom:16px">
-          <button class="btn btn-outline" style="width:auto" onclick="loadMonitoring()">🔄 刷新</button>
-          <button class="btn btn-outline" style="width:auto" onclick="pushMetrics()">📤 推送到Pushgateway</button>
-        </div>
-        <div class="card" style="margin-bottom:16px">
-          <div style="font-weight:600;margin-bottom:8px">🖥️ 代理池状态</div>
-          <div id="proxy-stats-content">加载中...</div>
-        </div>
-        <div class="card">
-          <div style="font-weight:600;margin-bottom:8px">📊 详细指标</div>
-          <div id="metrics-detail" style="max-height:400px;overflow:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;background:var(--bg-card);padding:12px;border-radius:8px"></div>
-        </div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px">🖥️ 代理池状态</div>
+        <div id="proxy-stats-content">加载中...</div>
       </div>
-      <!-- 实时日志面板 -->
-      <div id="mon-tab-realtime-log" style="display:none">
-        <div class="toolbar">
-          <select id="mon-log-level" onchange="filterMonLogs()">
-            <option value="">全部级别</option><option value="INFO">INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option>
-          </select>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer">
-            <input type="checkbox" id="mon-log-autoscroll" checked> 自动滚动
-          </label>
-          <button class="btn btn-sm btn-outline" onclick="loadMonLogs()">🔄 刷新</button>
-        </div>
-        <div id="mon-log-container" style="background:#000;border:1px solid var(--border);border-radius:12px;padding:16px;font-family:'Fira Code','Cascadia Code',monospace;font-size:12px;line-height:1.7;height:calc(100vh - 300px);overflow-y:auto;white-space:pre-wrap;word-break:break-all"></div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:8px">📊 详细指标</div>
+        <div id="metrics-detail" style="max-height:400px;overflow:auto;font-family:monospace;font-size:12px;white-space:pre-wrap;background:var(--bg-card);padding:12px;border-radius:8px"></div>
       </div>
     </div>
 
     <!-- Rate Limiter Page -->
     <div class="page" id="page-ratelimit" style="display:none">
-      <div class="page-title">⏱️ 限速策略</div>
+      <div class="page-title">⏱️ 流控限速</div>
       <div style="display:flex;gap:12px;margin-bottom:16px">
         <button class="btn btn-outline" style="width:auto" onclick="loadRateLimit()">🔄 刷新</button>
       </div>
@@ -449,35 +419,18 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 
     <!-- Dedup Page -->
     <div class="page" id="page-dedup" style="display:none">
-      <div class="page-title">🔄 去重策略</div>
+      <div class="page-title">🔄 去重管理</div>
       <div class="card" style="margin-bottom:16px">
         <div style="font-weight:600;margin-bottom:12px">当前去重配置</div>
         <div id="dedup-config" style="font-family:monospace;font-size:13px"></div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:16px" id="dedup-cards">
-        <div class="card dedup-card" data-type="memory" style="padding:20px;cursor:default;border:2px solid transparent">
-          <div style="font-size:24px;margin-bottom:8px">🧠</div>
-          <div style="font-weight:600;margin-bottom:4px">Memory</div>
-          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">内存哈希 + LRU 淘汰<br>重启后丢失，适合小任务</div>
-          <div style="margin-top:8px;font-size:11px"><span class="badge badge-green">速度快</span> <span class="badge badge-yellow">不持久</span></div>
-        </div>
-        <div class="card dedup-card" data-type="redis" style="padding:20px;cursor:default;border:2px solid transparent">
-          <div style="font-size:24px;margin-bottom:8px">📡</div>
-          <div style="font-weight:600;margin-bottom:4px">Redis</div>
-          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">分布式去重，TTL 过期<br>多 Worker 共享，推荐生产环境</div>
-          <div style="margin-top:8px;font-size:11px"><span class="badge badge-green">分布式</span> <span class="badge badge-blue">持久化</span></div>
-        </div>
-        <div class="card dedup-card" data-type="bloom" style="padding:20px;cursor:default;border:2px solid transparent">
-          <div style="font-size:24px;margin-bottom:8px">🌸</div>
-          <div style="font-weight:600;margin-bottom:4px">Bloom Filter</div>
-          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">布隆过滤器，亿级数据<br>极小误判率，内存友好</div>
-          <div style="margin-top:8px;font-size:11px"><span class="badge badge-purple">大规模</span> <span class="badge badge-yellow">有误判</span></div>
-        </div>
-        <div class="card dedup-card" data-type="rotation" style="padding:20px;cursor:default;border:2px solid transparent">
-          <div style="font-size:24px;margin-bottom:8px">🔄</div>
-          <div style="font-weight:600;margin-bottom:4px">Rotation</div>
-          <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">滚动分区布隆过滤器<br>磁盘持久化 + 自动轮换</div>
-          <div style="margin-top:8px;font-size:11px"><span class="badge badge-blue">持久化</span> <span class="badge badge-green">自动轮换</span></div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:12px">去重策略说明</div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+          <div><strong>🧠 Memory</strong> — 内存哈希+LRU淘汰，重启丢失，适合小任务</div>
+          <div><strong>📡 Redis</strong> — 分布式去重，支持TTL过期，多Worker共享</div>
+          <div><strong>🌸 Bloom Filter</strong> — 布隆过滤器，亿级数据内存友好，有极小误判率</div>
+          <div><strong>🔄 Rotation</strong> — 滚动分区布隆过滤器，磁盘持久化+自动轮换</div>
         </div>
       </div>
     </div>
@@ -813,11 +766,7 @@ async function loadTasks() {
         <button class="btn btn-sm btn-warn" onclick="taskAction('${t.id||t.task_id}','cancel')">取消</button>
         <button class="btn btn-sm btn-outline" onclick="taskAction('${t.id||t.task_id}','retry')">重试</button>
         <button class="btn btn-sm btn-danger" onclick="taskAction('${t.id||t.task_id}','delete')">删除</button>
-      </td></tr>`).join('') : `<tr><td colspan="9"><div class="empty-state" style="padding:40px 20px">
-        <div class="empty-icon">📋</div>
-        <div class="empty-title">还没有任务</div>
-        <div class="empty-desc">在项目中点击"测试"或"部署"即可创建爬取任务</div>
-      </div></td></tr>`;
+      </td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
   } catch(e) { showError('任务列表加载失败'); tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text-muted)">加载失败</td></tr>'; }
 }
 
@@ -895,15 +844,7 @@ async function loadWorkers() {
       <div class="stat-card"><div class="label">平均CPU</div><div class="value">${avgCpu}%</div></div>
       <div class="stat-card"><div class="label">平均内存</div><div class="value">${avgMem}MB</div></div>`;
 
-    if (!list.length) { 
-      grid.innerHTML=`<div class="empty-state">
-        <div class="empty-icon">🖥️</div>
-        <div class="empty-title">还没有 Worker 节点</div>
-        <div class="empty-desc">Worker 负责执行爬取任务。点击"部署新Worker"在目标机器上安装。当前服务器自带的内置 Worker 会在有任务时自动启动。</div>
-        <button class="btn btn-sm btn-primary" onclick="showDeployModal()">🚀 部署新 Worker</button>
-      </div>`;
-      return; 
-    }
+    if (!list.length) { grid.innerHTML='<div style="color:var(--text-muted)">暂无Worker节点</div>'; return; }
 
     grid.innerHTML = list.map(w => {
       const st = w.status || 'offline';
@@ -1129,15 +1070,7 @@ async function loadProxies() {
   const grid = document.getElementById('proxy-pools-grid');
   try {
     const pools = await api('/api/v1/admin/proxies');
-    if (!pools || !pools.length) { 
-      grid.innerHTML=`<div class="empty-state">
-        <div class="empty-icon">📡</div>
-        <div class="empty-title">还没有配置代理池</div>
-        <div class="empty-desc">大多数网站不需要代理即可爬取。如果目标网站有反爬限制（如淘宝、京东），可以添加代理池来分散请求。</div>
-        <button class="btn btn-sm btn-primary" onclick="showCreateProxy()">+ 创建第一个代理池</button>
-      </div>`;
-      return; 
-    }
+    if (!pools || !pools.length) { grid.innerHTML='<div style="color:var(--text-muted)">暂无代理池，点击上方按钮创建</div>'; return; }
     grid.innerHTML = pools.map(p => {
       const proxies = Array.isArray(p.proxies) ? p.proxies : [];
       const modeLabel = {single:'单个',pool:'代理池',rotating:'旋转API'}[p.mode]||p.mode;
@@ -1529,44 +1462,6 @@ async function pushMetrics() {
   } catch(e) { toast('推送失败: ' + e.message, 'error'); }
 }
 
-// ============ 监控 Tab 切换 ============
-function switchMonTab(tab) {
-  document.querySelectorAll('#page-monitoring .tab-item').forEach(t => {
-    t.style.borderBottomColor = 'transparent';
-    t.style.color = 'var(--text-secondary)';
-    t.classList.remove('active');
-  });
-  const active = document.querySelector(`#page-monitoring .tab-item[data-tab="${tab}"]`);
-  if (active) { active.style.borderBottomColor = 'var(--accent)'; active.style.color = 'var(--accent-light)'; active.classList.add('active'); }
-  document.getElementById('mon-tab-metrics').style.display = tab === 'metrics' ? 'block' : 'none';
-  document.getElementById('mon-tab-realtime-log').style.display = tab === 'realtime-log' ? 'block' : 'none';
-  if (tab === 'realtime-log') loadMonLogs();
-}
-
-let _monLogData = [];
-async function loadMonLogs() {
-  try {
-    const data = await api('/api/v1/system/logs?limit=200');
-    _monLogData = Array.isArray(data) ? data : (data.logs || []);
-    filterMonLogs();
-  } catch(e) {
-    document.getElementById('mon-log-container').innerHTML = `<span style="color:var(--red)">加载失败: ${e.message}</span>`;
-  }
-}
-function filterMonLogs() {
-  const level = document.getElementById('mon-log-level').value;
-  const container = document.getElementById('mon-log-container');
-  const filtered = level ? _monLogData.filter(l => (l.level||l.levelname||'').toUpperCase().includes(level)) : _monLogData;
-  container.innerHTML = filtered.map(l => {
-    const lv = (l.level||l.levelname||'INFO').toUpperCase();
-    const cls = lv.includes('ERROR')?'log-ERROR':lv.includes('WARN')?'log-WARN':lv.includes('DEBUG')?'log-DEBUG':'log-INFO';
-    const ts = l.timestamp||l.time||'';
-    const msg = l.message||l.msg||JSON.stringify(l);
-    return `<span class="${cls}">[${ts}] [${lv}] ${msg.replace(/</g,'&lt;')}</span>`;
-  }).join('\n') || '<span style="color:var(--text-muted)">暂无日志</span>';
-  if (document.getElementById('mon-log-autoscroll').checked) container.scrollTop = container.scrollHeight;
-}
-
 // ============ 流控限速 ============
 async function loadRateLimit() {
   try {
@@ -1574,11 +1469,7 @@ async function loadRateLimit() {
     const el = document.getElementById('ratelimit-content');
     
     if (!data || (!data.dimensions && !data.global)) {
-      el.innerHTML = `<div class="empty-state">
-        <div class="empty-icon">⏱️</div>
-        <div class="empty-title">暂无域名限速数据</div>
-        <div class="empty-desc">系统默认全局限速 100 QPS。当爬取任务运行时，会自动按域名维度进行限速，数据将在此展示。</div>
-      </div>`;
+      el.innerHTML = '<div class="card" style="padding:20px;color:var(--text-secondary)">暂无限速数据（任务运行后会产生）</div>';
       return;
     }
 
@@ -1629,34 +1520,31 @@ async function loadDedup() {
   try {
     const el = document.getElementById('dedup-config');
     // 从settings读取去重配置
-    let dedupType = 'memory';
     try {
       let settings = {};
-      try { const grouped = await api('/api/v1/admin/settings'); settings = grouped.dedup || grouped.general || {}; } catch(e2) {}
-      dedupType = settings.dedup_backend || 'memory';
+      try { const grouped = await api('/api/v1/admin/settings'); settings = grouped.dedup || grouped.general || {}; } catch(e2) { /* fallback to env defaults */ }
+      const dedupType = settings.dedup_backend || 'memory';
       const redisUrl = settings.redis_url || 'redis://127.0.0.1:6379/2';
       
       el.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <div style="font-size:15px">当前策略: <strong style="color:var(--accent-light);font-size:18px">${dedupType.toUpperCase()}</strong></div>
-          ${dedupType==='redis'?`<div style="font-size:13px;color:var(--text-secondary)">Redis: <code>${redisUrl}</code></div>`:''}
-        </div>
-        <div style="margin-top:12px;padding:10px;background:var(--bg-hover);border-radius:6px;font-size:12px;color:var(--text-secondary)">
-          💡 修改 .env 中 <code>DEDUP_BACKEND</code> 并重启服务即可切换
+        <div style="display:grid;gap:8px">
+          <div>当前策略: <strong style="color:var(--accent-light)">${dedupType.toUpperCase()}</strong></div>
+          <div>Redis地址: <span style="font-family:monospace">${dedupType==='redis'?redisUrl:'N/A'}</span></div>
+          <div style="margin-top:8px;padding:10px;background:var(--bg-hover);border-radius:6px;font-size:12px">
+            💡 切换去重策略：修改 .env 中的 <code>DEDUP_BACKEND</code> 为 memory / redis / bloom / rotation，然后重启服务
+          </div>
         </div>`;
     } catch(e) {
-      el.innerHTML = `<div style="color:var(--text-secondary)">使用默认策略: <strong>MEMORY</strong></div>`;
+      el.innerHTML = `<div>配置读取失败: ${e.message}<br><br>
+        <div style="padding:10px;background:var(--bg-hover);border-radius:6px;font-size:12px">
+          💡 在 .env 中设置：<br>
+          <code>DEDUP_BACKEND=memory</code> (默认)<br>
+          <code>DEDUP_BACKEND=redis</code> (推荐生产环境)<br>
+          <code>DEDUP_BACKEND=bloom</code> (大规模场景)<br>
+          <code>DEDUP_BACKEND=rotation</code> (持久化布隆)
+        </div>
+      </div>`;
     }
-    // 高亮当前策略卡片
-    document.querySelectorAll('.dedup-card').forEach(c => {
-      if (c.dataset.type === dedupType) {
-        c.style.borderColor = 'var(--accent)';
-        c.style.background = 'rgba(108,92,231,.08)';
-      } else {
-        c.style.borderColor = 'transparent';
-        c.style.background = '';
-      }
-    });
   } catch(e) {
     document.getElementById('dedup-config').textContent = '加载失败: ' + e.message;
   }

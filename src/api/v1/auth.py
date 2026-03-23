@@ -51,8 +51,10 @@ async def register(req: RegisterReq):
 
 @router.post("/login")
 async def login(req: LoginReq):
-    """Login and return API key."""
+    """Login and return API key. Accepts email or username."""
     rows = await db.query("SELECT * FROM users WHERE email = ?", [req.email])
+    if not rows:
+        rows = await db.query("SELECT * FROM users WHERE username = ?", [req.email])
     if not rows:
         raise HTTPException(401, "Invalid credentials")
     user = rows[0]
