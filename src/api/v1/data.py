@@ -240,8 +240,9 @@ async def data_stats(project_id: str = "", task_id: str = "", user: dict = Depen
 
 
 @router.get("/data/stats/timeline")
-async def data_timeline(project_id: str = "", task_id: str = "", user: dict = Depends(get_current_user)):
-    """Collection timeline aggregated by day and hour."""
+async def data_timeline(project_id: str = "", task_id: str = "", days: int = 30,
+                        user: dict = Depends(get_current_user)):
+    """Collection timeline aggregated by day and hour (default last 30 days)."""
     where = {}
     if project_id:
         where["project_id"] = project_id
@@ -250,7 +251,14 @@ async def data_timeline(project_id: str = "", task_id: str = "", user: dict = De
 
     sql = "SELECT created_at FROM data_records"
     where_clause, params = _build_where_clause(where)
-    sql += where_clause + " ORDER BY created_at ASC"
+    # Limit to recent N days to avoid full table scan
+    cutoff = (datetime.now() - __import__('datetime').timedelta(days=max(1, min(days, 365)))).strftime("%Y-%m-%d")
+    if where_clause:
+        sql += where_clause + " AND created_at >= ?"
+    else:
+        sql += " WHERE created_at >= ?"
+    params.append(cutoff)
+    sql += " ORDER BY created_at ASC"
     rows = await db.query(sql, params)
 
     daily_counter: Counter[str] = Counter()

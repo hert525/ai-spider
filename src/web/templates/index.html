@@ -1400,7 +1400,9 @@ function renderDataTable() {
     return `<td class="data-cell" title="${esc(fullValue)}"><div class="data-cell-truncate">${esc(fullValue)}</div></td>`;
   }).join('') + '</tr>').join('');
 
-  summary.textContent = `第 ${dataState.page} / ${Math.max(dataState.totalPages, 1)} 页，当前页 ${dataViewRows.length} 条，累计 ${dataState.total} 条`;
+  const filterActive = Object.values(dataState.filters).some(v => v.trim());
+  const sortNote = filterActive ? '（筛选/排序仅作用于当前页）' : '';
+  summary.textContent = `第 ${dataState.page} / ${Math.max(dataState.totalPages, 1)} 页，当前页 ${dataViewRows.length} 条，累计 ${dataState.total} 条${sortNote}`;
   renderDataPagination();
 }
 
