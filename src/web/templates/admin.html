@@ -186,6 +186,8 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">📊 总览</div>
       <div class="nav-group-label">爬虫管理</div>
       <div class="nav-item" data-page="tasks" onclick="switchPage('tasks')">📋 任务管理</div>
+      <div class="nav-item" data-page="dead-letters" onclick="switchPage('dead-letters')">💀 死信队列</div>
+      <div class="nav-item" data-page="data-preview" onclick="switchPage('data-preview')">📊 数据预览</div>
       <div class="nav-item" data-page="workers" onclick="switchPage('workers')">🖥️ Worker 节点</div>
       <div class="nav-item" data-page="seeds" onclick="switchPage('seeds')">🌱 种子模板库</div>
       <div class="nav-group-label">网络 & 安全</div>
@@ -406,6 +408,7 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div class="tab-bar" style="display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0">
         <div class="tab-item active" data-tab="metrics" onclick="switchMonTab('metrics')" style="padding:8px 20px;cursor:pointer;font-size:14px;border-bottom:2px solid var(--accent);color:var(--accent-light);transition:.2s">📊 指标</div>
         <div class="tab-item" data-tab="realtime-log" onclick="switchMonTab('realtime-log')" style="padding:8px 20px;cursor:pointer;font-size:14px;border-bottom:2px solid transparent;color:var(--text-secondary);transition:.2s">📜 实时日志</div>
+        <div class="tab-item" data-tab="alerts" onclick="switchMonTab('alerts')" style="padding:8px 20px;cursor:pointer;font-size:14px;border-bottom:2px solid transparent;color:var(--text-secondary);transition:.2s">🔔 告警</div>
       </div>
       <!-- 指标面板 -->
       <div id="mon-tab-metrics">
@@ -435,6 +438,22 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
           <button class="btn btn-sm btn-outline" onclick="loadMonLogs()">🔄 刷新</button>
         </div>
         <div id="mon-log-container" style="background:#000;border:1px solid var(--border);border-radius:12px;padding:16px;font-family:'Fira Code','Cascadia Code',monospace;font-size:12px;line-height:1.7;height:calc(100vh - 300px);overflow-y:auto;white-space:pre-wrap;word-break:break-all"></div>
+      </div>
+      <!-- 告警面板 -->
+      <div id="mon-tab-alerts" style="display:none">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+          <div class="card" style="flex:1;min-width:300px">
+            <div style="font-weight:600;margin-bottom:12px">📋 告警规则</div>
+            <div id="alert-rules-list"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-weight:600">🔔 告警历史</div>
+            <button class="btn btn-sm btn-outline" onclick="loadAlerts()">🔄 刷新</button>
+          </div>
+          <div id="alert-history-list"></div>
+        </div>
       </div>
     </div>
 
@@ -479,6 +498,39 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
           <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">滚动分区布隆过滤器<br>磁盘持久化 + 自动轮换</div>
           <div style="margin-top:8px;font-size:11px"><span class="badge badge-blue">持久化</span> <span class="badge badge-green">自动轮换</span></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Dead Letters -->
+    <div class="page" id="page-dead-letters" style="display:none">
+      <div class="page-title">💀 死信队列</div>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">超过最大重试次数的任务会进入此队列，可手动重试或清空。</p>
+      <div class="toolbar">
+        <button class="btn btn-sm btn-outline" onclick="loadDeadLetters()">🔄 刷新</button>
+        <button class="btn btn-sm btn-danger" onclick="clearAllDeadLetters()">🗑️ 清空</button>
+        <div style="flex:1"></div>
+        <div id="dl-queue-stats" style="font-size:13px;color:var(--text-secondary)"></div>
+      </div>
+      <div id="dead-letters-content"></div>
+    </div>
+
+    <!-- Data Preview -->
+    <div class="page" id="page-data-preview" style="display:none">
+      <div class="page-title">📊 数据预览</div>
+      <div class="toolbar">
+        <select id="dp-project" onchange="loadDataPreview()" style="min-width:200px">
+          <option value="">全部项目</option>
+        </select>
+        <button class="btn btn-sm btn-outline" onclick="loadDataPreview()">🔄 刷新</button>
+        <div style="flex:1"></div>
+        <div id="dp-stats" style="font-size:13px;color:var(--text-secondary)"></div>
+      </div>
+      <div id="dp-quality" style="margin-bottom:12px"></div>
+      <div class="table-wrap" style="overflow-x:auto">
+        <table id="dp-table">
+          <thead id="dp-thead"><tr></tr></thead>
+          <tbody id="dp-tbody"></tbody>
+        </table>
       </div>
     </div>
 
@@ -631,7 +683,7 @@ function switchPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelector(`.nav-item[data-page="${name}"]`).classList.add('active');
-  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings, seeds:loadAdminSeeds, monitoring:loadMonitoring, ratelimit:loadRateLimit, dedup:loadDedup};
+  const loaders = {dashboard:loadDashboard, users:loadUsers, tasks:loadTasks, workers:loadWorkers, proxies:loadProxies, logs:loadLogs, settings:loadSettings, seeds:loadAdminSeeds, monitoring:loadMonitoring, ratelimit:loadRateLimit, dedup:loadDedup, 'dead-letters':loadDeadLetters, 'data-preview':loadDataPreview};
   if (loaders[name]) loaders[name]();
 }
 
@@ -1540,7 +1592,9 @@ function switchMonTab(tab) {
   if (active) { active.style.borderBottomColor = 'var(--accent)'; active.style.color = 'var(--accent-light)'; active.classList.add('active'); }
   document.getElementById('mon-tab-metrics').style.display = tab === 'metrics' ? 'block' : 'none';
   document.getElementById('mon-tab-realtime-log').style.display = tab === 'realtime-log' ? 'block' : 'none';
+  document.getElementById('mon-tab-alerts').style.display = tab === 'alerts' ? 'block' : 'none';
   if (tab === 'realtime-log') loadMonLogs();
+  if (tab === 'alerts') loadAlerts();
 }
 
 let _monLogData = [];
@@ -1661,6 +1715,145 @@ async function loadDedup() {
     document.getElementById('dedup-config').textContent = '加载失败: ' + e.message;
   }
 }
+
+// ============ 死信队列 ============
+async function loadDeadLetters() {
+  const el = document.getElementById('dead-letters-content');
+  const statsEl = document.getElementById('dl-queue-stats');
+  try {
+    const [items, stats] = await Promise.all([
+      api('/api/v1/tasks/dead-letters?limit=50'),
+      api('/api/v1/tasks/queue/stats'),
+    ]);
+    statsEl.textContent = `队列: ${stats.queued||0} 待处理 | ${stats.running||0} 运行中 | ${stats.dead||0} 死信`;
+    if (!items || !items.length) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">没有死信任务</div><div class="empty-desc">所有任务运行正常，没有超过最大重试次数的失败任务。</div></div>`;
+      return;
+    }
+    el.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>任务ID</th><th>名称</th><th>错误</th><th>重试次数</th><th>死亡时间</th><th>操作</th></tr></thead>
+      <tbody>${items.map(d => `<tr>
+        <td style="font-family:monospace;font-size:12px">${(d.task_id||'').slice(0,12)}</td>
+        <td>${esc(d.name||'-')}</td>
+        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.error||'')}">${esc((d.error||'').slice(0,80))}</td>
+        <td><span class="badge badge-red">${d.attempts||0}次</span></td>
+        <td>${fmtTime(d.dead_at)}</td>
+        <td><button class="btn btn-sm btn-primary" onclick="retryDeadLetter('${d.task_id}')">🔄 重试</button></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  } catch(e) { el.innerHTML = `<div style="color:var(--text-muted)">加载失败: ${e.message}</div>`; }
+}
+async function retryDeadLetter(taskId) {
+  try {
+    await api('/api/v1/tasks/dead-letters/retry', {method:'POST', body:JSON.stringify({task_id:taskId})});
+    toast('已重新入队','success'); loadDeadLetters();
+  } catch(e) { toast('重试失败: '+e.message,'error'); }
+}
+async function clearAllDeadLetters() {
+  if (!confirm('确认清空所有死信任务？')) return;
+  try {
+    const r = await api('/api/v1/tasks/dead-letters', {method:'DELETE'});
+    toast(`已清空 ${r.cleared||0} 条`,'success'); loadDeadLetters();
+  } catch(e) { toast('清空失败','error'); }
+}
+
+// ============ 数据预览 ============
+async function loadDataPreview() {
+  const projectId = document.getElementById('dp-project').value;
+  const statsEl = document.getElementById('dp-stats');
+  const qualEl = document.getElementById('dp-quality');
+  const thead = document.getElementById('dp-thead');
+  const tbody = document.getElementById('dp-tbody');
+  try {
+    // Load project options (first time)
+    if (document.getElementById('dp-project').options.length <= 1) {
+      try {
+        const projs = await api('/api/v1/projects');
+        const list = Array.isArray(projs) ? projs : (projs.projects||[]);
+        list.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id; opt.textContent = p.name;
+          document.getElementById('dp-project').appendChild(opt);
+        });
+      } catch(e) {}
+    }
+    const params = projectId ? `?project_id=${projectId}&limit=30` : '?limit=30';
+    const data = await api('/api/v1/data/preview' + params);
+    statsEl.textContent = `显示 ${data.showing||0} / ${data.total||0} 条`;
+    // Quality bar
+    if (data.null_rates && Object.keys(data.null_rates).length) {
+      qualEl.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px">${
+        Object.entries(data.null_rates).map(([k,v]) => {
+          const color = v > 50 ? 'var(--red)' : v > 20 ? 'var(--yellow)' : 'var(--green)';
+          return `<span style="padding:2px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px">${k}: <span style="color:${color}">${v}% 空</span></span>`;
+        }).join('')
+      }</div>`;
+    } else { qualEl.innerHTML = ''; }
+    // Table
+    if (!data.columns || !data.columns.length) {
+      thead.innerHTML = '<tr><th>暂无数据</th></tr>'; tbody.innerHTML = '';
+      return;
+    }
+    thead.innerHTML = '<tr>' + data.columns.map(c => `<th>${esc(c.name)} <span style="font-weight:400;color:var(--text-muted);font-size:10px">${c.type}</span></th>`).join('') + '</tr>';
+    tbody.innerHTML = (data.rows||[]).map(r => '<tr>' + data.columns.map(c => {
+      const val = r[c.name];
+      const display = val === null || val === undefined ? '<span style="color:var(--text-muted)">null</span>' : esc(String(val).slice(0,100));
+      return `<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(String(val||''))}">${display}</td>`;
+    }).join('') + '</tr>').join('');
+  } catch(e) { statsEl.textContent = '加载失败'; tbody.innerHTML = ''; }
+}
+
+// ============ 告警 ============
+async function loadAlerts() {
+  try {
+    const [rules, history] = await Promise.all([
+      api('/api/v1/monitoring/alerts/rules'),
+      api('/api/v1/monitoring/alerts/history'),
+    ]);
+    // Rules
+    document.getElementById('alert-rules-list').innerHTML = rules.map(r => {
+      const sevColor = r.severity==='critical'?'var(--red)':r.severity==='warning'?'var(--yellow)':'var(--blue)';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div><span style="color:${sevColor};font-weight:600">${r.name}</span> <span style="font-size:12px;color:var(--text-muted)">${r.metric} ${r.operator} ${r.threshold}</span></div>
+        <span class="badge ${r.enabled?'badge-green':'badge-gray'}">${r.enabled?'启用':'禁用'}</span>
+      </div>`;
+    }).join('') || '<div style="color:var(--text-muted)">无规则</div>';
+    // History
+    if (!history || !history.length) {
+      document.getElementById('alert-history-list').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px">暂无告警记录 ✅</div>';
+      return;
+    }
+    document.getElementById('alert-history-list').innerHTML = history.map(a => {
+      const sevColor = a.severity==='critical'?'badge-red':a.severity==='warning'?'badge-yellow':'badge-blue';
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="badge ${sevColor}">${a.severity}</span>
+          <span style="font-size:12px;color:var(--text-muted)">${fmtTime(a.fired_at)}</span>
+        </div>
+        <div style="margin-top:4px;font-size:13px">${esc(a.message)}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('alert-rules-list').innerHTML = '加载失败';
+  }
+}
+
+// ============ Dashboard 加队列状态 ============
+(function patchDashboard() {
+  const origLoadDashboard = window.loadDashboard;
+  window.loadDashboard = async function() {
+    await origLoadDashboard();
+    try {
+      const qs = await api('/api/v1/tasks/queue/stats');
+      const sysInfo = document.getElementById('sys-info-body');
+      if (sysInfo && qs) {
+        const queueHtml = `<div class="info-row"><span class="k">队列待处理</span><span class="v">${qs.queued||0}</span></div>
+          <div class="info-row"><span class="k">运行中</span><span class="v">${qs.running||0}</span></div>
+          <div class="info-row"><span class="k">死信队列</span><span class="v" style="${qs.dead>0?'color:var(--red)':''}">${qs.dead||0}</span></div>`;
+        sysInfo.insertAdjacentHTML('beforeend', queueHtml);
+      }
+    } catch(e) {}
+  };
+})();
 
 </script>
 </body>
