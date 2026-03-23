@@ -6,6 +6,7 @@
 <title>AI Spider</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -100,6 +101,58 @@ th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);fo
 th{color:var(--text-secondary);font-weight:500;white-space:nowrap}
 td{color:var(--text-primary)}
 tr:hover td{background:var(--bg-hover)}
+.data-panel{background:linear-gradient(180deg,rgba(255,255,255,.02),transparent),var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:18px}
+.data-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:18px}
+.data-stat-card{position:relative;overflow:hidden}
+.data-stat-card::after{content:'';position:absolute;inset:auto -30px -30px auto;width:96px;height:96px;border-radius:50%;background:radial-gradient(circle,rgba(108,92,231,.18),transparent 72%)}
+.data-stat-label{font-size:12px;color:var(--text-secondary);margin-bottom:8px;letter-spacing:.04em;text-transform:uppercase}
+.data-stat-value{font-size:28px;font-weight:700;line-height:1}
+.data-stat-meta{margin-top:10px;font-size:12px;color:var(--text-secondary)}
+.data-chart-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.data-chart-wrap{position:relative;height:260px}
+.data-table-panel{padding:0;overflow:hidden}
+.data-table-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.data-table-title{font-size:15px;font-weight:600}
+.data-table-subtitle{font-size:12px;color:var(--text-secondary);margin-top:4px}
+.data-table{table-layout:fixed}
+.data-table th{position:relative;background:var(--bg-card);vertical-align:top}
+.data-sortable{cursor:pointer;user-select:none}
+.data-sortable:hover{color:var(--text-primary)}
+.data-header-cell{display:flex;align-items:center;gap:8px}
+.data-sort-indicator{font-size:12px;color:var(--text-muted)}
+.data-filter-row th{padding-top:8px;padding-bottom:12px;background:var(--bg-secondary)}
+.data-filter-input{width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:12px;outline:none}
+.data-filter-input:focus{border-color:var(--accent)}
+.data-cell{max-width:220px}
+.data-cell-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-row{cursor:pointer}
+.data-row:hover td{background:rgba(108,92,231,.08)}
+.pagination{display:flex;justify-content:center;gap:8px;padding:18px;flex-wrap:wrap}
+.pagination-ellipsis{display:inline-flex;align-items:center;color:var(--text-muted);padding:0 4px}
+.empty-state{padding:28px;color:var(--text-secondary);text-align:center}
+.quality-good{color:var(--green)}
+.quality-medium{color:var(--yellow)}
+.quality-low{color:var(--red)}
+.data-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:1200;display:flex;justify-content:flex-end}
+.data-modal-drawer{width:min(720px,100vw);height:100%;background:var(--bg-secondary);border-left:1px solid var(--border);box-shadow:-16px 0 48px rgba(0,0,0,.35);display:flex;flex-direction:column}
+.data-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 22px;border-bottom:1px solid var(--border)}
+.data-modal-title{font-size:18px;font-weight:600}
+.data-modal-meta{font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.6}
+.data-modal-body{flex:1;overflow:auto;padding:20px 22px 24px}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--bg-hover);color:var(--text-primary);cursor:pointer}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+.json-tree{display:flex;flex-direction:column;gap:8px}
+.json-node,.json-leaf{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.json-node summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.json-node summary::-webkit-details-marker{display:none}
+.json-children{margin-top:10px;padding-left:16px;border-left:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:8px}
+.json-key{color:var(--text-primary);font-weight:600;word-break:break-word}
+.json-meta,.json-type{color:var(--text-secondary);font-size:12px}
+.json-value{margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent-light);word-break:break-word;white-space:pre-wrap}
+.json-value.is-null{color:var(--text-muted)}
+.data-raw-block{margin-top:18px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.data-raw-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.data-raw-pre{margin:0;padding:14px;max-height:260px;overflow:auto;font-size:12px;line-height:1.6;color:var(--text-secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 
 /* Detail tabs */
 .detail-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
@@ -131,6 +184,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   .nav-tabs{padding:0 12px}
   .app-header{padding:12px 16px}
   .auth-box{padding:28px 20px}
+  .data-modal-drawer{width:100vw}
+  .data-stat-value{font-size:24px}
+  .data-table-toolbar{padding:14px}
 }
 </style>
 </head>
@@ -228,20 +284,46 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <div class="toolbar">
       <h2>数据</h2>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select class="form-input" id="data-project-filter" onchange="loadData()" style="width:auto;min-width:160px">
+        <select class="form-input" id="data-project-filter" onchange="handleDataProjectChange()" style="width:auto;min-width:160px">
           <option value="">全部项目</option>
         </select>
         <button class="btn btn-secondary btn-sm" onclick="exportData('json')"><i class="ri-download-line"></i> JSON</button>
         <button class="btn btn-secondary btn-sm" onclick="exportData('csv')"><i class="ri-download-line"></i> CSV</button>
       </div>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead id="data-thead"><tr><th>加载中...</th></tr></thead>
-        <tbody id="data-tbody"></tbody>
-      </table>
+    <div class="data-overview-grid" id="data-overview-cards">
+      <div class="data-panel data-stat-card">
+        <div class="data-stat-label">总记录数</div>
+        <div class="data-stat-value">-</div>
+        <div class="data-stat-meta">正在加载数据概览</div>
+      </div>
     </div>
-    <div style="display:flex;justify-content:center;gap:8px;margin-top:16px" id="data-pagination"></div>
+    <div class="data-panel" style="margin-bottom:18px">
+      <div class="data-chart-header">
+        <div>
+          <div class="data-table-title">采集时间线</div>
+          <div class="data-table-subtitle" id="data-chart-subtitle">按时间聚合采集记录</div>
+        </div>
+      </div>
+      <div class="data-chart-wrap">
+        <canvas id="data-timeline-chart"></canvas>
+      </div>
+    </div>
+    <div class="data-panel data-table-panel">
+      <div class="data-table-toolbar">
+        <div>
+          <div class="data-table-title">数据记录</div>
+          <div class="data-table-subtitle" id="data-table-summary">加载中...</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead id="data-thead"><tr><th>加载中...</th></tr></thead>
+          <tbody id="data-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="data-pagination"></div>
+    </div>
   </div>
 
   <!-- Project Detail Page -->
@@ -454,6 +536,30 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div>
 </div>
 
+<div id="data-detail-modal" class="data-modal-overlay hidden" onclick="if(event.target===this)closeDataDetail()">
+  <div class="data-modal-drawer">
+    <div class="data-modal-header">
+      <div>
+        <div class="data-modal-title">记录详情</div>
+        <div class="data-modal-meta" id="data-detail-meta"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-secondary btn-sm" onclick="copyDataDetailJson()"><i class="ri-file-copy-line"></i> 复制 JSON</button>
+        <button class="icon-btn" onclick="closeDataDetail()" aria-label="关闭"><i class="ri-close-line"></i></button>
+      </div>
+    </div>
+    <div class="data-modal-body">
+      <div class="json-tree" id="data-detail-tree"></div>
+      <div class="data-raw-block">
+        <div class="data-raw-header">
+          <span>Raw JSON</span>
+        </div>
+        <pre class="data-raw-pre" id="data-detail-raw"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // API Base
 const pathParts = location.pathname.split('/');
@@ -468,6 +574,21 @@ if (!localStorage.getItem('api_key')) {
 let isRegister = false;
 let currentProject = null;
 let allData = [];
+let dataViewRows = [];
+let dataTimelineChart = null;
+let dataDetailJson = '';
+const dataState = {
+  page: 1,
+  pageSize: 20,
+  total: 0,
+  totalPages: 0,
+  sortKey: 'created_at',
+  sortDir: 'desc',
+  filters: {},
+  columns: [],
+  currentProjectId: '',
+  timelineGranularity: 'day',
+};
 
 function toast(msg, type='success') {
   const el = document.createElement('div');
@@ -594,13 +715,16 @@ function handleWSMessage(msg) {
 
 // Navigation
 function switchPage(page) {
+  closeDataDetail();
   ['projects','seeds','tasks','data','detail'].forEach(p => document.getElementById('page-'+p).classList.add('hidden'));
   document.getElementById('page-'+page).classList.remove('hidden');
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.page===page));
   if (page==='projects') loadProjects();
   if (page==='seeds') loadSeeds();
   if (page==='tasks') loadTasks();
-  if (page==='data') { loadProjectFilter(); loadData(); }
+  if (page==='data') {
+    loadProjectFilter().then(() => refreshDataPage(true));
+  }
 }
 
 function statusBadge(status) {
@@ -1153,34 +1277,342 @@ async function loadProjectFilter() {
     const res = await api('GET', '/api/v1/projects');
     const list = Array.isArray(res) ? res : (res.projects || []);
     const sel = document.getElementById('data-project-filter');
+    const currentValue = dataState.currentProjectId || sel.value || '';
     sel.innerHTML = '<option value="">全部项目</option>' + list.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    sel.value = list.some(p => p.id === currentValue) ? currentValue : '';
+    dataState.currentProjectId = sel.value;
   } catch(e) {}
 }
 
-let dataPage = 1;
-async function loadData(page) {
-  dataPage = page || 1;
+function handleDataProjectChange() {
+  dataState.currentProjectId = document.getElementById('data-project-filter').value;
+  dataState.filters = {};
+  refreshDataPage(true);
+}
+
+async function refreshDataPage(resetPage=false) {
+  if (resetPage) dataState.page = 1;
   const pid = document.getElementById('data-project-filter').value;
-  let url = `/api/v1/data?page=${dataPage}&page_size=20`;
-  if (pid) url += `&project_id=${pid}`;
+  dataState.currentProjectId = pid;
+  await Promise.all([loadDataStats(pid), loadDataTimeline(pid), loadData(dataState.page)]);
+}
+
+function buildDisplayRows(records) {
+  const preferred = ['id', 'project_id', 'task_id', 'task_run_id', 'created_at', 'data_hash'];
+  const keySet = new Set();
+  const rows = records.map(record => {
+    const payload = record && typeof record.data === 'object' && record.data !== null && !Array.isArray(record.data)
+      ? record.data
+      : { data: record?.data ?? '' };
+    const display = {
+      id: record.id || '',
+      project_id: record.project_id || '',
+      task_id: record.task_id || '',
+      task_run_id: record.task_run_id || '',
+      created_at: record.created_at || '',
+      data_hash: record.data_hash || '',
+    };
+    Object.entries(payload).forEach(([key, value]) => {
+      const displayKey = key in display ? `data.${key}` : key;
+      display[displayKey] = value;
+    });
+    Object.keys(display).forEach(key => {
+      if (display[key] !== '' && display[key] !== null && display[key] !== undefined) keySet.add(key);
+    });
+    return { raw: record, display };
+  });
+
+  const restKeys = [...keySet].filter(key => !preferred.includes(key)).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  dataState.columns = preferred.filter(key => keySet.has(key)).concat(restKeys);
+  return rows;
+}
+
+function getComparableValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number') return value;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  return String(value).toLowerCase();
+}
+
+function formatCellValue(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'object') {
+    const json = JSON.stringify(value, null, 0);
+    return json.length > 120 ? `${json.slice(0, 117)}...` : json;
+  }
+  return String(value);
+}
+
+function renderDataTable() {
+  const thead = document.getElementById('data-thead');
+  const tbody = document.getElementById('data-tbody');
+  const summary = document.getElementById('data-table-summary');
+  const displayRows = buildDisplayRows(allData);
+  const columns = dataState.columns;
+
+  if (!allData.length || !columns.length) {
+    thead.innerHTML = '<tr><th>暂无数据</th></tr>';
+    tbody.innerHTML = '<tr><td class="empty-state">当前筛选下暂无数据</td></tr>';
+    document.getElementById('data-pagination').innerHTML = '';
+    summary.textContent = '当前筛选下暂无数据';
+    return;
+  }
+
+  const filtered = displayRows.filter(item => columns.every(column => {
+    const keyword = (dataState.filters[column] || '').trim().toLowerCase();
+    if (!keyword) return true;
+    const value = item.display[column];
+    return typeof value === 'string' && value.toLowerCase().includes(keyword);
+  }));
+
+  const { sortKey, sortDir } = dataState;
+  filtered.sort((a, b) => {
+    const left = getComparableValue(a.display[sortKey]);
+    const right = getComparableValue(b.display[sortKey]);
+    if (left === right) return 0;
+    if (left > right) return sortDir === 'asc' ? 1 : -1;
+    return sortDir === 'asc' ? -1 : 1;
+  });
+  dataViewRows = filtered;
+
+  const headerHtml = '<tr>' + columns.map(column => {
+    const indicator = sortKey === column ? (sortDir === 'asc' ? '↑' : '↓') : '↕';
+    return `<th class="data-sortable" onclick='toggleDataSort(${JSON.stringify(column)})'><div class="data-header-cell"><span>${esc(column)}</span><span class="data-sort-indicator">${indicator}</span></div></th>`;
+  }).join('') + '</tr>';
+
+  const filterHtml = '<tr class="data-filter-row">' + columns.map(column => {
+    const sample = dataViewRows.find(item => item.display[column] !== undefined && item.display[column] !== null)?.display[column];
+    if (sample !== undefined && typeof sample !== 'string') return '<th><input class="data-filter-input" placeholder="非文本列" disabled></th>';
+    return `<th><input class="data-filter-input" placeholder="筛选 ${esc(column)}" value="${esc(dataState.filters[column] || '')}" oninput='setDataFilter(${JSON.stringify(column)}, this.value)' onclick="event.stopPropagation()"></th>`;
+  }).join('') + '</tr>';
+  thead.innerHTML = headerHtml + filterHtml;
+
+  if (!dataViewRows.length) {
+    tbody.innerHTML = `<tr><td colspan="${columns.length}" class="empty-state">没有匹配的记录</td></tr>`;
+    summary.textContent = `第 ${dataState.page} 页无匹配结果，共 ${dataState.total} 条记录`;
+    renderDataPagination();
+    return;
+  }
+
+  tbody.innerHTML = dataViewRows.map((item, index) => `<tr class="data-row" onclick="openDataDetail(${index})">` + columns.map(column => {
+    const rawValue = item.display[column];
+    const fullValue = formatCellValue(rawValue);
+    return `<td class="data-cell" title="${esc(fullValue)}"><div class="data-cell-truncate">${esc(fullValue)}</div></td>`;
+  }).join('') + '</tr>').join('');
+
+  summary.textContent = `第 ${dataState.page} / ${Math.max(dataState.totalPages, 1)} 页，当前页 ${dataViewRows.length} 条，累计 ${dataState.total} 条`;
+  renderDataPagination();
+}
+
+function getPaginationItems(totalPages, currentPage) {
+  if (totalPages <= 7) return Array.from({length: totalPages}, (_, index) => index + 1);
+  const items = [1];
+  if (currentPage > 3) items.push('ellipsis-left');
+  const start = Math.max(2, currentPage - 1);
+  const end = Math.min(totalPages - 1, currentPage + 1);
+  for (let page = start; page <= end; page += 1) items.push(page);
+  if (currentPage < totalPages - 2) items.push('ellipsis-right');
+  items.push(totalPages);
+  return items;
+}
+
+function renderDataPagination() {
+  const container = document.getElementById('data-pagination');
+  if (!dataState.totalPages || dataState.totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = getPaginationItems(dataState.totalPages, dataState.page).map(item => {
+    if (typeof item === 'string') return '<span class="pagination-ellipsis">...</span>';
+    return `<button class="btn btn-sm ${item===dataState.page?'btn-primary':'btn-secondary'}" onclick="loadData(${item})">${item}</button>`;
+  }).join('');
+}
+
+function setDataFilter(column, value) {
+  dataState.filters[column] = value;
+  renderDataTable();
+}
+
+function toggleDataSort(column) {
+  if (dataState.sortKey === column) {
+    dataState.sortDir = dataState.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    dataState.sortKey = column;
+    dataState.sortDir = 'asc';
+  }
+  renderDataTable();
+}
+
+async function loadData(page) {
+  dataState.page = page || dataState.page || 1;
+  const pid = document.getElementById('data-project-filter').value;
+  let url = `/api/v1/data?page=${dataState.page}&page_size=${dataState.pageSize}`;
+  if (pid) url += `&project_id=${encodeURIComponent(pid)}`;
   try {
     const res = await api('GET', url);
     allData = Array.isArray(res) ? res : (res.data || res.items || []);
-    const total = res.total || allData.length;
-    if (!allData.length) {
-      document.getElementById('data-thead').innerHTML = '<tr><th>暂无数据</th></tr>';
-      document.getElementById('data-tbody').innerHTML = '';
-      document.getElementById('data-pagination').innerHTML = '';
-      return;
-    }
-    const keys = Object.keys(allData[0]);
-    document.getElementById('data-thead').innerHTML = '<tr>' + keys.map(k=>`<th>${esc(k)}</th>`).join('') + '</tr>';
-    document.getElementById('data-tbody').innerHTML = allData.map(row => '<tr>' + keys.map(k=>`<td>${esc(String(row[k]??''))}</td>`).join('') + '</tr>').join('');
-    const pages = Math.ceil(total/20);
-    let pgHtml = '';
-    for (let i=1;i<=pages&&i<=10;i++) pgHtml += `<button class="btn btn-sm ${i===dataPage?'btn-primary':'btn-secondary'}" onclick="loadData(${i})">${i}</button>`;
-    document.getElementById('data-pagination').innerHTML = pgHtml;
+    dataState.total = res.total || allData.length;
+    dataState.totalPages = res.total_pages || Math.ceil(dataState.total / dataState.pageSize) || 0;
+    renderDataTable();
   } catch(e) { toast(e.message,'error'); }
+}
+
+function qualityScoreClass(score) {
+  if (score >= 85) return 'quality-good';
+  if (score >= 60) return 'quality-medium';
+  return 'quality-low';
+}
+
+async function loadDataStats(projectId) {
+  try {
+    let url = '/api/v1/data/stats';
+    if (projectId) url += `?project_id=${encodeURIComponent(projectId)}`;
+    const stats = await api('GET', url);
+    const nullRates = stats.null_rates || {};
+    const nullSummary = Object.keys(nullRates).length
+      ? `平均缺失率 ${((Object.values(nullRates).reduce((sum, value) => sum + value, 0)) / Object.keys(nullRates).length).toFixed(1)}%`
+      : '暂无质量采样';
+    document.getElementById('data-overview-cards').innerHTML = `
+      <div class="data-panel data-stat-card">
+        <div class="data-stat-label">总记录数</div>
+        <div class="data-stat-value">${stats.total || 0}</div>
+        <div class="data-stat-meta">当前筛选范围内的数据总量</div>
+      </div>
+      <div class="data-panel data-stat-card">
+        <div class="data-stat-label">项目数</div>
+        <div class="data-stat-value">${stats.projects_count || 0}</div>
+        <div class="data-stat-meta">有数据入库的项目数量</div>
+      </div>
+      <div class="data-panel data-stat-card">
+        <div class="data-stat-label">今日新增</div>
+        <div class="data-stat-value">${stats.today_count || 0}</div>
+        <div class="data-stat-meta">按创建日期统计今日记录</div>
+      </div>
+      <div class="data-panel data-stat-card">
+        <div class="data-stat-label">数据质量</div>
+        <div class="data-stat-value ${qualityScoreClass(stats.quality_score || 0)}">${stats.quality_score || 0}<span style="font-size:14px;margin-left:4px">/100</span></div>
+        <div class="data-stat-meta">${esc(nullSummary)}</div>
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('data-overview-cards').innerHTML = `<div class="data-panel data-stat-card"><div class="data-stat-label">数据概览</div><div class="data-stat-meta">加载失败：${esc(e.message)}</div></div>`;
+  }
+}
+
+function destroyDataChart() {
+  if (dataTimelineChart) {
+    dataTimelineChart.destroy();
+    dataTimelineChart = null;
+  }
+}
+
+async function loadDataTimeline(projectId) {
+  try {
+    let url = '/api/v1/data/stats/timeline';
+    if (projectId) url += `?project_id=${encodeURIComponent(projectId)}`;
+    const timeline = await api('GET', url);
+    const granularity = timeline.recommended_granularity || 'day';
+    dataState.timelineGranularity = granularity;
+    const points = granularity === 'hour' ? (timeline.hourly || []) : (timeline.daily || []);
+    const labels = points.map(point => granularity === 'hour' ? point.bucket.slice(11, 16) : point.bucket);
+    const values = points.map(point => point.count);
+    document.getElementById('data-chart-subtitle').textContent = granularity === 'hour' ? '按小时聚合采集记录' : '按天聚合采集记录';
+    destroyDataChart();
+    if (typeof Chart === 'undefined') return;
+    const ctx = document.getElementById('data-timeline-chart');
+    if (!ctx) return;
+    dataTimelineChart = new Chart(ctx, {
+      type: granularity === 'hour' ? 'bar' : 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: granularity === 'hour' ? '每小时记录数' : '每日记录数',
+          data: values,
+          borderColor: '#6c5ce7',
+          backgroundColor: granularity === 'hour' ? 'rgba(108,92,231,0.38)' : 'rgba(108,92,231,0.18)',
+          pointBackgroundColor: '#7c6ff7',
+          tension: 0.28,
+          fill: true,
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: '#e8e8ed' } }
+        },
+        scales: {
+          x: { ticks: { color: '#8888a0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { beginAtZero: true, ticks: { color: '#8888a0', precision: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+        }
+      }
+    });
+  } catch(e) {
+    destroyDataChart();
+    document.getElementById('data-chart-subtitle').textContent = `时间线加载失败：${e.message}`;
+  }
+}
+
+function buildDataDetailPayload(record) {
+  return {
+    id: record.id || '',
+    project_id: record.project_id || '',
+    task_id: record.task_id || '',
+    task_run_id: record.task_run_id || '',
+    data_hash: record.data_hash || '',
+    created_at: record.created_at || '',
+    data: record.data,
+  };
+}
+
+function renderJsonValue(value) {
+  if (value === null) return '<div class="json-value is-null">null</div>';
+  if (typeof value === 'string') return `<div class="json-value">"${esc(value)}"</div>`;
+  return `<div class="json-value ${value === null ? 'is-null' : ''}">${esc(String(value))}</div>`;
+}
+
+function renderJsonTreeNode(key, value) {
+  const label = key ? `<span class="json-key">${esc(key)}</span>` : '<span class="json-key">root</span>';
+  if (Array.isArray(value)) {
+    const children = value.length
+      ? value.map((item, index) => renderJsonTreeNode(`[${index}]`, item)).join('')
+      : '<div class="json-leaf"><span class="json-type">空数组</span></div>';
+    return `<details class="json-node" open><summary>${label}<span class="json-meta">Array(${value.length})</span></summary><div class="json-children">${children}</div></details>`;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value);
+    const children = entries.length
+      ? entries.map(([childKey, childValue]) => renderJsonTreeNode(childKey, childValue)).join('')
+      : '<div class="json-leaf"><span class="json-type">空对象</span></div>';
+    return `<details class="json-node" open><summary>${label}<span class="json-meta">Object · ${entries.length} keys</span></summary><div class="json-children">${children}</div></details>`;
+  }
+  return `<div class="json-leaf">${label}${renderJsonValue(value)}<div class="json-type">${esc(typeof value)}</div></div>`;
+}
+
+function openDataDetail(index) {
+  const item = dataViewRows[index];
+  if (!item) return;
+  const payload = buildDataDetailPayload(item.raw);
+  dataDetailJson = JSON.stringify(payload, null, 2);
+  document.getElementById('data-detail-meta').innerHTML = `项目 ${esc(item.raw.project_id || '-')}<br>任务 ${esc(item.raw.task_id || '-')}<br>采集时间 ${esc(fmtTime(item.raw.created_at))}`;
+  document.getElementById('data-detail-tree').innerHTML = renderJsonTreeNode('', payload);
+  document.getElementById('data-detail-raw').textContent = dataDetailJson;
+  document.getElementById('data-detail-modal').classList.remove('hidden');
+}
+
+function closeDataDetail() {
+  document.getElementById('data-detail-modal').classList.add('hidden');
+}
+
+async function copyDataDetailJson() {
+  if (!dataDetailJson) return;
+  try {
+    await navigator.clipboard.writeText(dataDetailJson);
+    toast('JSON 已复制');
+  } catch(e) {
+    toast('复制失败', 'error');
+  }
 }
 
 function exportData(fmt) {

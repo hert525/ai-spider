@@ -4,12 +4,70 @@ from __future__ import annotations
 import json
 import csv
 import io
+from collections import Counter
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from src.core.database import db
 from src.core.auth import get_current_user
 
 router = APIRouter()
+
+
+def _build_where_clause(where: dict[str, str]) -> tuple[str, list[str]]:
+    conditions = [f"{key} = ?" for key, value in where.items() if value]
+    params = [value for value in where.values() if value]
+    return (" WHERE " + " AND ".join(conditions)) if conditions else "", params
+
+
+def _parse_record_data(raw: object) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"raw": parsed}
+        except json.JSONDecodeError:
+            return {"raw": raw}
+    return {}
+
+
+async def _load_preview_payload(project_id: str = "", task_id: str = "", limit: int = 20) -> dict:
+    where = {}
+    if project_id:
+        where["project_id"] = project_id
+    if task_id:
+        where["task_id"] = task_id
+
+    rows = await db.list("data_records", where=where, limit=limit, order="created_at DESC")
+    if not rows:
+        return {"columns": [], "rows": [], "total": 0, "showing": 0, "null_rates": {}}
+
+    parsed_rows = []
+    all_keys: dict[str, str] = {}
+    for row in rows:
+        data = _parse_record_data(row.get("data", "{}"))
+        parsed_rows.append(data)
+        for key, value in data.items():
+            if key not in all_keys:
+                all_keys[key] = type(value).__name__
+
+    columns = [{"name": key, "type": value} for key, value in all_keys.items()]
+    total_count = await db.count("data_records", where or None)
+    null_rates = {}
+    for col in all_keys:
+        null_count = sum(1 for row in parsed_rows if not row.get(col))
+        null_rates[col] = round(null_count / len(parsed_rows) * 100, 1) if parsed_rows else 0
+
+    return {
+        "columns": columns,
+        "rows": parsed_rows,
+        "total": total_count,
+        "showing": len(parsed_rows),
+        "null_rates": null_rates,
+    }
 
 
 @router.get("/data")
@@ -23,23 +81,21 @@ async def list_data(project_id: str = "", task_id: str = "", page: int = 1, page
 
     offset = (page - 1) * page_size
     total = await db.count("data_records", where=where or None)
-    
+
     # Manual pagination via query
     sql = "SELECT * FROM data_records"
-    params = []
-    if where:
-        conditions = [f"{k} = ?" for k in where]
-        sql += " WHERE " + " AND ".join(conditions)
-        params = list(where.values())
+    where_clause, params = _build_where_clause(where)
+    sql += where_clause
     sql += f" ORDER BY created_at DESC LIMIT {page_size} OFFSET {offset}"
-    
+
     rows = await db.query(sql, params)
+
     # Deserialize data field
     for row in rows:
         if isinstance(row.get("data"), str):
             try:
                 row["data"] = json.loads(row["data"])
-            except:
+            except Exception:
                 pass
 
     return {
@@ -136,49 +192,85 @@ async def export_data(
 async def preview_data(project_id: str = "", task_id: str = "", limit: int = 20,
                        user: dict = Depends(get_current_user)):
     """Preview data as table with column info (for frontend table rendering)."""
+    return await _load_preview_payload(project_id=project_id, task_id=task_id, limit=limit)
+
+
+@router.get("/data/stats")
+async def data_stats(project_id: str = "", task_id: str = "", user: dict = Depends(get_current_user)):
+    """Overview stats for the data page."""
     where = {}
     if project_id:
         where["project_id"] = project_id
     if task_id:
         where["task_id"] = task_id
-    rows = await db.list("data_records", where=where, limit=limit, order="created_at DESC")
 
-    if not rows:
-        return {"columns": [], "rows": [], "total": 0}
+    total = await db.count("data_records", where or None)
+    where_clause, params = _build_where_clause(where)
 
-    # Parse data field (stored as JSON string)
-    import json as _json
-    parsed_rows = []
-    all_keys: dict[str, str] = {}  # key -> type
-    for r in rows:
-        data = r.get("data", "{}")
-        if isinstance(data, str):
-            try:
-                data = _json.loads(data)
-            except _json.JSONDecodeError:
-                data = {"raw": data}
-        if isinstance(data, dict):
-            parsed_rows.append(data)
-            for k, v in data.items():
-                if k not in all_keys:
-                    all_keys[k] = type(v).__name__
+    projects_sql = "SELECT COUNT(DISTINCT project_id) as count FROM data_records"
+    if where_clause:
+        projects_sql += where_clause + " AND project_id != ''"
+    else:
+        projects_sql += " WHERE project_id != ''"
+    projects_rows = await db.query(projects_sql, params)
+    projects_count = int(projects_rows[0]["count"]) if projects_rows else 0
 
-    # Build columns
-    columns = [{"name": k, "type": v} for k, v in all_keys.items()]
+    today = datetime.now().strftime("%Y-%m-%d")
+    today_sql = f"SELECT COUNT(*) as count FROM data_records{where_clause}"
+    today_params = list(params)
+    if where_clause:
+        today_sql += " AND substr(created_at, 1, 10) = ?"
+    else:
+        today_sql += " WHERE substr(created_at, 1, 10) = ?"
+    today_params.append(today)
+    today_rows = await db.query(today_sql, today_params)
+    today_count = int(today_rows[0]["count"]) if today_rows else 0
 
-    # Quality stats
-    total_count = await db.count("data_records", where)
-    null_rates = {}
-    for col in all_keys:
-        null_count = sum(1 for r in parsed_rows if not r.get(col))
-        null_rates[col] = round(null_count / len(parsed_rows) * 100, 1) if parsed_rows else 0
+    preview = await _load_preview_payload(project_id=project_id, task_id=task_id, limit=100)
+    null_rates = list(preview.get("null_rates", {}).values())
+    quality_score = round(max(0, 100 - (sum(null_rates) / len(null_rates))), 1) if null_rates else 0
 
     return {
-        "columns": columns,
-        "rows": parsed_rows,
-        "total": total_count,
-        "showing": len(parsed_rows),
-        "null_rates": null_rates,
+        "total": total,
+        "projects_count": projects_count,
+        "today_count": today_count,
+        "quality_score": quality_score,
+        "null_rates": preview.get("null_rates", {}),
+    }
+
+
+@router.get("/data/stats/timeline")
+async def data_timeline(project_id: str = "", task_id: str = "", user: dict = Depends(get_current_user)):
+    """Collection timeline aggregated by day and hour."""
+    where = {}
+    if project_id:
+        where["project_id"] = project_id
+    if task_id:
+        where["task_id"] = task_id
+
+    sql = "SELECT created_at FROM data_records"
+    where_clause, params = _build_where_clause(where)
+    sql += where_clause + " ORDER BY created_at ASC"
+    rows = await db.query(sql, params)
+
+    daily_counter: Counter[str] = Counter()
+    hourly_counter: Counter[str] = Counter()
+    for row in rows:
+        created_at = row.get("created_at") or ""
+        if len(created_at) >= 10:
+            daily_counter[created_at[:10]] += 1
+        if len(created_at) >= 13:
+            hourly_counter[created_at[:13] + ":00"] += 1
+
+    daily = [{"bucket": bucket, "count": count} for bucket, count in sorted(daily_counter.items())]
+    hourly = [{"bucket": bucket, "count": count} for bucket, count in sorted(hourly_counter.items())]
+    recommended_granularity = "hour" if len(daily) <= 1 else "day"
+
+    return {
+        "daily": daily,
+        "hourly": hourly,
+        "recommended_granularity": recommended_granularity,
+        "total_points": len(daily if recommended_granularity == "day" else hourly),
     }
 
 
