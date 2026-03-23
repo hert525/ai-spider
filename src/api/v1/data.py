@@ -130,3 +130,53 @@ async def export_data(
     if format == "csv":
         return await export_csv(project_id=project_id)
     return await export_json(project_id=project_id)
+
+
+@router.get("/data/preview")
+async def preview_data(project_id: str = "", task_id: str = "", limit: int = 20,
+                       user: dict = Depends(get_current_user)):
+    """Preview data as table with column info (for frontend table rendering)."""
+    where = {}
+    if project_id:
+        where["project_id"] = project_id
+    if task_id:
+        where["task_id"] = task_id
+    rows = await db.list("data_records", where=where, limit=limit, order="created_at DESC")
+
+    if not rows:
+        return {"columns": [], "rows": [], "total": 0}
+
+    # Parse data field (stored as JSON string)
+    import json as _json
+    parsed_rows = []
+    all_keys: dict[str, str] = {}  # key -> type
+    for r in rows:
+        data = r.get("data", "{}")
+        if isinstance(data, str):
+            try:
+                data = _json.loads(data)
+            except _json.JSONDecodeError:
+                data = {"raw": data}
+        if isinstance(data, dict):
+            parsed_rows.append(data)
+            for k, v in data.items():
+                if k not in all_keys:
+                    all_keys[k] = type(v).__name__
+
+    # Build columns
+    columns = [{"name": k, "type": v} for k, v in all_keys.items()]
+
+    # Quality stats
+    total_count = await db.count("data_records", where)
+    null_rates = {}
+    for col in all_keys:
+        null_count = sum(1 for r in parsed_rows if not r.get(col))
+        null_rates[col] = round(null_count / len(parsed_rows) * 100, 1) if parsed_rows else 0
+
+    return {
+        "columns": columns,
+        "rows": parsed_rows,
+        "total": total_count,
+        "showing": len(parsed_rows),
+        "null_rates": null_rates,
+    }

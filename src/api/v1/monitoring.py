@@ -120,3 +120,19 @@ async def trigger_metrics_push(user: dict = Depends(get_current_user)):
     pusher = get_pusher()
     success = await pusher.push()
     return {"pushed": success}
+
+
+# ── Alerting ──
+
+@router.get("/alerts/history")
+async def get_alert_history(limit: int = 50, user: dict = Depends(get_current_user)):
+    """Get recent alert history."""
+    from src.core.alerting import alert_manager
+    return alert_manager.get_history(limit)
+
+
+@router.get("/alerts/rules")
+async def get_alert_rules(user: dict = Depends(get_current_user)):
+    """Get alert rules."""
+    from src.core.alerting import alert_manager
+    return alert_manager.get_rules()
