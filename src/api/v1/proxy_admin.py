@@ -139,7 +139,7 @@ async def test_proxy_pool(pool_id: str, user: dict = Depends(require_admin)):
 
     try:
         start = time.monotonic()
-        async with httpx.AsyncClient(proxies={"http://": proxy_url, "https://": proxy_url}, timeout=15) as client:
+        async with httpx.AsyncClient(proxy=proxy_url, timeout=15) as client:
             resp = await client.get(test_url)
             resp.raise_for_status()
             latency_ms = int((time.monotonic() - start) * 1000)

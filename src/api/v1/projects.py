@@ -439,8 +439,7 @@ async def test_proxy(pid: str, user: dict = Depends(get_current_user)):
 
     try:
         import httpx as _httpx
-        proxies = {"http://": proxy_url, "https://": proxy_url}
-        async with _httpx.AsyncClient(proxies=proxies, timeout=15) as client:
+        async with _httpx.AsyncClient(proxy=proxy_url, timeout=15) as client:
             resp = await client.get("https://httpbin.org/ip")
             resp.raise_for_status()
             data = resp.json()

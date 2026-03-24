@@ -76,13 +76,26 @@ class WorkerProcess:
         if self._client:
             await self._client.aclose()
 
+    @staticmethod
+    def _get_local_ip() -> str:
+        """获取本机出口IP"""
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return "127.0.0.1"
+
     async def _register(self) -> None:
         """注册到master，失败后指数退避重试（最多10次）"""
         client = await self._get_client()
         payload = {
             "worker_id": self.worker_id,
             "hostname": platform.node(),
-            "ip": "127.0.0.1",
+            "ip": self._get_local_ip(),
             "max_concurrency": self.max_concurrency,
             "tags": self.tags,
         }
