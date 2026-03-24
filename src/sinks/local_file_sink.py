@@ -60,6 +60,14 @@ class LocalFileSink(BaseSink):
             existing.extend(records)
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(existing, f, ensure_ascii=False, indent=2)
+        elif fmt == "parquet":
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+            table = pa.Table.from_pylist(records)
+            if os.path.exists(path):
+                old_table = pq.read_table(path)
+                table = pa.concat_tables([old_table, table], promote_options="default")
+            pq.write_table(table, path, compression="snappy")
         else:
             raise ValueError(f"Unsupported format: {fmt}")
 

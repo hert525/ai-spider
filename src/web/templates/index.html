@@ -1064,6 +1064,7 @@ function updateSinkFields() {
         <option value="jsonl" ${sink.format==='jsonl'?'selected':''}>JSONL</option>
         <option value="csv" ${sink.format==='csv'?'selected':''}>CSV</option>
         <option value="json" ${sink.format==='json'?'selected':''}>JSON</option>
+        <option value="parquet" ${sink.format==='parquet'?'selected':''}>Parquet</option>
       </select></div>`;
   } else if (type === 'kafka') {
     html = `
@@ -1081,6 +1082,7 @@ function updateSinkFields() {
         <option value="jsonl" ${sink.format==='jsonl'?'selected':''}>JSONL</option>
         <option value="csv" ${sink.format==='csv'?'selected':''}>CSV</option>
         <option value="json" ${sink.format==='json'?'selected':''}>JSON</option>
+        <option value="parquet" ${sink.format==='parquet'?'selected':''}>Parquet</option>
       </select></div>`;
   }
   document.getElementById('sink-fields').innerHTML = html;
