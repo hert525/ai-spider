@@ -286,8 +286,63 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
     else:
         from src.engine.sandbox import run_code_in_sandbox
         proxy_cfg = _resolve_proxy_config(proj)
-        result = await run_code_in_sandbox(proj["code"], url, proxy_config=proxy_cfg)
-    
+        code = proj.get("code", "")
+        result = await run_code_in_sandbox(code, url, proxy_config=proxy_cfg)
+
+        # Auto-fix: if execution failed, use LLM to fix and retry (up to 3 rounds)
+        if result.get("error") and code.strip():
+            from src.core.llm import llm_completion
+            fix_code = code
+            for fix_round in range(3):
+                error_msg = result["error"]
+                logger.info(f"Auto-fix round {fix_round+1}/3 for project {pid}: {error_msg[:100]}")
+                try:
+                    fix_prompt = f"""以下Python爬虫代码执行出错，请修复。只返回修复后的完整Python代码，不要解释。
+
+错误信息:
+{error_msg[:500]}
+
+原始代码:
+```python
+{fix_code}
+```
+
+目标URL: {url}
+
+要求:
+1. 必须定义 async def crawl(url, config) 函数
+2. 返回 list[dict]
+3. 不要用 asyncio.run()，直接用 await
+4. 只用 httpx, bs4, lxml, re, json 等常见库
+5. 如果需要代理，从 config.get("proxy") 获取"""
+                    resp = await llm_completion(
+                        messages=[{"role": "user", "content": fix_prompt}],
+                        temperature=0.2,
+                        max_tokens=4000,
+                    )
+                    new_code = resp.choices[0].message.content.strip()
+                    # Extract code from markdown block if present
+                    if "```python" in new_code:
+                        new_code = new_code.split("```python", 1)[1].split("```", 1)[0].strip()
+                    elif "```" in new_code:
+                        new_code = new_code.split("```", 1)[1].split("```", 1)[0].strip()
+                    
+                    result = await run_code_in_sandbox(new_code, url, proxy_config=proxy_cfg)
+                    fix_code = new_code
+                    if not result.get("error"):
+                        # Fix succeeded — save the fixed code
+                        logger.info(f"Auto-fix succeeded on round {fix_round+1}")
+                        await db.update("projects", pid, {
+                            "code": new_code,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        result["auto_fixed"] = True
+                        result["fix_rounds"] = fix_round + 1
+                        break
+                except Exception as fix_e:
+                    logger.warning(f"Auto-fix round {fix_round+1} failed: {fix_e}")
+                    break
+
     # Update test results
     test_results = proj.get("test_results", [])
     if isinstance(test_results, str):

@@ -1035,7 +1035,9 @@ async function runTest() {
     if (error) {
       html = `<p style="color:var(--red);margin-bottom:8px">✗ 测试失败 (${elapsed}s)</p><pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;overflow:auto;max-height:300px;color:var(--red)">${esc(error)}</pre>`;
     } else {
-      html = `<p style="color:var(--green);margin-bottom:8px">✓ 测试完成 (${elapsed}s)</p>`;
+      const autoFixed = res.auto_fixed ? `<span style="background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:8px">🔧 自动修复(${res.fix_rounds}轮)</span>` : '';
+      html = `<p style="color:var(--green);margin-bottom:8px">✓ 测试完成 (${elapsed}s)${autoFixed}</p>`;
+      if (res.auto_fixed) { html += `<p style="color:var(--text-secondary);font-size:12px;margin-bottom:8px">代码已自动修复并保存，刷新编辑器可查看新代码</p>`; }
     if (Array.isArray(data) && data.length) {
       const keys = Object.keys(data[0]);
       html += `<div class="table-wrap"><table><thead><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>`;
