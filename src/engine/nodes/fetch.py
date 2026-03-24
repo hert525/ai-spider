@@ -148,6 +148,24 @@ class FetchNode(BaseNode):
             else:
                 html = await self._fetch_httpx(url)
 
+                # Auto-detect: if httpx result looks like empty SPA shell, fallback to browser
+                if html and not self.use_browser:
+                    from bs4 import BeautifulSoup
+                    _soup = BeautifulSoup(html, "html.parser")
+                    _text = _soup.get_text(strip=True)
+                    _tables = _soup.find_all("table")
+                    _data_tags = _soup.find_all(["ul", "ol", "dl", "article"])
+                    # Heuristic: if very little visible text relative to HTML size,
+                    # or no tables/lists despite large HTML, it's likely JS-rendered
+                    _ratio = len(_text) / max(len(html), 1)
+                    if len(html) > 50000 and _ratio < 0.05 and not _tables and not _data_tags:
+                        self.logger.warning(
+                            f"SPA detected (html={len(html)}, text={len(_text)}, ratio={_ratio:.3f}). "
+                            f"Auto-fallback to Playwright browser rendering."
+                        )
+                        html = await self._fetch_browser(url, state)
+                        state["_auto_browser_fallback"] = True
+
             # 上报成功指标
             duration = time.time() - start_time
             await metrics.incr_fetch_success(url=url, status=200)
