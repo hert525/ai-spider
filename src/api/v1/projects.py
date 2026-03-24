@@ -296,10 +296,42 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
         }
     else:
         from src.engine.sandbox import run_code_in_sandbox
-        await _push_progress("执行爬虫代码", "正在沙箱中运行代码...")
         proxy_cfg = _resolve_proxy_config(proj)
         code = proj.get("code", "")
-        result = await run_code_in_sandbox(code, url, proxy_config=proxy_cfg)
+
+        # If browser mode enabled, pre-render HTML with Playwright and pass to sandbox
+        pre_rendered_html = None
+        if proj.get("use_browser"):
+            await _push_progress("浏览器渲染", "正在启动 Playwright 加载页面...")
+            try:
+                from playwright.async_api import async_playwright
+                async with async_playwright() as pw:
+                    browser = await pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                    context = await browser.new_context(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    )
+                    # Inject cookies if configured
+                    cookie_config = proj.get("cookie_config")
+                    if cookie_config:
+                        if isinstance(cookie_config, str):
+                            import json as _json
+                            try: cookie_config = _json.loads(cookie_config)
+                            except: cookie_config = {}
+                        cookies = cookie_config.get("cookies", [])
+                        if cookies:
+                            await context.add_cookies(cookies)
+                    page = await context.new_page()
+                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                    await page.wait_for_timeout(3000)  # extra wait for dynamic content
+                    pre_rendered_html = await page.content()
+                    await browser.close()
+                    await _push_progress("浏览器渲染完成", f"页面大小: {len(pre_rendered_html)//1024}KB", status="ok")
+            except Exception as e:
+                await _push_progress("浏览器渲染失败", str(e)[:100], status="fail")
+                logger.warning(f"Playwright pre-render failed: {e}")
+
+        await _push_progress("执行爬虫代码", "正在沙箱中运行代码...")
+        result = await run_code_in_sandbox(code, url, proxy_config=proxy_cfg, html=pre_rendered_html)
 
         # Auto-fix: if execution failed, use LLM to fix and retry (up to 3 rounds)
         if result.get("error") and code.strip():

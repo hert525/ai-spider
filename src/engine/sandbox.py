@@ -146,9 +146,31 @@ async def run_code_in_sandbox(
     except ImportError:
         pass
 
-    # 注入原始HTML(用于测试)
+    # 注入原始HTML(用于测试) — 同时 monkey-patch httpx 让代码自动拿到渲染后的HTML
     if html:
         sandbox_globals["__raw_html__"] = html
+        # Patch httpx.AsyncClient.get to return pre-rendered HTML for the target URL
+        _real_httpx = sandbox_globals.get("httpx")
+        if _real_httpx:
+            import types
+            _orig_client_class = _real_httpx.AsyncClient
+
+            class _PatchedClient(_orig_client_class):
+                async def get(self, url, **kwargs):
+                    # If requesting the target URL, return pre-rendered HTML
+                    if url == target_url or (target_url and url.rstrip('/') == target_url.rstrip('/')):
+                        class _FakeResp:
+                            status_code = 200
+                            text = html
+                            content = html.encode('utf-8')
+                            headers = {"content-type": "text/html; charset=utf-8"}
+                            def json(self): import json as _j; return _j.loads(html)
+                            def raise_for_status(self): pass
+                        return _FakeResp()
+                    return await super().get(url, **kwargs)
+
+            _real_httpx.AsyncClient = _PatchedClient
+            sandbox_globals["httpx"] = _real_httpx
 
     old_stdout = sys.stdout
     sys.stdout = captured = StringIO()
