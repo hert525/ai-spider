@@ -268,10 +268,21 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 
     await db.update("projects", pid, {"status": ProjectStatus.TESTING})
 
+    # Helper to push progress via WebSocket
+    async def _push_progress(step: str, detail: str = "", status: str = "running"):
+        try:
+            from src.api.ws import ws_manager
+            api_key = user.get("api_key", "")
+            msg = {"type": "test_progress", "project_id": pid, "step": step, "detail": detail, "status": status}
+            if api_key:
+                await ws_manager.send_to_user(api_key, msg)
+        except Exception:
+            pass
+
     mode = proj.get("mode", "code_generator")
 
     if mode == "smart_scraper":
-        # Re-run LLM extraction
+        await _push_progress("AI智能提取模式", "正在抓取页面并用AI提取数据...")
         from src.engine.graphs.smart_scraper import SmartScraperGraph
         proxy_cfg = _resolve_proxy_config(proj)
         graph = SmartScraperGraph(use_browser=bool(proj.get("use_browser")), proxy_config=proxy_cfg)
@@ -285,16 +296,20 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
         }
     else:
         from src.engine.sandbox import run_code_in_sandbox
+        await _push_progress("执行爬虫代码", "正在沙箱中运行代码...")
         proxy_cfg = _resolve_proxy_config(proj)
         code = proj.get("code", "")
         result = await run_code_in_sandbox(code, url, proxy_config=proxy_cfg)
 
         # Auto-fix: if execution failed, use LLM to fix and retry (up to 3 rounds)
         if result.get("error") and code.strip():
+            await _push_progress("代码执行出错", result["error"][:100], status="fail")
+            await _push_progress("启动自动修复", "AI正在分析错误并修复代码...")
             from src.core.llm import llm_completion
             fix_code = code
             for fix_round in range(3):
                 error_msg = result["error"]
+                await _push_progress(f"自动修复 第{fix_round+1}轮", "AI重新生成代码中...")
                 logger.info(f"Auto-fix round {fix_round+1}/3 for project {pid}: {error_msg[:100]}")
                 try:
                     fix_prompt = f"""以下Python爬虫代码执行出错，请修复。只返回修复后的完整Python代码，不要解释。
@@ -327,11 +342,13 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     elif "```" in new_code:
                         new_code = new_code.split("```", 1)[1].split("```", 1)[0].strip()
                     
+                    await _push_progress(f"第{fix_round+1}轮修复", "重新执行修复后的代码...")
                     result = await run_code_in_sandbox(new_code, url, proxy_config=proxy_cfg)
                     fix_code = new_code
                     if not result.get("error"):
                         # Fix succeeded — save the fixed code
                         logger.info(f"Auto-fix succeeded on round {fix_round+1}")
+                        await _push_progress(f"第{fix_round+1}轮修复成功", f"提取到 {len(result.get('output',[]))} 条数据", status="ok")
                         await db.update("projects", pid, {
                             "code": new_code,
                             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -339,6 +356,8 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         result["auto_fixed"] = True
                         result["fix_rounds"] = fix_round + 1
                         break
+                    else:
+                        await _push_progress(f"第{fix_round+1}轮仍失败", result["error"][:80], status="fail")
                 except Exception as fix_e:
                     logger.warning(f"Auto-fix round {fix_round+1} failed: {fix_e}")
                     break

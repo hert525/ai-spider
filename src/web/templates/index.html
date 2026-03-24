@@ -700,6 +700,17 @@ function handleWSMessage(msg) {
       toast('任务 ' + (msg.task_id||'').slice(0,8) + ' ' + (msg.status === 'success' ? '完成' : '失败'), msg.status === 'success' ? 'success' : 'error');
       if (document.getElementById('page-tasks') && !document.getElementById('page-tasks').classList.contains('hidden')) loadTasks();
       break;
+    case 'test_progress':
+      {
+        const ptxt = document.getElementById('test-progress-text');
+        const psteps = document.getElementById('test-progress-steps');
+        if (ptxt) ptxt.textContent = msg.step || '';
+        if (psteps) {
+          const icon = msg.status === 'ok' ? '✅' : msg.status === 'fail' ? '❌' : '⏳';
+          psteps.innerHTML += `<div>${icon} ${msg.detail || msg.step || ''}</div>`;
+        }
+      }
+      break;
     case 'test_complete':
       toast('测试' + (msg.status === 'success' ? '成功' : '失败'), msg.status === 'success' ? 'success' : 'error');
       break;
@@ -1026,6 +1037,16 @@ async function runTest() {
   const btn = document.getElementById('test-run-btn');
   btn.disabled = true; btn.innerHTML = '<i class="ri-loader-4-line"></i> 运行中...';
   const start = Date.now();
+  // Show progress area
+  const testEl = document.getElementById('test-result');
+  testEl.innerHTML = `<div id="test-progress" style="padding:16px;background:var(--bg-input);border:1px solid var(--border);border-radius:10px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="spin" style="width:18px;height:18px;border:2px solid var(--border);border-top-color:#8b5cf6;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <span id="test-progress-text" style="font-size:14px;color:var(--text-primary)">准备测试...</span>
+    </div>
+    <div id="test-progress-steps" style="font-size:12px;color:var(--text-secondary);line-height:1.8"></div>
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
   try {
     const res = await api('POST', `/api/v1/projects/${currentProject.id}/test`, { target_url: url });
     const elapsed = ((Date.now()-start)/1000).toFixed(1);
