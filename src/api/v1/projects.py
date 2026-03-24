@@ -232,7 +232,8 @@ async def delete_project(pid: str, user: dict = Depends(get_current_user)):
 async def update_project(pid: str, body: dict = Body(...), user: dict = Depends(get_current_user)):
     """更新项目配置"""
     allowed_fields = ["name", "description", "target_url", "prompt", "mode", "cron_expr",
-                      "proxy_pool_id", "sink_type", "sink_config", "stealth_level", "enable_screenshot"]
+                      "proxy_pool_id", "sink_type", "sink_config", "stealth_level", "enable_screenshot",
+                      "use_browser"]
     updates = {k: v for k, v in body.items() if k in allowed_fields}
     if not updates:
         raise HTTPException(400, "No valid fields to update")
