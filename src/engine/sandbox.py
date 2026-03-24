@@ -13,6 +13,13 @@ import traceback
 import textwrap
 from io import StringIO
 from typing import Any
+
+# Allow nested asyncio.run() inside sandbox (AI-generated code often uses it)
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+except ImportError:
+    pass
 from loguru import logger
 from src.core.config import settings
 
