@@ -389,12 +389,24 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         try:
                             _has_pager = await page.evaluate("""
                                 () => {
-                                    const links = document.querySelectorAll('a[onclick*="gotoPage"], a[onclick*="nextPage"], .pagination a, a:contains("下一页")');
-                                    return links.length > 0;
+                                    // Check onclick-based pagination
+                                    const onclickLinks = document.querySelectorAll('a[onclick*="gotoPage"], a[onclick*="nextPage"], a[onclick*="changePage"]');
+                                    if (onclickLinks.length > 0) return true;
+                                    // Check common pagination elements
+                                    const paginationEls = document.querySelectorAll('.pagination a, .pager a, .page-link, [class*="pagination"]');
+                                    if (paginationEls.length > 0) return true;
+                                    // Check text-based: look for "下一页" in any <a>
+                                    const allLinks = document.querySelectorAll('a');
+                                    for (const a of allLinks) {
+                                        const t = a.textContent || '';
+                                        if (t.includes('下一页') || t.includes('Next') || t.includes('next')) return true;
+                                    }
+                                    return false;
                                 }
                             """)
                             if _has_pager:
                                 _wants_pagination = True
+                                logger.info("Browser: auto-detected pagination controls on page")
                         except Exception:
                             pass
 
