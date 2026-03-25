@@ -489,17 +489,24 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
         await _push_progress("执行爬虫代码", "正在沙箱中运行代码...")
         result = await run_code_in_sandbox(code, url, proxy_config=proxy_cfg, html=pre_rendered_html)
 
-        # Auto-fix: if execution failed, use LLM to fix and retry (up to 3 rounds)
-        if result.get("error") and code.strip():
-            await _push_progress("代码执行出错", result["error"][:100], status="fail")
+        # Auto-fix: if execution failed OR returned empty output, use LLM to fix
+        _needs_fix = result.get("error") or (not result.get("output") and code.strip())
+        if _needs_fix and code.strip():
+            _fix_reason = result.get("error") or "代码执行成功但返回空结果(output=[])，可能是CSS选择器不匹配页面结构"
+            await _push_progress("代码执行出错", (_fix_reason)[:100], status="fail")
             await _push_progress("启动自动修复", "AI正在分析错误并修复代码...")
             from src.core.llm import llm_completion
             fix_code = code
             for fix_round in range(5):
-                error_msg = result["error"]
+                error_msg = result.get("error") or "代码执行成功但返回空结果(output=[])，CSS选择器可能不匹配页面HTML结构"
                 await _push_progress(f"自动修复 第{fix_round+1}轮", "AI重新生成代码中...")
                 logger.info(f"Auto-fix round {fix_round+1}/3 for project {pid}: {error_msg[:100]}")
                 try:
+                    # Provide HTML snippet for LLM to understand page structure
+                    _html_for_fix = ""
+                    if pre_rendered_html:
+                        _html_for_fix = f"\n\n页面HTML结构(截取前3000字符):\n```html\n{pre_rendered_html[:3000]}\n```"
+
                     fix_prompt = f"""以下Python爬虫代码执行出错，请修复。只返回修复后的完整Python代码，不要解释。
 
 错误信息:
@@ -511,6 +518,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 ```
 
 目标URL: {url}
+{_html_for_fix}
 
 要求:
 1. 必须定义 async def crawl(url, config) -> list[dict] 函数
@@ -522,7 +530,8 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 7. 可用的内置函数: len/range/enumerate/zip/map/filter/sorted/min/max/sum/abs/print/isinstance/type/hasattr/getattr/globals/locals 等常用函数
 8. 不要使用 open()/exec()/eval()/compile() 等不安全函数
 9. ⚠️ 必须优先检查 config.get("pre_rendered_html")！有则直接用 Selector 解析，不要发HTTP请求
-10. 不要在沙箱里启动 playwright"""
+10. 不要在沙箱里启动 playwright
+11. 仔细看上面的HTML结构，用正确的CSS选择器匹配实际标签"""
                     resp = await llm_completion(
                         messages=[{"role": "user", "content": fix_prompt}],
                         temperature=0.2,
@@ -536,12 +545,12 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         new_code = new_code.split("```", 1)[1].split("```", 1)[0].strip()
                     
                     await _push_progress(f"第{fix_round+1}轮修复", "重新执行修复后的代码...")
-                    result = await run_code_in_sandbox(new_code, url, proxy_config=proxy_cfg)
+                    result = await run_code_in_sandbox(new_code, url, proxy_config=proxy_cfg, html=pre_rendered_html)
                     fix_code = new_code
-                    if not result.get("error"):
-                        # Fix succeeded — save the fixed code
-                        logger.info(f"Auto-fix succeeded on round {fix_round+1}")
-                        await _push_progress(f"第{fix_round+1}轮修复成功", f"提取到 {len(result.get('output',[]))} 条数据", status="ok")
+                    if not result.get("error") and result.get("output"):
+                        # Fix succeeded — has data and no error
+                        logger.info(f"Auto-fix succeeded on round {fix_round+1}: {len(result['output'])} items")
+                        await _push_progress(f"第{fix_round+1}轮修复成功", f"提取到 {len(result['output'])} 条数据", status="ok")
                         await db.update("projects", pid, {
                             "code": new_code,
                             "updated_at": datetime.now(timezone.utc).isoformat(),

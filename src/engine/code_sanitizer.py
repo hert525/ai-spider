@@ -78,6 +78,13 @@ class CodeSanitizer:
         if fixed_await:
             fixes.append("added missing await to async calls")
 
+        # Fix 11: Ensure crawl() checks config.get("pre_rendered_html") before HTTP requests
+        if ('async def crawl' in code
+            and 'pre_rendered_html' not in code
+            and 'client.get(' in code):
+            code = CodeSanitizer._inject_pre_rendered_html_check(code)
+            fixes.append("injected pre_rendered_html check")
+
         if fixes:
             logger.info(f"CodeSanitizer applied {len(fixes)} fixes: {', '.join(fixes)}")
 
@@ -291,3 +298,36 @@ async def crawl(url: str, config: dict) -> list[dict]:
                     skip_indent = None
             result.append(line)
         return '\n'.join(result)
+
+    @staticmethod
+    def _inject_pre_rendered_html_check(code: str) -> str:
+        """Inject pre_rendered_html variable at the start of crawl() body.
+        
+        Combined with the monkey-patched httpx, this ensures the code can access
+        pre-rendered HTML even if it uses client.get().
+        """
+        match = re.search(r'(async\s+def\s+crawl\s*\([^)]*\)[^:]*:\s*\n)', code)
+        if not match:
+            return code
+
+        insert_pos = match.end()
+        remaining = code[insert_pos:]
+        # Detect indentation from first non-empty line
+        for line in remaining.split('\n'):
+            if line.strip():
+                indent = ' ' * (len(line) - len(line.lstrip()))
+                break
+        else:
+            indent = '    '
+
+        # Inject a block that uses pre_rendered_html if available, skipping HTTP
+        pre_check = (
+            f'{indent}# [sanitizer] 优先使用预渲染HTML（浏览器模式下由系统传入）\n'
+            f'{indent}_pre_html = config.get("pre_rendered_html", "")\n'
+            f'{indent}if _pre_html:\n'
+            f'{indent}    from parsel import Selector as _PreSel\n'
+            f'{indent}    sel = _PreSel(text=_pre_html)\n'
+            f'{indent}    # 直接用 sel 解析，跳到数据提取部分\n'
+        )
+
+        return code[:insert_pos] + pre_check + code[insert_pos:]
