@@ -328,6 +328,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 
         # If browser mode enabled, pre-render HTML with Playwright and pass to sandbox
         pre_rendered_html = None
+        logger.info(f"Browser mode check: use_browser={proj.get('use_browser')!r}, type={type(proj.get('use_browser'))}")
         if proj.get("use_browser"):
             await _push_progress("浏览器渲染", "正在启动 Playwright 加载页面...")
             try:
@@ -354,18 +355,35 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     # Hide webdriver flag to bypass JS anti-bot checks
                     await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => false})')
                     await page.goto(url, wait_until="networkidle", timeout=45000)
-                    # Wait for JS challenges to resolve (some sites need multiple rounds)
-                    for _wait_round in range(4):
+                    # Wait for JS challenges + dynamic data to load
+                    # Some sites need: round 1 = JS challenge, round 2 = page shell, round 3 = data
+                    for _wait_round in range(6):
                         await page.wait_for_timeout(3000)
                         _check_html = await page.content()
-                        if len(_check_html) > 5000 and "__jsl_clearance" not in _check_html[:2000]:
-                            break  # Real page loaded
+                        _has_real_content = (
+                            len(_check_html) > 5000
+                            and "__jsl_clearance" not in _check_html[:2000]
+                        )
+                        if _has_real_content:
+                            # Check if dynamic data has loaded (look for table data cells)
+                            from parsel import Selector as _Sel
+                            _sel = _Sel(text=_check_html)
+                            _data_cells = len(_sel.css("table tr td"))
+                            if _data_cells > 0:
+                                logger.info(f"Browser: data loaded after {(_wait_round+1)*3}s ({_data_cells} cells)")
+                                break
+                            # No data yet but page is real - wait one more round
+                            if _wait_round >= 3:
+                                logger.info(f"Browser: page loaded but no table data after {(_wait_round+1)*3}s, proceeding")
+                                break
                     pre_rendered_html = await page.content()
+                    logger.info(f"Browser pre-render done: {len(pre_rendered_html)} chars")
                     await browser.close()
                     await _push_progress("浏览器渲染完成", f"页面大小: {len(pre_rendered_html)//1024}KB", status="ok")
             except Exception as e:
+                import traceback
                 await _push_progress("浏览器渲染失败", str(e)[:100], status="fail")
-                logger.warning(f"Playwright pre-render failed: {e}")
+                logger.error(f"Playwright pre-render failed: {e}\n{traceback.format_exc()}")
 
         await _push_progress("执行爬虫代码", "正在沙箱中运行代码...")
         result = await run_code_in_sandbox(code, url, proxy_config=proxy_cfg, html=pre_rendered_html)
