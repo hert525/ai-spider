@@ -377,7 +377,10 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                                 logger.info(f"Browser: page loaded but no table data after {(_wait_round+1)*3}s, proceeding")
                                 break
                     pre_rendered_html = await page.content()
-                    logger.info(f"Browser pre-render done: {len(pre_rendered_html)} chars")
+                    # Count data cells for logging
+                    from parsel import Selector as _PRSel
+                    _pr_cells = len(_PRSel(text=pre_rendered_html).css("table tr td"))
+                    logger.info(f"Browser pre-render done: {len(pre_rendered_html)} chars, {_pr_cells} table cells")
                     await browser.close()
                     await _push_progress("浏览器渲染完成", f"页面大小: {len(pre_rendered_html)//1024}KB", status="ok")
             except Exception as e:

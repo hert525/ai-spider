@@ -184,15 +184,32 @@ async def run_code_in_sandbox(
             _orig_client_class = _real_httpx.AsyncClient
 
             class _PatchedClient(_orig_client_class):
+                _pre_rendered_html = html
+                _target = target_url
+
+                @staticmethod
+                def _urls_match(req_url, target):
+                    """Match URLs ignoring query params and trailing slashes."""
+                    if not target:
+                        return False
+                    from urllib.parse import urlparse
+                    r = urlparse(str(req_url))
+                    t = urlparse(str(target))
+                    return (r.scheme == t.scheme
+                            and r.netloc == t.netloc
+                            and r.path.rstrip('/') == t.path.rstrip('/'))
+
                 async def get(self, url, **kwargs):
-                    # If requesting the target URL, return pre-rendered HTML
-                    if url == target_url or (target_url and url.rstrip('/') == target_url.rstrip('/')):
+                    # If requesting the target URL (ignoring query params), return pre-rendered HTML
+                    if self._urls_match(url, self._target):
+                        _html = self._pre_rendered_html
                         class _FakeResp:
                             status_code = 200
-                            text = html
-                            content = html.encode('utf-8')
+                            text = _html
+                            content = _html.encode('utf-8')
                             headers = {"content-type": "text/html; charset=utf-8"}
-                            def json(self): import json as _j; return _j.loads(html)
+                            url = url
+                            def json(self): import json as _j; return _j.loads(_html)
                             def raise_for_status(self): pass
                         return _FakeResp()
                     return await super().get(url, **kwargs)
