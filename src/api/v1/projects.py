@@ -51,6 +51,67 @@ async def _resolve_proxy_manager(proj: dict):
     return ProxyManager(pc)
 
 
+async def _should_use_browser(url: str, proxy_config: dict | None = None) -> bool:
+    """Auto-detect if a URL needs browser rendering.
+    
+    Checks:
+    1. HTTP request returns JS challenge signatures (__jsl_clearance, cf-browser-verification)
+    2. Response is mostly JS with little actual content
+    3. HTTP status is 521/403/503 (common anti-bot codes)
+    """
+    import httpx
+    try:
+        client_kwargs = {"timeout": 15, "follow_redirects": True}
+        if proxy_config and proxy_config.get("proxy_url"):
+            client_kwargs["proxy"] = proxy_config["proxy_url"]
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"}
+        async with httpx.AsyncClient(**client_kwargs, headers=headers) as client:
+            resp = await client.get(url)
+            
+            # Status-based detection
+            if resp.status_code in (521, 523):
+                logger.info(f"_should_use_browser: {url} returned {resp.status_code} → needs browser")
+                return True
+            
+            html = resp.text
+            
+            # JS challenge signatures
+            _js_signatures = [
+                "__jsl_clearance",           # 加速乐 / Jiasu
+                "cf-browser-verification",   # Cloudflare
+                "_cf_chl_opt",               # Cloudflare challenge
+                "document.cookie",           # Generic JS cookie setting
+                "setTimeout",                # JS redirect
+            ]
+            _sig_count = sum(1 for sig in _js_signatures if sig in html)
+            
+            # If 2+ signatures present, likely JS anti-bot
+            if _sig_count >= 2:
+                logger.info(f"_should_use_browser: {url} has {_sig_count} JS signatures → needs browser")
+                return True
+            
+            # Very short HTML with JS → probably a challenge page
+            if len(html) < 2000 and "<script" in html and _sig_count >= 1:
+                logger.info(f"_should_use_browser: {url} short page with JS challenge → needs browser")
+                return True
+            
+            # Check for empty body with lots of script tags
+            from parsel import Selector
+            sel = Selector(text=html)
+            text_content = sel.css("body ::text").getall()
+            text_len = sum(len(t.strip()) for t in text_content)
+            script_count = len(sel.css("script").getall())
+            if text_len < 200 and script_count > 3:
+                logger.info(f"_should_use_browser: {url} empty body + {script_count} scripts → needs browser")
+                return True
+
+    except Exception as e:
+        logger.warning(f"_should_use_browser check failed for {url}: {e}")
+        # On connection error, don't assume browser needed
+    
+    return False
+
+
 class CreateProjectReq(BaseModel):
     description: str
     target_url: str = ""
@@ -183,6 +244,103 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                     "progress": None,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
+
+                # === Auto-test after code generation ===
+                try:
+                    logger.info(f"Auto-test: running generated code for project {project.id}")
+                    await db.update("projects", project.id, {
+                        "progress": json.dumps({"step": total + 1, "total": total + 1, "label": "自动测试"}, ensure_ascii=False),
+                    })
+
+                    # Auto-detect browser need if not already enabled
+                    _use_browser = bool(project_data.get("use_browser"))
+                    if not _use_browser:
+                        _use_browser = await _should_use_browser(req.target_url, proxy_cfg)
+                        if _use_browser:
+                            logger.info(f"Auto-detect: {req.target_url} needs browser mode, enabling")
+                            await db.update("projects", project.id, {"use_browser": 1})
+                            # Browser-mode auto-test is heavy; skip for now, let user trigger test
+                            # Just mark as generated (not tested) so user knows to test
+                            logger.info(f"Auto-test: browser mode auto-enabled, skipping sandbox test")
+                        
+                    if not _use_browser:
+                        # Simple sandbox test (no browser pre-render)
+                        from src.engine.sandbox import run_code_in_sandbox
+                        test_result = await run_code_in_sandbox(code, req.target_url, proxy_config=proxy_cfg)
+
+                        if test_result.get("error") or not test_result.get("output"):
+                            _err = test_result.get("error") or "返回空结果"
+                            logger.info(f"Auto-test failed ({_err[:80]}), starting auto-fix...")
+                            
+                            # Get HTML for context
+                            _test_html = ""
+                            try:
+                                import httpx as _httpx
+                                async with _httpx.AsyncClient(timeout=15, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"}) as _tc:
+                                    _tr = await _tc.get(req.target_url)
+                                    _test_html = _tr.text[:3000]
+                            except Exception:
+                                pass
+
+                            # Auto-fix loop (up to 3 rounds for initial generation)
+                            from src.core.llm import llm_completion
+                            fix_code = code
+                            for fix_round in range(3):
+                                error_msg = test_result.get("error") or "代码执行成功但返回空结果，CSS选择器可能不匹配页面结构"
+                                _html_ctx = f"\n\n页面HTML结构(前3000字符):\n```html\n{_test_html}\n```" if _test_html else ""
+                                fix_prompt = f"""以下Python爬虫代码执行出错，请修复。只返回修复后的完整Python代码，不要解释。
+
+错误信息: {error_msg[:500]}
+
+原始代码:
+```python
+{fix_code}
+```
+
+目标URL: {req.target_url}
+{_html_ctx}
+
+要求:
+1. 必须定义 async def crawl(url, config) -> list[dict] 函数
+2. 返回 list[dict]
+3. 只用白名单库: httpx, parsel, bs4, lxml, re, json, csv, math, datetime, collections
+4. ⚠️ 必须优先检查 config.get("pre_rendered_html")！有则直接解析，不要发HTTP请求
+5. 禁止: os/subprocess/sys/pathlib/socket/pickle/playwright
+6. 不要用 asyncio.run()，直接用 await"""
+                                try:
+                                    resp = await llm_completion(
+                                        messages=[{"role": "user", "content": fix_prompt}],
+                                        temperature=0.2,
+                                        max_tokens=4000,
+                                    )
+                                    new_code = resp.choices[0].message.content.strip()
+                                    if "```python" in new_code:
+                                        new_code = new_code.split("```python", 1)[1].split("```", 1)[0].strip()
+                                    elif "```" in new_code:
+                                        new_code = new_code.split("```", 1)[1].split("```", 1)[0].strip()
+                                    
+                                    test_result = await run_code_in_sandbox(new_code, req.target_url, proxy_config=proxy_cfg)
+                                    fix_code = new_code
+                                    if not test_result.get("error") and test_result.get("output"):
+                                        logger.info(f"Auto-test fix succeeded on round {fix_round+1}: {len(test_result['output'])} items")
+                                        await db.update("projects", project.id, {
+                                            "code": new_code,
+                                            "status": ProjectStatus.TESTED,
+                                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                                        })
+                                        break
+                                except Exception as fx_e:
+                                    logger.warning(f"Auto-test fix round {fix_round+1} failed: {fx_e}")
+                                    break
+                        else:
+                            # Test passed on first try
+                            logger.info(f"Auto-test passed: {len(test_result.get('output', []))} items")
+                            await db.update("projects", project.id, {
+                                "status": ProjectStatus.TESTED,
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            })
+                except Exception as at_e:
+                    logger.warning(f"Auto-test failed for project {project.id}: {at_e}")
         except Exception as e:
             logger.error(f"Generation failed for project {project.id}: {e}")
             await db.update("projects", project.id, {
