@@ -234,6 +234,14 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
             else:
                 code = state.get("generated_code", "")
                 v_status = state.get("validation_status", "unknown")
+                # Push code to frontend in real-time
+                try:
+                    from src.api.ws import ws_manager
+                    await ws_manager.send_to_user(user.get("api_key", ""), {
+                        "type": "code_updated", "project_id": project.id, "code": code, "source": "AI生成"
+                    })
+                except Exception:
+                    pass
                 await db.update("projects", project.id, {
                     "status": ProjectStatus.GENERATED,
                     "code": code,
@@ -323,6 +331,13 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                                     fix_code = new_code
                                     if not test_result.get("error") and test_result.get("output"):
                                         logger.info(f"Auto-test fix succeeded on round {fix_round+1}: {len(test_result['output'])} items")
+                                        try:
+                                            from src.api.ws import ws_manager
+                                            await ws_manager.send_to_user(user.get("api_key", ""), {
+                                                "type": "code_updated", "project_id": project.id, "code": new_code, "source": f"自动修复(第{fix_round+1}轮)"
+                                            })
+                                        except Exception:
+                                            pass
                                         await db.update("projects", project.id, {
                                             "code": new_code,
                                             "status": ProjectStatus.TESTED,
@@ -436,6 +451,17 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
             from src.api.ws import ws_manager
             api_key = user.get("api_key", "")
             msg = {"type": "test_progress", "project_id": pid, "step": step, "detail": detail, "status": status}
+            if api_key:
+                await ws_manager.send_to_user(api_key, msg)
+        except Exception:
+            pass
+
+    async def _push_code_update(code: str, source: str = ""):
+        """Push code update to frontend in real-time via WS."""
+        try:
+            from src.api.ws import ws_manager
+            api_key = user.get("api_key", "")
+            msg = {"type": "code_updated", "project_id": pid, "code": code, "source": source}
             if api_key:
                 await ws_manager.send_to_user(api_key, msg)
         except Exception:
@@ -709,6 +735,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         # Fix succeeded — has data and no error
                         logger.info(f"Auto-fix succeeded on round {fix_round+1}: {len(result['output'])} items")
                         await _push_progress(f"第{fix_round+1}轮修复成功", f"提取到 {len(result['output'])} 条数据", status="ok")
+                        await _push_code_update(new_code, f"自动修复(第{fix_round+1}轮)")
                         await db.update("projects", pid, {
                             "code": new_code,
                             "updated_at": datetime.now(timezone.utc).isoformat(),

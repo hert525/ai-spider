@@ -721,6 +721,17 @@ function handleWSMessage(msg) {
     case 'test_complete':
       toast('测试' + (msg.status === 'success' ? '成功' : '失败'), msg.status === 'success' ? 'success' : 'error');
       break;
+    case 'code_updated':
+      {
+        // Real-time code update from backend (generation, auto-fix, refine)
+        if (msg.project_id && currentProject && msg.project_id === currentProject.id && msg.code) {
+          const editor = document.getElementById('editor-code-area');
+          if (editor) editor.value = msg.code;
+          currentProject.code = msg.code;
+          if (msg.source) toast(`代码已更新 (${msg.source})`, 'success');
+        }
+      }
+      break;
     case 'project_created':
       if (document.getElementById('page-projects') && !document.getElementById('page-projects').classList.contains('hidden')) loadProjects();
       break;
