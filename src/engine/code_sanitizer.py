@@ -213,7 +213,9 @@ async def crawl(url: str, config: dict) -> list[dict]:
                     if remaining:
                         result.append(f"import {', '.join(m.strip() for m in remaining)}")
                     else:
-                        result.append(f"# [sanitizer] removed: {stripped}")
+                        # Keep original indentation with pass to avoid IndentationError
+                        indent = line[:len(line) - len(line.lstrip())]
+                        result.append(f"{indent}pass  # [sanitizer] removed: {stripped}")
                     skip = True
             # from os import ... / from sys import ...
             m2 = re.match(r'^from\s+([\w.]+)\s+import', stripped)
@@ -221,7 +223,8 @@ async def crawl(url: str, config: dict) -> list[dict]:
                 top_mod = m2.group(1).split('.')[0]
                 if top_mod in CodeSanitizer.BLOCKED_MODULES:
                     removed.append(top_mod)
-                    result.append(f"# [sanitizer] removed: {stripped}")
+                    indent = line[:len(line) - len(line.lstrip())]
+                    result.append(f"{indent}pass  # [sanitizer] removed: {stripped}")
                     skip = True
             if not skip:
                 result.append(line)
