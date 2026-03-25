@@ -462,8 +462,49 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary" onclick="importCookies()"><i class="ri-upload-line"></i> 导入Cookie</button>
+        <button class="btn" onclick="openBrowserLogin()" style="background:linear-gradient(135deg,#8b5cf6,#06b6d4);color:#fff;border:none"><i class="ri-window-line"></i> 浏览器登录</button>
       </div>
       <div id="saved-sessions" style="margin-top:16px"></div>
+
+      <!-- Browser Login Modal -->
+      <div id="browser-login-modal" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center">
+        <div style="background:var(--bg-card);border-radius:16px;width:95%;max-width:1360px;max-height:95vh;overflow:hidden;display:flex;flex-direction:column">
+          <!-- Header -->
+          <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-size:18px">🌐</span>
+              <div>
+                <div style="font-weight:600;font-size:15px">浏览器登录</div>
+                <div id="bl-url" style="font-size:12px;color:var(--text-secondary);max-width:600px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="form-input" id="bl-nav-url" placeholder="输入URL回车跳转" style="width:300px;font-size:13px" onkeydown="if(event.key==='Enter')blNavigate()">
+              <button class="btn" onclick="blSave()" style="background:#10B981;color:#fff;border:none"><i class="ri-save-line"></i> 保存登录态</button>
+              <button class="btn" onclick="blStop()" style="color:var(--red)"><i class="ri-close-line"></i> 关闭</button>
+            </div>
+          </div>
+          <!-- Browser viewport -->
+          <div style="flex:1;overflow:hidden;position:relative;background:#1a1a2e;min-height:500px">
+            <img id="bl-frame" style="width:100%;height:100%;object-fit:contain;cursor:crosshair" onclick="blClick(event)" oncontextmenu="return false">
+            <div id="bl-loading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:15px">
+              <div class="spin" style="width:24px;height:24px;border:3px solid rgba(255,255,255,.2);border-top-color:#8b5cf6;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px"></div>
+              正在加载浏览器...
+            </div>
+          </div>
+          <!-- Input bar -->
+          <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
+            <input class="form-input" id="bl-input" placeholder="在此输入文字，按回车发送到浏览器..." style="flex:1;font-size:14px" onkeydown="blInputKey(event)">
+            <button class="btn" onclick="blSendText()" title="发送文字"><i class="ri-send-plane-fill"></i></button>
+            <button class="btn" onclick="blKey('Backspace')" title="退格">⌫</button>
+            <button class="btn" onclick="blKey('Tab')" title="Tab">Tab</button>
+            <button class="btn" onclick="blKey('Enter')" title="回车">↵</button>
+            <button class="btn" onclick="blKey('Escape')" title="Esc">Esc</button>
+            <button class="btn" onclick="blScroll(-300)" title="上滚">↑</button>
+            <button class="btn" onclick="blScroll(300)" title="下滚">↓</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Deploy Tab -->
@@ -734,6 +775,9 @@ function handleWSMessage(msg) {
       break;
     case 'project_created':
       if (document.getElementById('page-projects') && !document.getElementById('page-projects').classList.contains('hidden')) loadProjects();
+      break;
+    case 'browser_frame':
+      _handleBrowserFrame(msg);
       break;
     case 'pong':
       break;
@@ -1266,6 +1310,111 @@ async function deleteSession(id) {
     toast('已删除');
     loadSavedSessions();
   } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── Browser Login ──
+let _blSessionId = null;
+
+async function openBrowserLogin() {
+  const url = currentProject?.target_url || '';
+  if (!url) return toast('请先填写目标URL', 'error');
+  const modal = document.getElementById('browser-login-modal');
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  document.getElementById('bl-loading').style.display = 'block';
+  document.getElementById('bl-frame').style.display = 'none';
+  try {
+    const res = await api('POST', '/api/v1/browser-login/start', { url, project_id: currentProject?.id || '' });
+    _blSessionId = res.session_id;
+    document.getElementById('bl-url').textContent = url;
+    document.getElementById('bl-nav-url').value = url;
+    toast('浏览器已启动');
+  } catch(e) {
+    toast(e.message, 'error');
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+}
+
+// Handle WS browser frames
+function _handleBrowserFrame(msg) {
+  if (msg.session_id !== _blSessionId) return;
+  const img = document.getElementById('bl-frame');
+  const loading = document.getElementById('bl-loading');
+  if (loading) loading.style.display = 'none';
+  img.style.display = 'block';
+  img.src = msg.image;
+  document.getElementById('bl-url').textContent = msg.url || '';
+  document.getElementById('bl-nav-url').value = msg.url || '';
+}
+
+async function blClick(event) {
+  if (!_blSessionId) return;
+  const img = event.target;
+  const rect = img.getBoundingClientRect();
+  // Map click position to 1280x800 viewport
+  const scaleX = 1280 / rect.width;
+  const scaleY = 800 / rect.height;
+  const x = Math.round((event.clientX - rect.left) * scaleX);
+  const y = Math.round((event.clientY - rect.top) * scaleY);
+  try { await api('POST', `/api/v1/browser-login/${_blSessionId}/click`, { x, y }); } catch(e) {}
+}
+
+async function blSendText() {
+  if (!_blSessionId) return;
+  const input = document.getElementById('bl-input');
+  const text = input.value;
+  if (!text) return;
+  try {
+    await api('POST', `/api/v1/browser-login/${_blSessionId}/type`, { text });
+    input.value = '';
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function blInputKey(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    blSendText();
+  }
+}
+
+async function blKey(key) {
+  if (!_blSessionId) return;
+  try { await api('POST', `/api/v1/browser-login/${_blSessionId}/key`, { key }); } catch(e) {}
+}
+
+async function blScroll(deltaY) {
+  if (!_blSessionId) return;
+  try { await api('POST', `/api/v1/browser-login/${_blSessionId}/scroll`, { delta_y: deltaY }); } catch(e) {}
+}
+
+async function blNavigate() {
+  if (!_blSessionId) return;
+  const url = document.getElementById('bl-nav-url').value.trim();
+  if (!url) return;
+  try { await api('POST', `/api/v1/browser-login/${_blSessionId}/navigate`, { url }); } catch(e) { toast(e.message, 'error'); }
+}
+
+async function blSave() {
+  if (!_blSessionId) return;
+  try {
+    const res = await api('POST', `/api/v1/browser-login/${_blSessionId}/save`, {
+      name: `登录 - ${currentProject?.name || ''}`,
+      project_id: currentProject?.id || '',
+    });
+    toast(`✅ 已保存 ${res.cookie_count} 个Cookie (${res.domain})`);
+    loadSavedSessions();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function blStop() {
+  if (_blSessionId) {
+    try { await api('POST', `/api/v1/browser-login/${_blSessionId}/stop`); } catch(e) {}
+  }
+  _blSessionId = null;
+  const modal = document.getElementById('browser-login-modal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
 }
 
 // Deploy

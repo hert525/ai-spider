@@ -527,16 +527,36 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     context = await browser.new_context(
                         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
-                    # Inject cookies if configured
+                    # Inject cookies: from project config + saved browser_sessions
+                    _all_cookies = []
+                    # 1. From project cookie_config field
                     cookie_config = proj.get("cookie_config")
                     if cookie_config:
                         if isinstance(cookie_config, str):
                             import json as _json
                             try: cookie_config = _json.loads(cookie_config)
                             except: cookie_config = {}
-                        cookies = cookie_config.get("cookies", [])
-                        if cookies:
-                            await context.add_cookies(cookies)
+                        _all_cookies.extend(cookie_config.get("cookies", []))
+                    # 2. From browser_sessions table (saved via browser login)
+                    try:
+                        from urllib.parse import urlparse as _urlparse
+                        _domain = _urlparse(url).hostname or ""
+                        _saved = await db.query(
+                            "SELECT cookies FROM browser_sessions WHERE user_id = ? AND domain = ? AND (project_id = ? OR project_id = '' OR project_id IS NULL) AND status = 'active' ORDER BY updated_at DESC LIMIT 1",
+                            [user["id"], _domain, pid],
+                        )
+                        if _saved and _saved[0].get("cookies"):
+                            _sc = _saved[0]["cookies"]
+                            _sc = json.loads(_sc) if isinstance(_sc, str) else _sc
+                            _all_cookies.extend(_sc)
+                            logger.info(f"Loaded {len(_sc)} saved cookies for {_domain}")
+                    except Exception as _ce:
+                        logger.warning(f"Failed to load saved cookies: {_ce}")
+                    if _all_cookies:
+                        try:
+                            await context.add_cookies(_all_cookies)
+                        except Exception as _ce:
+                            logger.warning(f"Failed to inject cookies: {_ce}")
                     page = await context.new_page()
                     # Hide webdriver flag to bypass JS anti-bot checks
                     await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => false})')
