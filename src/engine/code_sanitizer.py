@@ -210,11 +210,10 @@ async def crawl(url: str, config: dict) -> list[dict]:
                     remaining = [mod for mod in m.group(1).split(',') 
                                 if mod.strip().split('.')[0] not in CodeSanitizer.BLOCKED_MODULES]
                     removed.extend(blocked)
+                    indent = line[:len(line) - len(line.lstrip())]
                     if remaining:
-                        result.append(f"import {', '.join(m.strip() for m in remaining)}")
+                        result.append(f"{indent}import {', '.join(m.strip() for m in remaining)}")
                     else:
-                        # Keep original indentation with pass to avoid IndentationError
-                        indent = line[:len(line) - len(line.lstrip())]
                         result.append(f"{indent}pass  # [sanitizer] removed: {stripped}")
                     skip = True
             # from os import ... / from sys import ...

@@ -106,6 +106,8 @@ async def crawl(url: str, config: dict) -> list[dict]:
     def _wrap_requests(code: str) -> str:
         return f'''# Auto-adapted from requests/httpx script
 import asyncio
+import json
+import re
 
 # --- Original Code ---
 {code}
@@ -113,39 +115,24 @@ import asyncio
 
 async def crawl(url: str, config: dict) -> list[dict]:
     """Adapter: runs the original script and captures output."""
-    import io, sys, json
-
     for func_name in ['main', 'run', 'scrape', 'fetch', 'parse', 'spider', 'crawl_sync', 'get_data']:
-        if func_name in dir():
-            func = globals()[func_name]
+        fn = globals().get(func_name)
+        if fn and callable(fn):
             try:
-                result = func(url) if url else func()
+                if asyncio.iscoroutinefunction(fn):
+                    result = await fn(url) if url else await fn()
+                else:
+                    result = await asyncio.to_thread(fn, url) if url else await asyncio.to_thread(fn)
                 if isinstance(result, list):
                     return [r if isinstance(r, dict) else {{"data": str(r)}} for r in result]
                 elif isinstance(result, dict):
                     return [result]
-                else:
+                elif result is not None:
                     return [{{"data": str(result)}}]
             except Exception as e:
                 return [{{"error": str(e)}}]
 
-    old_stdout = sys.stdout
-    sys.stdout = buffer = io.StringIO()
-    try:
-        exec(compile(open(__file__).read() if hasattr(__file__, "read") else "", "<adapted>", "exec"))
-    except:
-        pass
-    finally:
-        sys.stdout = old_stdout
-
-    output = buffer.getvalue()
-    if output:
-        try:
-            return json.loads(output)
-        except:
-            return [{{"output": line}} for line in output.strip().split("\\n") if line.strip()]
-
-    return [{{"error": "No output captured"}}]
+    return [{{"error": "No callable entry function found (main/run/scrape/fetch/parse)"}}]
 '''
 
     @staticmethod
