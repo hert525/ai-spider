@@ -19,10 +19,12 @@ REFINE_CODE_PROMPT = """## 当前代码
 {html_content}
 
 请修复代码中的问题。注意沙箱环境限制:
-- 只能import白名单模块: httpx, parsel, bs4, lxml, json, re, csv, math, time, datetime, asyncio, collections, itertools, functools, string, hashlib, base64, html, playwright.async_api
-- 禁止: os, subprocess, sys, pathlib, socket, pickle 等
+- 只能import白名单模块: httpx, parsel, bs4, lxml, json, re, csv, math, time, datetime, asyncio, collections, itertools, functools, string, hashlib, base64, html
+- 禁止: os, subprocess, sys, pathlib, socket, pickle, playwright 等
 - 禁止: open(), eval(), exec(), compile()
 - 不要用 asyncio.run()，直接用 await
+- ⚠️ 必须优先检查 config.get("pre_rendered_html")，有则直接解析HTML，无则用httpx请求
+- 不要在沙箱里启动 playwright，浏览器渲染由外部系统处理
 只输出修改后的完整代码，用 ```python 包裹。"""
 
 REFINE_WITH_FEEDBACK_PROMPT = """## 当前代码

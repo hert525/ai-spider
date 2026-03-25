@@ -162,6 +162,28 @@ async def main(url, config=None):
         result = self._run(code)
         assert not result["error"], result["error"]
 
+    def test_pre_rendered_html_via_config(self):
+        """Code using config.get('pre_rendered_html') should work."""
+        code = """
+from parsel import Selector
+
+async def crawl(url: str, config: dict) -> list[dict]:
+    pre_html = config.get("pre_rendered_html")
+    if pre_html:
+        sel = Selector(text=pre_html)
+    else:
+        import httpx
+        async with httpx.AsyncClient() as c:
+            resp = await c.get(url)
+            sel = Selector(text=resp.text)
+    return [{"name": t.strip()} for t in sel.css("td::text").getall() if t.strip()]
+"""
+        html = "<table><tr><td>Alice</td><td>Bob</td></tr></table>"
+        result = self._run(code, html=html)
+        assert not result["error"], result["error"]
+        assert len(result["output"]) == 2
+        assert result["output"][0]["name"] == "Alice"
+
     def test_json_dumps_coroutine_error(self):
         """json.dumps on a coroutine should give clear error."""
         code = """

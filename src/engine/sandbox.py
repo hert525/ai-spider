@@ -283,6 +283,10 @@ async def run_code_in_sandbox(
             "delay": settings.default_delay,
         }
 
+        # 注入预渲染HTML到config (推荐方式，代码通过 config.get("pre_rendered_html") 获取)
+        if html:
+            config["pre_rendered_html"] = html
+
         # 注入代理配置
         if proxy_config and proxy_config.get("enabled"):
             from src.engine.proxy import ProxyManager
