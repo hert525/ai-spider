@@ -203,12 +203,13 @@ async def run_code_in_sandbox(
                     # If requesting the target URL (ignoring query params), return pre-rendered HTML
                     if self._urls_match(url, self._target):
                         _html = self._pre_rendered_html
+                        _req_url = url
                         class _FakeResp:
                             status_code = 200
                             text = _html
                             content = _html.encode('utf-8')
                             headers = {"content-type": "text/html; charset=utf-8"}
-                            url = url
+                            url = _req_url
                             def json(self): import json as _j; return _j.loads(_html)
                             def raise_for_status(self): pass
                         return _FakeResp()
