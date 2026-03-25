@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel
@@ -299,6 +300,31 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
         from src.engine.sandbox import run_code_in_sandbox
         proxy_cfg = _resolve_proxy_config(proj)
         code = proj.get("code", "")
+
+        # Detect placeholder/default template code — regenerate with LLM
+        _is_placeholder = (
+            not code.strip()
+            or "example.com" in code
+            or (not re.search(r'async\s+def\s+crawl', code) and len(code) < 500)
+        )
+        if _is_placeholder and url:
+            await _push_progress("检测到默认模板", "正在用AI为目标URL生成专用爬虫代码...")
+            try:
+                from src.engine.graphs.code_generator import CodeGeneratorGraph
+                graph = CodeGeneratorGraph(max_retries=3)
+                state = await graph.run(url=url, description=proj.get("description", ""))
+                generated = state.get("generated_code", "")
+                if generated and "crawl" in generated:
+                    code = generated
+                    # Save the generated code back to project
+                    await db.update("projects", pid, {
+                        "code": code,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    await _push_progress("代码生成完成", f"已生成 {len(code)} 字符的专用爬虫代码", status="ok")
+            except Exception as gen_e:
+                logger.warning(f"Auto code generation failed: {gen_e}")
+                await _push_progress("代码生成失败", str(gen_e)[:100], status="fail")
 
         # If browser mode enabled, pre-render HTML with Playwright and pass to sandbox
         pre_rendered_html = None
