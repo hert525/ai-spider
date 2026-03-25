@@ -376,7 +376,76 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                             if _wait_round >= 3:
                                 logger.info(f"Browser: page loaded but no table data after {(_wait_round+1)*3}s, proceeding")
                                 break
-                    pre_rendered_html = await page.content()
+                    # Check if page has JS-based pagination with an API backend
+                    # If so, fetch ALL pages via XHR and inject full data
+                    _pagination_done = False
+                    if proj.get("description") and "翻页" in proj.get("description", ""):
+                        try:
+                            _api_urls = await page.evaluate("""
+                                () => {
+                                    const entries = performance.getEntriesByType('resource');
+                                    return entries
+                                        .filter(e => e.name.includes('pageIndex') || e.name.includes('pageSize') || e.name.includes('page='))
+                                        .map(e => e.name);
+                                }
+                            """)
+                            if _api_urls:
+                                _api_url = _api_urls[-1]  # Last API call is the data one
+                                logger.info(f"Browser: detected pagination API: {_api_url}")
+                                # Fetch first page with large pageSize to get totalCount
+                                import re as _re
+                                _base_api = _re.sub(r'pageSize=\d+', 'pageSize=500', _api_url)
+                                _base_api = _re.sub(r'pageIndex=\d+', 'pageIndex=0', _base_api)
+
+                                all_data = []
+                                page_idx = 0
+                                while True:
+                                    _paged_api = _re.sub(r'pageIndex=\d+', f'pageIndex={page_idx}', _base_api)
+                                    _resp_text = await page.evaluate("""
+                                        (url) => {
+                                            return new Promise((resolve, reject) => {
+                                                var xhr = new XMLHttpRequest();
+                                                xhr.open("GET", url, true);
+                                                xhr.onload = () => resolve(xhr.responseText);
+                                                xhr.onerror = () => reject("XHR error");
+                                                xhr.timeout = 15000;
+                                                xhr.ontimeout = () => reject("XHR timeout");
+                                                xhr.send();
+                                            });
+                                        }
+                                    """, _paged_api)
+                                    import json as _json2
+                                    _resp_data = _json2.loads(_resp_text)
+                                    _items = _resp_data.get("data", [])
+                                    if not _items:
+                                        break
+                                    all_data.extend(_items)
+                                    _total = _resp_data.get("totalCount", 0)
+                                    _page_count = _resp_data.get("pageCount", 1)
+                                    logger.info(f"Browser pagination: page {page_idx+1}/{_page_count}, got {len(_items)} items, total so far: {len(all_data)}/{_total}")
+                                    page_idx += 1
+                                    if page_idx >= _page_count:
+                                        break
+
+                                if all_data:
+                                    # Build an HTML table from JSON data
+                                    _keys = list(all_data[0].keys())
+                                    _html_parts = ['<html><body><table><tr>']
+                                    _html_parts.extend(f'<th>{k}</th>' for k in _keys)
+                                    _html_parts.append('</tr>')
+                                    for item in all_data:
+                                        _html_parts.append('<tr>')
+                                        _html_parts.extend(f'<td>{item.get(k, "")}</td>' for k in _keys)
+                                        _html_parts.append('</tr>')
+                                    _html_parts.append('</table></body></html>')
+                                    pre_rendered_html = ''.join(_html_parts)
+                                    _pagination_done = True
+                                    logger.info(f"Browser pagination complete: {len(all_data)} total items, HTML: {len(pre_rendered_html)} chars")
+                        except Exception as _pag_e:
+                            logger.warning(f"Pagination fetch failed, falling back to single page: {_pag_e}")
+
+                    if not _pagination_done:
+                        pre_rendered_html = await page.content()
                     # Count data cells for logging
                     from parsel import Selector as _PRSel
                     _pr_cells = len(_PRSel(text=pre_rendered_html).css("table tr td"))
