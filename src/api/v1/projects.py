@@ -634,9 +634,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     if not _pagination_done:
                         pre_rendered_html = await page.content()
                     # Count data cells for logging
-                    from parsel import Selector as _PRSel
-                    _pr_cells = len(_PRSel(text=pre_rendered_html).css("table tr td"))
-                    logger.info(f"Browser pre-render done: {len(pre_rendered_html)} chars, {_pr_cells} table cells")
+                    logger.info(f"Browser pre-render done: {len(pre_rendered_html)} chars")
                     await browser.close()
                     await _push_progress("浏览器渲染完成", f"页面大小: {len(pre_rendered_html)//1024}KB", status="ok")
             except Exception as e:
