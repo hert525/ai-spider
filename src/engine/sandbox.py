@@ -186,6 +186,7 @@ async def run_code_in_sandbox(
             class _PatchedClient(_orig_client_class):
                 _pre_rendered_html = html
                 _target = target_url
+                _html_served = False  # Only serve pre-rendered HTML once
 
                 @staticmethod
                 def _urls_match(req_url, target):
@@ -201,7 +202,9 @@ async def run_code_in_sandbox(
 
                 async def get(self, url, **kwargs):
                     # If requesting the target URL (ignoring query params), return pre-rendered HTML
-                    if self._urls_match(url, self._target):
+                    # Only serve it once to prevent infinite pagination loops
+                    if not _PatchedClient._html_served and self._urls_match(url, self._target):
+                        _PatchedClient._html_served = True
                         _html = self._pre_rendered_html
                         _req_url = url
                         class _FakeResp:
