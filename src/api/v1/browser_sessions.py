@@ -25,6 +25,7 @@ class ImportCookiesReq(BaseModel):
     domain: str
     cookies: str | list[dict]
     name: str = ""
+    project_id: str = ""  # If set, cookie is scoped to this project
 
 
 class TestSessionReq(BaseModel):
@@ -105,11 +106,18 @@ async def import_cookies(req: ImportCookiesReq, user: dict = Depends(get_current
     now = datetime.now(timezone.utc).isoformat()
     session_id = _uid()
 
-    # Upsert: delete existing for same user+domain
-    existing = await db.query(
-        "SELECT id FROM browser_sessions WHERE user_id = ? AND domain = ?",
-        [user["id"], req.domain],
-    )
+    # Upsert: delete existing for same user+domain+project
+    project_id = req.project_id or ""
+    if project_id:
+        existing = await db.query(
+            "SELECT id FROM browser_sessions WHERE user_id = ? AND domain = ? AND project_id = ?",
+            [user["id"], req.domain, project_id],
+        )
+    else:
+        existing = await db.query(
+            "SELECT id FROM browser_sessions WHERE user_id = ? AND domain = ? AND (project_id IS NULL OR project_id = '')",
+            [user["id"], req.domain],
+        )
     if existing:
         await db.delete("browser_sessions", existing[0]["id"])
 
@@ -117,6 +125,7 @@ async def import_cookies(req: ImportCookiesReq, user: dict = Depends(get_current
         "id": session_id,
         "user_id": user["id"],
         "domain": req.domain,
+        "project_id": project_id,
         "name": req.name or req.domain,
         "cookies": json.dumps(cookies, ensure_ascii=False),
         "local_storage": "{}",
@@ -131,9 +140,15 @@ async def import_cookies(req: ImportCookiesReq, user: dict = Depends(get_current
 
 
 @router.get("/sessions")
-async def list_sessions(user: dict = Depends(get_current_user)):
-    """List all saved sessions for the current user."""
-    rows = await db.list("browser_sessions", where={"user_id": user["id"]})
+async def list_sessions(user: dict = Depends(get_current_user), project_id: str = ""):
+    """List saved sessions. If project_id is given, show only that project's cookies."""
+    if project_id:
+        rows = await db.query(
+            "SELECT * FROM browser_sessions WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC",
+            [user["id"], project_id],
+        )
+    else:
+        rows = await db.list("browser_sessions", where={"user_id": user["id"]})
     for r in rows:
         # Parse cookies count without sending full cookies
         try:
