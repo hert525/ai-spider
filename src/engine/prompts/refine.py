@@ -18,7 +18,12 @@ REFINE_CODE_PROMPT = """## 当前代码
 ## 页面HTML(截取)
 {html_content}
 
-请修复代码中的问题。只输出修改后的完整代码，用 ```python 包裹。"""
+请修复代码中的问题。注意沙箱环境限制:
+- 只能import白名单模块: httpx, parsel, bs4, lxml, json, re, csv, math, time, datetime, asyncio, collections, itertools, functools, string, hashlib, base64, html, playwright.async_api
+- 禁止: os, subprocess, sys, pathlib, socket, pickle 等
+- 禁止: open(), eval(), exec(), compile()
+- 不要用 asyncio.run()，直接用 await
+只输出修改后的完整代码，用 ```python 包裹。"""
 
 REFINE_WITH_FEEDBACK_PROMPT = """## 当前代码
 ```python

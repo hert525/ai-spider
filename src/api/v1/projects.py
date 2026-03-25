@@ -358,11 +358,14 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 目标URL: {url}
 
 要求:
-1. 必须定义 async def crawl(url, config) 函数
+1. 必须定义 async def crawl(url, config) -> list[dict] 函数
 2. 返回 list[dict]
 3. 不要用 asyncio.run()，直接用 await
-4. 只用 httpx, bs4, lxml, re, json 等常见库
-5. 如果需要代理，从 config.get("proxy") 获取"""
+4. 只用 httpx, parsel, bs4, lxml, re, json, csv, math, datetime, collections 等白名单库
+5. 如果需要代理，从 config.get("proxy") 获取
+6. 沙箱限制: 禁止 import os/subprocess/sys/pathlib/socket/pickle 等系统模块
+7. 可用的内置函数: len/range/enumerate/zip/map/filter/sorted/min/max/sum/abs/print/isinstance/type/hasattr/getattr/globals/locals 等常用函数
+8. 不要使用 open()/exec()/eval()/compile() 等不安全函数"""
                     resp = await llm_completion(
                         messages=[{"role": "user", "content": fix_prompt}],
                         temperature=0.2,

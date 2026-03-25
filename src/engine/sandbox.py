@@ -43,6 +43,7 @@ _SAFE_BUILTINS = {
     "chr": chr, "ord": ord,
     "hex": hex, "oct": oct, "bin": bin,
     "format": format,
+    "globals": globals, "locals": locals,
     "ValueError": ValueError, "TypeError": TypeError, "KeyError": KeyError,
     "IndexError": IndexError, "AttributeError": AttributeError,
     "StopIteration": StopIteration, "RuntimeError": RuntimeError,
@@ -106,6 +107,12 @@ async def run_code_in_sandbox(
     if detected_format != "standard":
         code = CodeAdapter.wrap(code, detected_format)
         logger.info(f"Sandbox: 自动适配代码格式 {detected_format}")
+
+    # AST自动修复 — 在安全检查之前修复常见LLM错误
+    from src.engine.code_sanitizer import CodeSanitizer
+    code, applied_fixes = CodeSanitizer.sanitize(code)
+    if applied_fixes:
+        logger.info(f"Sandbox: 自动修复 {len(applied_fixes)} 个问题: {', '.join(applied_fixes)}")
 
     # 静态安全检查 — 在exec之前拦截
     security_error = _static_security_check(code)
@@ -176,7 +183,15 @@ async def run_code_in_sandbox(
     sys.stdout = captured = StringIO()
 
     try:
-        exec(code, sandbox_globals)
+        # compile with PyCF_ALLOW_TOP_LEVEL_AWAIT so LLM-generated code
+        # with top-level `await` statements doesn't cause SyntaxError
+        import ast as _ast
+        compiled = compile(code, "<string>", "exec",
+                           flags=_ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
+        coro_or_none = exec(compiled, sandbox_globals)
+        # If code had top-level await, exec returns a coroutine — run it
+        if coro_or_none is not None and asyncio.iscoroutine(coro_or_none):
+            await coro_or_none
         crawl_fn = sandbox_globals.get("crawl")
         if not crawl_fn:
             return {
