@@ -333,7 +333,10 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
             try:
                 from playwright.async_api import async_playwright
                 async with async_playwright() as pw:
-                    browser = await pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                    browser = await pw.chromium.launch(headless=True, args=[
+                        "--no-sandbox", "--disable-dev-shm-usage",
+                        "--disable-blink-features=AutomationControlled",
+                    ])
                     context = await browser.new_context(
                         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
@@ -348,8 +351,15 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         if cookies:
                             await context.add_cookies(cookies)
                     page = await context.new_page()
-                    await page.goto(url, wait_until="networkidle", timeout=30000)
-                    await page.wait_for_timeout(3000)  # extra wait for dynamic content
+                    # Hide webdriver flag to bypass JS anti-bot checks
+                    await page.add_init_script('Object.defineProperty(navigator, "webdriver", {get: () => false})')
+                    await page.goto(url, wait_until="networkidle", timeout=45000)
+                    # Wait for JS challenges to resolve (some sites need multiple rounds)
+                    for _wait_round in range(4):
+                        await page.wait_for_timeout(3000)
+                        _check_html = await page.content()
+                        if len(_check_html) > 5000 and "__jsl_clearance" not in _check_html[:2000]:
+                            break  # Real page loaded
                     pre_rendered_html = await page.content()
                     await browser.close()
                     await _push_progress("浏览器渲染完成", f"页面大小: {len(pre_rendered_html)//1024}KB", status="ok")
