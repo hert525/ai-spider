@@ -7,6 +7,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- CodeMirror 6 -->
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/theme/material-darker.min.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -234,11 +241,48 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </div>
   </header>
   <nav class="nav-tabs">
-    <div class="nav-tab active" data-page="projects" onclick="switchPage('projects')"><i class="ri-folder-3-line"></i> 项目</div>
+    <div class="nav-tab active" data-page="dashboard" onclick="switchPage('dashboard')"><i class="ri-dashboard-line"></i> 概览</div>
+    <div class="nav-tab" data-page="projects" onclick="switchPage('projects')"><i class="ri-folder-3-line"></i> 项目</div>
     <div class="nav-tab" data-page="seeds" onclick="switchPage('seeds')"><i class="ri-seedling-line"></i> 模板市场</div>
     <div class="nav-tab" data-page="tasks" onclick="switchPage('tasks')"><i class="ri-play-circle-line"></i> 任务</div>
     <div class="nav-tab" data-page="data" onclick="switchPage('data')"><i class="ri-database-2-line"></i> 数据</div>
   </nav>
+
+  <!-- Dashboard Page -->
+  <div id="page-dashboard" class="container">
+    <div class="data-overview-grid" id="dash-stats">
+      <div class="card data-stat-card">
+        <div class="data-stat-label">项目</div>
+        <div class="data-stat-value" id="dash-projects">-</div>
+        <div class="data-stat-meta" id="dash-projects-meta"></div>
+      </div>
+      <div class="card data-stat-card">
+        <div class="data-stat-label">任务</div>
+        <div class="data-stat-value" id="dash-tasks">-</div>
+        <div class="data-stat-meta" id="dash-tasks-meta"></div>
+      </div>
+      <div class="card data-stat-card">
+        <div class="data-stat-label">数据记录</div>
+        <div class="data-stat-value" id="dash-records">-</div>
+        <div class="data-stat-meta" id="dash-records-meta"></div>
+      </div>
+      <div class="card data-stat-card">
+        <div class="data-stat-label">Worker</div>
+        <div class="data-stat-value" id="dash-workers">-</div>
+        <div class="data-stat-meta" id="dash-workers-meta"></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div class="card" style="cursor:default">
+        <h3 style="font-size:15px;margin-bottom:12px">📋 最近项目</h3>
+        <div id="dash-recent-projects" style="font-size:13px;color:var(--text-secondary)">加载中...</div>
+      </div>
+      <div class="card" style="cursor:default">
+        <h3 style="font-size:15px;margin-bottom:12px">⚡ 最近活动</h3>
+        <div id="dash-recent-activity" style="font-size:13px;color:var(--text-secondary)">加载中...</div>
+      </div>
+    </div>
+  </div>
 
   <!-- Seeds/Template Marketplace Page -->
   <div id="page-seeds" class="container hidden">
@@ -260,7 +304,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   </div>
 
   <!-- Projects Page -->
-  <div id="page-projects" class="container">
+  <div id="page-projects" class="container hidden">
     <div class="toolbar">
       <h2>我的项目</h2>
       <button class="btn btn-primary" onclick="showNewProjectModal()"><i class="ri-add-line"></i> 新建项目</button>
@@ -358,8 +402,11 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <div id="editor-code" class="hidden">
         <div class="form-group">
-          <label>代码编辑器</label>
-          <textarea class="form-input" id="editor-code-area" rows="12" style="font-family:monospace;font-size:13px" placeholder="# 爬虫代码..."></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="margin:0">代码编辑器</label>
+            <button class="btn btn-sm btn-primary" onclick="saveCode()" id="save-code-btn"><i class="ri-save-line"></i> 保存代码</button>
+          </div>
+          <div id="editor-code-area" style="border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
         </div>
         <div class="form-group">
           <label>AI 对话 — 让 AI 帮你修改代码</label>
@@ -614,6 +661,45 @@ const pathParts = location.pathname.split('/');
 const spiderIdx = pathParts.indexOf('spider');
 const API_BASE = spiderIdx >= 0 ? pathParts.slice(0, spiderIdx + 1).join('/') : '';
 
+// ── CodeMirror editor instance ──
+let _cmEditor = null;
+function _initCodeEditor() {
+  if (_cmEditor) return;
+  const el = document.getElementById('editor-code-area');
+  if (!el || typeof CodeMirror === 'undefined') return;
+  _cmEditor = CodeMirror(el, {
+    value: '',
+    mode: 'python',
+    theme: 'material-darker',
+    lineNumbers: true,
+    matchBrackets: true,
+    autoCloseBrackets: true,
+    indentUnit: 4,
+    tabSize: 4,
+    indentWithTabs: false,
+    lineWrapping: true,
+    viewportMargin: Infinity,
+  });
+  _cmEditor.setSize('100%', '400px');
+}
+function _getCode() { return _cmEditor ? _cmEditor.getValue() : ''; }
+function _setCode(code) {
+  if (_cmEditor) { _cmEditor.setValue(code || ''); _cmEditor.refresh(); }
+}
+
+// ── Button loading helper ──
+function btnLoading(btn, loading, originalHtml) {
+  if (!btn) return;
+  if (loading) {
+    btn._origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> ' + (originalHtml || '处理中...');
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn._origHTML || originalHtml || '';
+  }
+}
+
 // Auth check
 if (!localStorage.getItem('api_key')) {
   location.href = API_BASE + '/login';
@@ -709,7 +795,7 @@ function enterApp() {
   }
   connectWS();
   loadQuotaBar();
-  switchPage('projects');
+  switchPage('dashboard');
 }
 
 // WebSocket
@@ -766,8 +852,7 @@ function handleWSMessage(msg) {
       {
         // Real-time code update from backend (generation, auto-fix, refine)
         if (msg.project_id && currentProject && msg.project_id === currentProject.id && msg.code) {
-          const editor = document.getElementById('editor-code-area');
-          if (editor) editor.value = msg.code;
+          _setCode(msg.code);
           currentProject.code = msg.code;
           if (msg.source) toast(`代码已更新 (${msg.source})`, 'success');
         }
@@ -789,14 +874,65 @@ function handleWSMessage(msg) {
 // Navigation
 function switchPage(page) {
   closeDataDetail();
-  ['projects','seeds','tasks','data','detail'].forEach(p => document.getElementById('page-'+p).classList.add('hidden'));
+  ['dashboard','projects','seeds','tasks','data','detail'].forEach(p => {
+    const el = document.getElementById('page-'+p);
+    if (el) el.classList.add('hidden');
+  });
   document.getElementById('page-'+page).classList.remove('hidden');
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.page===page));
+  if (page==='dashboard') loadDashboard();
   if (page==='projects') loadProjects();
   if (page==='seeds') loadSeeds();
   if (page==='tasks') loadTasks();
   if (page==='data') {
     loadProjectFilter().then(() => refreshDataPage(true));
+  }
+}
+
+async function loadDashboard() {
+  try {
+    const [projects, tasks, overview, workers] = await Promise.all([
+      api('GET', '/api/v1/projects'),
+      api('GET', '/api/v1/tasks').catch(() => []),
+      api('GET', '/api/v1/data/stats').catch(() => ({})),
+      api('GET', '/api/v1/workers').catch(() => []),
+    ]);
+    // Stats cards
+    document.getElementById('dash-projects').textContent = Array.isArray(projects) ? projects.length : 0;
+    const tested = Array.isArray(projects) ? projects.filter(p=>p.status==='tested').length : 0;
+    document.getElementById('dash-projects-meta').textContent = `${tested} 已测试`;
+    
+    const taskArr = Array.isArray(tasks) ? tasks : (tasks.tasks || []);
+    document.getElementById('dash-tasks').textContent = taskArr.length;
+    const running = taskArr.filter(t=>t.status==='running').length;
+    document.getElementById('dash-tasks-meta').textContent = running ? `${running} 运行中` : '无运行中';
+    
+    document.getElementById('dash-records').textContent = overview.total_records ?? '-';
+    
+    const workerArr = Array.isArray(workers) ? workers : (workers.workers || []);
+    const online = workerArr.filter(w=>w.status==='online').length;
+    document.getElementById('dash-workers').textContent = `${online}/${workerArr.length}`;
+    document.getElementById('dash-workers-meta').textContent = '在线';
+
+    // Recent projects
+    const recent = (Array.isArray(projects) ? projects : []).slice(0, 5);
+    document.getElementById('dash-recent-projects').innerHTML = recent.length
+      ? recent.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <a onclick="openProject('${p.id}')" style="cursor:pointer">${esc(p.name || p.description?.slice(0,30) || p.id.slice(0,8))}</a>
+          ${statusBadge(p.status)}
+        </div>`).join('')
+      : '<div style="color:var(--text-muted)">暂无项目</div>';
+
+    // Recent activity (from tasks)
+    const recentTasks = taskArr.slice(0, 5);
+    document.getElementById('dash-recent-activity').innerHTML = recentTasks.length
+      ? recentTasks.map(t => `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <span>${esc(t.name || t.id?.slice(0,8))}</span> ${statusBadge(t.status)}
+          <span style="float:right;font-size:11px;color:var(--text-muted)">${t.last_run_at ? new Date(t.last_run_at).toLocaleString('zh-CN') : ''}</span>
+        </div>`).join('')
+      : '<div style="color:var(--text-muted)">暂无任务活动</div>';
+  } catch(e) {
+    console.warn('Dashboard load error:', e);
   }
 }
 
@@ -1031,7 +1167,8 @@ async function openProject(id) {
       if (typeof extracted === 'string') { try { extracted = JSON.parse(extracted); } catch(e) {} }
       document.getElementById('editor-extracted').textContent = extracted ? JSON.stringify(extracted, null, 2) : '暂无数据';
     } else {
-      document.getElementById('editor-code-area').value = currentProject.code || '';
+      _initCodeEditor();
+      _setCode(currentProject.code || '');
       // Load chat history
       let msgs = currentProject.messages || [];
       if (typeof msgs === 'string') { try { msgs = JSON.parse(msgs); } catch(e) { msgs = []; } }
@@ -1067,6 +1204,17 @@ function switchDetailTab(tab) {
 }
 
 // Chat
+async function saveCode() {
+  if (!currentProject) return;
+  const btn = document.getElementById('save-code-btn');
+  btnLoading(btn, true, '保存中...');
+  try {
+    await api('PUT', `/api/v1/projects/${currentProject.id}/code`, { code: _getCode() });
+    toast('代码已保存');
+  } catch(e) { toast(e.message, 'error'); }
+  btnLoading(btn, false);
+}
+
 async function sendChat() {
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
@@ -1085,7 +1233,7 @@ async function sendChat() {
       reply = lastAi ? lastAi.content : JSON.stringify(res);
     } catch(e) { reply = JSON.stringify(res); }
     box.innerHTML += `<div class="chat-msg ai">${esc(reply)}</div>`;
-    if (res.code) document.getElementById('editor-code-area').value = res.code;
+    if (res.code) _setCode(res.code);
     currentProject = res;
   } catch(e) {
     box.innerHTML += `<div class="chat-msg ai" style="color:var(--red)">错误: ${esc(e.message)}</div>`;
@@ -1123,20 +1271,52 @@ async function runTest() {
       html = `<p style="color:var(--green);margin-bottom:8px">✓ 测试完成 (${elapsed}s)${autoFixed}</p>`;
       if (res.auto_fixed) { html += `<p style="color:var(--text-secondary);font-size:12px;margin-bottom:8px">代码已自动修复并保存，刷新编辑器可查看新代码</p>`; }
     if (Array.isArray(data) && data.length) {
-      const keys = Object.keys(data[0]);
-      html += `<div class="table-wrap"><table><thead><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>`;
-      data.forEach(row => { html += '<tr>' + keys.map(k=>`<td>${esc(String(row[k]??''))}</td>`).join('') + '</tr>'; });
-      html += '</tbody></table></div>';
-    } else {
+      _testData = data;
+      _testPage = 1;
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:13px;color:var(--text-secondary)">共 <strong style="color:var(--text-primary)">${data.length}</strong> 条数据</span>
+        <div style="display:flex;gap:4px;align-items:center">
+          <button class="btn btn-sm" onclick="_testPrev()">‹</button>
+          <span id="test-page-info" style="font-size:12px;color:var(--text-secondary);min-width:80px;text-align:center"></span>
+          <button class="btn btn-sm" onclick="_testNext()">›</button>
+        </div>
+      </div>`;
+      html += `<div class="table-wrap" id="test-table-wrap" style="max-height:500px;overflow:auto"></div>`;
+    } else if (data && (typeof data === 'object')) {
       html += `<pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;overflow:auto;max-height:300px">${esc(JSON.stringify(data,null,2))}</pre>`;
     }
     }
     document.getElementById('test-result').innerHTML = html;
+    if (_testData.length) _renderTestTable();
   } catch(e) {
     document.getElementById('test-result').innerHTML = `<p style="color:var(--red)">✗ ${esc(e.message)}</p>`;
   }
   btn.disabled = false; btn.innerHTML = '<i class="ri-play-line"></i> 运行测试';
 }
+
+// ── Test result table pagination ──
+let _testData = [], _testPage = 1;
+const _TEST_PAGE_SIZE = 50;
+function _renderTestTable() {
+  const wrap = document.getElementById('test-table-wrap');
+  if (!wrap || !_testData.length) return;
+  const total = _testData.length;
+  const totalPages = Math.ceil(total / _TEST_PAGE_SIZE);
+  _testPage = Math.max(1, Math.min(_testPage, totalPages));
+  const start = (_testPage - 1) * _TEST_PAGE_SIZE;
+  const slice = _testData.slice(start, start + _TEST_PAGE_SIZE);
+  const keys = Object.keys(_testData[0]);
+  let html = `<table><thead><tr><th style="width:40px">#</th>${keys.map(k=>`<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>`;
+  slice.forEach((row, i) => {
+    html += `<tr><td style="color:var(--text-muted)">${start+i+1}</td>` + keys.map(k=>`<td>${esc(String(row[k]??''))}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  const info = document.getElementById('test-page-info');
+  if (info) info.textContent = `${_testPage} / ${totalPages}`;
+}
+function _testPrev() { _testPage--; _renderTestTable(); }
+function _testNext() { _testPage++; _renderTestTable(); }
 
 // Sink
 function updateSinkFields() {
