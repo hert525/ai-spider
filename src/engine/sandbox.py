@@ -215,9 +215,38 @@ async def run_code_in_sandbox(
             await coro_or_none
         crawl_fn = sandbox_globals.get("crawl")
         if not crawl_fn:
+            # Fallback: look for any async function that takes 2 params (url, config)
+            import inspect
+            for name, obj in sandbox_globals.items():
+                if name.startswith("_"):
+                    continue
+                if asyncio.iscoroutinefunction(obj):
+                    try:
+                        sig = inspect.signature(obj)
+                        if len(sig.parameters) >= 1:
+                            crawl_fn = obj
+                            logger.info(f"Sandbox: 未找到crawl(), 使用替代函数 '{name}'")
+                            break
+                    except (ValueError, TypeError):
+                        continue
+
+        if not crawl_fn:
+            # Last resort: look for sync functions named main/run/scrape/fetch
+            for fname in ("main", "run", "scrape", "fetch", "parse", "get_data", "spider"):
+                fn = sandbox_globals.get(fname)
+                if callable(fn) and not asyncio.iscoroutinefunction(fn):
+                    # Wrap sync function as async
+                    _sync_fn = fn
+                    async def _async_wrapper(url, config, _f=_sync_fn):
+                        return await asyncio.to_thread(_f, url)
+                    crawl_fn = _async_wrapper
+                    logger.info(f"Sandbox: 使用同步函数 '{fname}' 作为 crawl() 替代")
+                    break
+
+        if not crawl_fn:
             return {
                 "output": [],
-                "error": "代码中未找到 'crawl(url, config)' 函数",
+                "error": "代码中未找到 'crawl(url, config)' 函数，也未找到任何可用的替代函数(main/run/scrape/fetch)",
                 "pages_crawled": 0,
                 "duration_ms": int((time.monotonic() - start) * 1000),
             }

@@ -340,7 +340,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
             await _push_progress("启动自动修复", "AI正在分析错误并修复代码...")
             from src.core.llm import llm_completion
             fix_code = code
-            for fix_round in range(3):
+            for fix_round in range(5):
                 error_msg = result["error"]
                 await _push_progress(f"自动修复 第{fix_round+1}轮", "AI重新生成代码中...")
                 logger.info(f"Auto-fix round {fix_round+1}/3 for project {pid}: {error_msg[:100]}")
