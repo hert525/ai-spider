@@ -207,12 +207,18 @@ async def run_code_in_sandbox(
         # compile with PyCF_ALLOW_TOP_LEVEL_AWAIT so LLM-generated code
         # with top-level `await` statements doesn't cause SyntaxError
         import ast as _ast
+        import types as _types_mod
+        import inspect as _inspect
         compiled = compile(code, "<string>", "exec",
                            flags=_ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
-        coro_or_none = exec(compiled, sandbox_globals)
-        # If code had top-level await, exec returns a coroutine — run it
-        if coro_or_none is not None and asyncio.iscoroutine(coro_or_none):
-            await coro_or_none
+        # exec() ALWAYS returns None — even with PyCF_ALLOW_TOP_LEVEL_AWAIT.
+        # If code has top-level await, the code object has CO_COROUTINE flag.
+        # We must wrap it in a FunctionType and await the call.
+        if compiled.co_flags & _inspect.CO_COROUTINE:
+            _async_fn = _types_mod.FunctionType(compiled, sandbox_globals)
+            await _async_fn()
+        else:
+            exec(compiled, sandbox_globals)
         crawl_fn = sandbox_globals.get("crawl")
         if not crawl_fn:
             # Fallback: look for any async function that takes 2 params (url, config)

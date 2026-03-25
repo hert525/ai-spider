@@ -61,7 +61,12 @@ class CodeSanitizer:
             code = CodeSanitizer._remove_main_block(code)
             fixes.append("removed __main__ block")
 
-        # Fix 8: Detect unawaited async calls (e.g., json.dumps(client.get(url)))
+        # Fix 8: Remove blocked module imports
+        code, removed_imports = CodeSanitizer._remove_blocked_imports(code)
+        if removed_imports:
+            fixes.append(f"removed blocked imports: {', '.join(removed_imports)}")
+
+        # Fix 9: Detect unawaited async calls (e.g., json.dumps(client.get(url)))
         code, fixed_await = CodeSanitizer._fix_missing_await(code)
         if fixed_await:
             fixes.append("added missing await to async calls")
@@ -170,6 +175,50 @@ async def crawl(url: str, config: dict) -> list[dict]:
             flags=re.MULTILINE
         )
         return code
+
+    # Modules that are blocked in the sandbox
+    BLOCKED_MODULES = {
+        "os", "subprocess", "sys", "shutil", "signal", "ctypes",
+        "socket", "multiprocessing", "threading", "importlib",
+        "code", "codeop", "compile", "compileall",
+        "pathlib", "sqlite3", "psycopg2", "asyncpg",
+        "pickle", "shelve", "marshal", "builtins", "__builtin__",
+    }
+
+    @staticmethod
+    def _remove_blocked_imports(code: str) -> tuple[str, list[str]]:
+        """Remove imports of blocked modules so they don't trigger security check."""
+        removed = []
+        lines = code.split('\n')
+        result = []
+        for line in lines:
+            stripped = line.strip()
+            skip = False
+            # import os / import sys / import os, sys
+            m = re.match(r'^import\s+([\w,\s.]+)', stripped)
+            if m:
+                modules = [mod.strip().split('.')[0] for mod in m.group(1).split(',')]
+                blocked = [mod for mod in modules if mod in CodeSanitizer.BLOCKED_MODULES]
+                if blocked:
+                    remaining = [mod for mod in m.group(1).split(',') 
+                                if mod.strip().split('.')[0] not in CodeSanitizer.BLOCKED_MODULES]
+                    removed.extend(blocked)
+                    if remaining:
+                        result.append(f"import {', '.join(m.strip() for m in remaining)}")
+                    else:
+                        result.append(f"# [sanitizer] removed: {stripped}")
+                    skip = True
+            # from os import ... / from sys import ...
+            m2 = re.match(r'^from\s+([\w.]+)\s+import', stripped)
+            if m2 and not skip:
+                top_mod = m2.group(1).split('.')[0]
+                if top_mod in CodeSanitizer.BLOCKED_MODULES:
+                    removed.append(top_mod)
+                    result.append(f"# [sanitizer] removed: {stripped}")
+                    skip = True
+            if not skip:
+                result.append(line)
+        return '\n'.join(result), removed
 
     @staticmethod
     def _fix_missing_await(code: str) -> tuple[str, bool]:
