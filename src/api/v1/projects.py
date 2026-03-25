@@ -58,6 +58,7 @@ class CreateProjectReq(BaseModel):
     mode: str = "code_generator"  # "smart_scraper" or "code_generator"
     sink_config: dict = {}
     use_browser: bool = False
+    enable_pagination: bool = False
     proxy_config: dict = {}
 
 
@@ -105,6 +106,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
     project_data["sink_config"] = req.sink_config
     project_data["proxy_config"] = req.proxy_config
     project_data["use_browser"] = 1 if req.use_browser else 0
+    project_data["enable_pagination"] = 1 if req.enable_pagination else 0
     await db.insert("projects", project_data)
 
     # WS push: project created (immediate, status=generating)
@@ -234,7 +236,7 @@ async def update_project(pid: str, body: dict = Body(...), user: dict = Depends(
     """更新项目配置"""
     allowed_fields = ["name", "description", "target_url", "prompt", "mode", "cron_expr",
                       "proxy_pool_id", "sink_type", "sink_config", "stealth_level", "enable_screenshot",
-                      "use_browser"]
+                      "use_browser", "enable_pagination"]
     updates = {k: v for k, v in body.items() if k in allowed_fields}
     if not updates:
         raise HTTPException(400, "No valid fields to update")
@@ -379,11 +381,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     # Check if page has JS-based pagination with an API backend
                     # Auto-detect by scanning network requests for pagination patterns
                     _pagination_done = False
-                    _wants_pagination = (
-                        (proj.get("description") and "翻页" in proj.get("description", ""))
-                        or (proj.get("description") and "全部" in proj.get("description", ""))
-                        or (proj.get("description") and "所有" in proj.get("description", ""))
-                    )
+                    _wants_pagination = bool(proj.get("enable_pagination"))
                     # Also auto-detect: check if page has pagination controls
                     if not _wants_pagination:
                         try:
