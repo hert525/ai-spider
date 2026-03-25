@@ -518,6 +518,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     # Wait for JS challenges + dynamic data to load
                     # Some sites need: round 1 = JS challenge, round 2 = page shell, round 3 = data
                     for _wait_round in range(6):
+                        await _push_progress("等待页面加载", f"第{_wait_round+1}轮检测... ({(_wait_round+1)*3}s)")
                         await page.wait_for_timeout(3000)
                         _check_html = await page.content()
                         _has_real_content = (
@@ -610,6 +611,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                                     _total = _resp_data.get("totalCount", 0)
                                     _page_count = _resp_data.get("pageCount", 1)
                                     logger.info(f"Browser pagination: page {page_idx+1}/{_page_count}, got {len(_items)} items, total so far: {len(all_data)}/{_total}")
+                                    await _push_progress("翻页抓取", f"第{page_idx+1}/{_page_count}页，已获取 {len(all_data)}/{_total} 条")
                                     page_idx += 1
                                     if page_idx >= _page_count:
                                         break
