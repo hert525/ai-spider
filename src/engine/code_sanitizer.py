@@ -61,6 +61,11 @@ class CodeSanitizer:
             code = CodeSanitizer._remove_main_block(code)
             fixes.append("removed __main__ block")
 
+        # Fix 8: Detect unawaited async calls (e.g., json.dumps(client.get(url)))
+        code, fixed_await = CodeSanitizer._fix_missing_await(code)
+        if fixed_await:
+            fixes.append("added missing await to async calls")
+
         if fixes:
             logger.info(f"CodeSanitizer applied {len(fixes)} fixes: {', '.join(fixes)}")
 
@@ -165,6 +170,50 @@ async def crawl(url: str, config: dict) -> list[dict]:
             flags=re.MULTILINE
         )
         return code
+
+    @staticmethod
+    def _fix_missing_await(code: str) -> tuple[str, bool]:
+        """Detect and fix common unawaited async calls.
+        
+        Patterns like: json.dumps(client.get(url)) → json.dumps(await client.get(url))
+        Also: resp = client.get(url) → resp = await client.get(url)
+        """
+        fixed = False
+        # Known async methods that must be awaited
+        async_patterns = [
+            # httpx async methods
+            (r'(?<!await\s)(\bclient\.get\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bclient\.post\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bclient\.put\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bclient\.delete\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bclient\.head\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bclient\.request\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bclient\.send\s*\()', r'await \1'),
+            # playwright
+            (r'(?<!await\s)(\bpage\.goto\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bpage\.content\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bpage\.wait_for_selector\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bpage\.evaluate\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bbrowser\.new_page\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bbrowser\.close\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bcontext\.new_page\s*\()', r'await \1'),
+            # aiohttp
+            (r'(?<!await\s)(\bsession\.get\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bsession\.post\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bresp\.json\s*\()', r'await \1'),
+            (r'(?<!await\s)(\bresp\.text\s*\()', r'await \1'),
+        ]
+
+        for pattern, replacement in async_patterns:
+            new_code = re.sub(pattern, replacement, code)
+            if new_code != code:
+                fixed = True
+                code = new_code
+
+        # Fix double-await: "await await" → "await"
+        code = re.sub(r'\bawait\s+await\b', 'await', code)
+
+        return code, fixed
 
     @staticmethod
     def _remove_main_block(code: str) -> str:

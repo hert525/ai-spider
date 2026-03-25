@@ -60,6 +60,8 @@ async def crawl(url: str, config: dict) -> list[dict]:
 ## 关键规则
 - 必须严格定义 `async def crawl(url: str, config: dict) -> list[dict]`
 - 所有 `await` 必须在 `async def` 函数内部，绝对不能在函数外部
+- ⚠️ 调用 async 方法必须加 await！例如 `resp = await client.get(url)` 不是 `resp = client.get(url)`
+- ⚠️ 特别注意: httpx.AsyncClient 的 get/post 等都是协程，必须 await，否则会得到协程对象而非响应
 - 不要用 `asyncio.run()`
 - 不要用 `open()`, `eval()`, `exec()`
 - 只用白名单库，不要 import os/sys/subprocess

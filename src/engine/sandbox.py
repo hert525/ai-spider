@@ -134,12 +134,33 @@ async def run_code_in_sandbox(
     safe_builtins = dict(_SAFE_BUILTINS)
     safe_builtins["__import__"] = _safe_import
 
+    # Wrap json module to catch unawaited coroutines (common LLM mistake)
+    import types as _types
+    _patched_json = _types.ModuleType("json")
+    for _attr in dir(json):
+        if not _attr.startswith("_"):
+            setattr(_patched_json, _attr, getattr(json, _attr))
+
+    _orig_dumps = json.dumps
+    def _safe_json_dumps(obj, **kwargs):
+        if asyncio.iscoroutine(obj):
+            raise TypeError(
+                "尝试序列化协程对象 — 你可能忘了 await。"
+                "例如应该用 json.dumps(await func()) 而不是 json.dumps(func())"
+            )
+        if asyncio.isfuture(obj):
+            raise TypeError(
+                "尝试序列化Future对象 — 你可能忘了 await。"
+            )
+        return _orig_dumps(obj, **kwargs)
+    _patched_json.dumps = _safe_json_dumps
+
     sandbox_globals = {
         "__builtins__": safe_builtins,
         "__name__": "__main__",
         "httpx": httpx,
         "parsel": parsel,
-        "json": json,
+        "json": _patched_json,
         "re": re,
         "csv": csv,
         "asyncio": asyncio,
