@@ -43,7 +43,7 @@ async def crawl(url: str, config: dict) -> list[dict]:
     proxy = config.get("proxy")
     client_kwargs = {"headers": headers, "timeout": 20, "follow_redirects": True}
     if proxy:
-        client_kwargs["proxies"] = {"http://": proxy, "https://": proxy}
+        client_kwargs["proxy"] = proxy
 
     async with httpx.AsyncClient(**client_kwargs) as client:
         resp = await client.get(url)

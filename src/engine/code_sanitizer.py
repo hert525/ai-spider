@@ -66,7 +66,14 @@ class CodeSanitizer:
         if removed_imports:
             fixes.append(f"removed blocked imports: {', '.join(removed_imports)}")
 
-        # Fix 9: Detect unawaited async calls (e.g., json.dumps(client.get(url)))
+        # Fix 9: Fix httpx proxies= → proxy= (httpx 0.24+ breaking change)
+        if 'proxies' in code and 'httpx' in code:
+            code = re.sub(r'\bproxies\s*=\s*\{[^}]*\}', lambda m: 'proxy=proxy', code)
+            code = re.sub(r'\bproxies\s*=\s*proxies\b', 'proxy=proxy', code)
+            code = re.sub(r'\bproxies\s*=\s*proxy\b', 'proxy=proxy', code)
+            fixes.append("fixed httpx proxies→proxy")
+
+        # Fix 10: Detect unawaited async calls (e.g., json.dumps(client.get(url)))
         code, fixed_await = CodeSanitizer._fix_missing_await(code)
         if fixed_await:
             fixes.append("added missing await to async calls")
