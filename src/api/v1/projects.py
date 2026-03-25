@@ -234,6 +234,19 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
             else:
                 code = state.get("generated_code", "")
                 v_status = state.get("validation_status", "unknown")
+                v_note = state.get("validation_note", "")
+                # Status label for user
+                if v_status == "success":
+                    _status_label = "✓ 验证通过"
+                elif v_status == "partial_semantic":
+                    _status_label = "⚠ 代码可用，语义验证部分通过"
+                elif v_status == "partial":
+                    _status_label = "⚠ 代码可用，验证部分通过"
+                else:
+                    _status_label = f"验证状态: {v_status}"
+                if v_note:
+                    _status_label += f" ({v_note[:80]})"
+
                 # Push code to frontend in real-time
                 try:
                     from src.api.ws import ws_manager
@@ -247,7 +260,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                     "code": code,
                     "messages": json.dumps([
                         {"role": "user", "content": req.description},
-                        {"role": "assistant", "content": f"已生成爬虫代码（验证状态: {v_status}）"},
+                        {"role": "assistant", "content": f"已生成爬虫代码（{_status_label}）"},
                     ], ensure_ascii=False),
                     "progress": None,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -347,6 +360,20 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                                 except Exception as fx_e:
                                     logger.warning(f"Auto-test fix round {fix_round+1} failed: {fx_e}")
                                     break
+                            else:
+                                # All fix rounds failed — check if browser mode would help
+                                logger.info("Auto-fix exhausted, checking if browser mode needed...")
+                                try:
+                                    _needs_browser = await _should_use_browser(req.target_url, proxy_cfg)
+                                    if _needs_browser:
+                                        logger.info(f"Auto-detect: switching to browser mode for {project.id}")
+                                        await db.update("projects", project.id, {
+                                            "use_browser": 1,
+                                            "code": fix_code,
+                                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                                        })
+                                except Exception:
+                                    pass
                         else:
                             # Test passed on first try
                             logger.info(f"Auto-test passed: {len(test_result.get('output', []))} items")
@@ -395,6 +422,20 @@ async def get_project(pid: str, user: dict = Depends(get_current_user)):
     if not proj:
         raise HTTPException(404, "Project not found")
     return proj
+
+
+@router.put("/projects/{pid}/code")
+async def update_project_code(pid: str, body: dict = Body(...), user: dict = Depends(get_current_user)):
+    """Save code for a project (from editor)."""
+    proj = await db.get("projects", pid)
+    if not proj:
+        raise HTTPException(404)
+    code = body.get("code", "")
+    await db.update("projects", pid, {
+        "code": code,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"ok": True, "chars": len(code)}
 
 
 @router.delete("/projects/{pid}")
