@@ -32,6 +32,7 @@ class WorkerRegisterReq(BaseModel):
     worker_id: str
     hostname: str = ""
     ip: str = ""
+    pool_id: str = ""          # worker pool to join
     max_concurrency: int = 3
     tags: list[str] = []
 
@@ -123,8 +124,14 @@ async def get_worker(worker_id: str):
 async def register_worker(req: WorkerRegisterReq):
     now = datetime.now(timezone.utc).isoformat()
     existing = await db.get("workers", req.worker_id)
+    # Validate pool_id if provided
+    if req.pool_id:
+        pool = await db.get("worker_pools", req.pool_id)
+        if not pool:
+            raise HTTPException(400, f"Worker pool '{req.pool_id}' not found")
+
     if existing:
-        await db.update("workers", req.worker_id, {
+        update_data = {
             "hostname": req.hostname or existing.get("hostname", ""),
             "ip": req.ip or existing.get("ip", ""),
             "status": "online",
@@ -132,12 +139,16 @@ async def register_worker(req: WorkerRegisterReq):
             "tags": req.tags,
             "last_heartbeat": now,
             "updated_at": now,
-        })
+        }
+        if req.pool_id:
+            update_data["pool_id"] = req.pool_id
+        await db.update("workers", req.worker_id, update_data)
     else:
         w = Worker(
             id=req.worker_id,
             hostname=req.hostname,
             ip=req.ip,
+            pool_id=req.pool_id,
             max_concurrency=req.max_concurrency,
             tags=req.tags,
             status=WorkerStatus.ONLINE,

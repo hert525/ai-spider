@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS projects (
     test_results TEXT DEFAULT '[]',
     sink_config TEXT DEFAULT '{}',
     user_id TEXT DEFAULT '',
+    worker_pool_id TEXT DEFAULT '',
     use_browser INTEGER DEFAULT 0,
     proxy_config TEXT DEFAULT '{}',
     stealth_level TEXT DEFAULT 'off',
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS workers (
     id TEXT PRIMARY KEY,
     hostname TEXT DEFAULT '',
     ip TEXT DEFAULT '',
+    pool_id TEXT DEFAULT '',
     status TEXT DEFAULT 'offline',
     max_concurrency INTEGER DEFAULT 3,
     active_jobs INTEGER DEFAULT 0,
@@ -138,6 +140,19 @@ CREATE TABLE IF NOT EXISTS data_records (
 CREATE INDEX IF NOT EXISTS idx_data_project ON data_records(project_id);
 CREATE INDEX IF NOT EXISTS idx_data_task ON data_records(task_id);
 CREATE INDEX IF NOT EXISTS idx_data_hash ON data_records(data_hash);
+
+CREATE TABLE IF NOT EXISTS worker_pools (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    region TEXT DEFAULT '',
+    country TEXT DEFAULT '',
+    tags TEXT DEFAULT '[]',
+    max_concurrency INTEGER DEFAULT 50,
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+);
 
 CREATE TABLE IF NOT EXISTS proxy_pools (
     id TEXT PRIMARY KEY,
@@ -246,6 +261,7 @@ _JSON_FIELDS = {
     "projects": ["extracted_data", "messages", "test_results", "sink_config", "proxy_config"],
     "tasks": ["target_urls"],
     "workers": ["tags", "current_tasks"],
+    "worker_pools": ["tags"],
     "data_records": ["data"],
     "task_runs": [],
     "proxy_pools": ["proxies"],
@@ -254,7 +270,7 @@ _JSON_FIELDS = {
 
 # 合法表名白名单
 _ALLOWED_TABLES = {
-    "users", "projects", "tasks", "task_runs", "workers",
+    "users", "projects", "tasks", "task_runs", "workers", "worker_pools",
     "data_records", "proxy_pools", "system_config", "seed_templates",
     "browser_sessions", "notification_configs", "notification_logs",
     "proxy_permissions",
@@ -309,6 +325,12 @@ if USE_PG:
             )
         return _pool
 
+    # Migrations: add columns that may not exist in older databases
+    _MIGRATIONS = [
+        "ALTER TABLE workers ADD COLUMN IF NOT EXISTS pool_id TEXT DEFAULT ''",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS worker_pool_id TEXT DEFAULT ''",
+    ]
+
     async def init_db():
         """初始化PostgreSQL: 建表 + 连接池"""
         pool = await _get_pool()
@@ -322,6 +344,13 @@ if USE_PG:
                     # 忽略已存在的表/索引
                     if "already exists" not in str(e):
                         logger.warning(f"Schema执行警告: {e}")
+        # Run migrations for existing databases
+        for mig in _MIGRATIONS:
+            try:
+                await pool.execute(mig)
+            except Exception as e:
+                if "already exists" not in str(e) and "duplicate column" not in str(e).lower():
+                    logger.warning(f"Migration warning: {e}")
         logger.info(f"Database initialized (PostgreSQL: {DATABASE_URL.split('@')[-1]})")
 
     async def close_db():
@@ -461,11 +490,27 @@ else:
         conn.row_factory = aiosqlite.Row
         return conn
 
+    # SQLite migrations (no IF NOT EXISTS for ALTER TABLE)
+    _SQLITE_MIGRATIONS = [
+        ("workers", "pool_id", "ALTER TABLE workers ADD COLUMN pool_id TEXT DEFAULT ''"),
+        ("projects", "worker_pool_id", "ALTER TABLE projects ADD COLUMN worker_pool_id TEXT DEFAULT ''"),
+    ]
+
     async def init_db():
         conn = await get_db()
         try:
             await conn.executescript(_SQLITE_SCHEMA)
             await conn.commit()
+            # Run migrations for existing databases
+            for table, col, sql in _SQLITE_MIGRATIONS:
+                try:
+                    cursor = await conn.execute(f"PRAGMA table_info({table})")
+                    columns = [row[1] for row in await cursor.fetchall()]
+                    if col not in columns:
+                        await conn.execute(sql)
+                        await conn.commit()
+                except Exception as e:
+                    logger.warning(f"SQLite migration warning: {e}")
         finally:
             await conn.close()
         logger.info(f"Database initialized (SQLite: {DB_PATH})")

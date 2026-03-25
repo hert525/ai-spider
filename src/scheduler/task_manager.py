@@ -53,10 +53,36 @@ class TaskManager:
     # ── assignment (called by worker poll) ──
 
     async def assign_task(self, worker_id: str) -> dict | None:
-        """Pop a task from the queue and assign to a worker."""
+        """Pop a task from the queue and assign to a worker.
+
+        Pool-aware: if the task's project has a worker_pool_id, only workers
+        in that pool can pick it up. Otherwise, any worker can.
+        """
         task_id = await task_queue.dequeue(worker_id)
         if not task_id:
             return None
+
+        # Check pool compatibility
+        task_data = await db.get("tasks", task_id)
+        if not task_data:
+            return None
+
+        project = await db.get("projects", task_data["project_id"])
+        required_pool = (project or {}).get("worker_pool_id", "")
+
+        if required_pool:
+            # Verify this worker belongs to the required pool
+            worker = await db.get("workers", worker_id)
+            worker_pool = (worker or {}).get("pool_id", "")
+            if worker_pool != required_pool:
+                # Put the task back and return nothing for this worker
+                priority = task_data.get("priority", 5)
+                await task_queue.enqueue(task_id, priority)
+                logger.debug(
+                    f"Task {task_id} requires pool {required_pool}, "
+                    f"worker {worker_id} is in pool '{worker_pool}' — skipped"
+                )
+                return None
 
         now = datetime.now().isoformat()
         await db.update("tasks", task_id, {
@@ -67,14 +93,9 @@ class TaskManager:
 
         # Create a task_run record
         run = TaskRun(task_id=task_id, worker_id=worker_id)
-        await db.insert("task_runs", run.model_dump())
-
-        task_data = await db.get("tasks", task_id)
-        if not task_data:
-            return None
-
-        # Fetch project code so the worker can execute
-        project = await db.get("projects", task_data["project_id"])
+        run_data = run.model_dump()
+        run_data["user_id"] = task_data.get("user_id", "")
+        await db.insert("task_runs", run_data)
 
         return {
             "task_id": task_id,

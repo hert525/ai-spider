@@ -65,6 +65,7 @@ class Project(BaseModel):
     version: int = 1
     messages: list[dict] = []
     test_results: list[dict] = []
+    worker_pool_id: str = ""  # preferred worker pool for this project
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -104,11 +105,26 @@ class TaskRun(BaseModel):
     duration_ms: int = 0
 
 
+# ── Worker Pool ──
+class WorkerPool(BaseModel):
+    id: str = Field(default_factory=_uid)
+    name: str = ""
+    description: str = ""
+    region: str = ""          # e.g. "us", "cn", "eu", "jp"
+    country: str = ""         # e.g. "US", "CN", "DE", "JP"
+    tags: list[str] = []
+    max_concurrency: int = 50  # pool-level concurrency cap
+    status: str = "active"     # active / disabled
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 # ── Worker ──
 class Worker(BaseModel):
     id: str = ""
     hostname: str = ""
     ip: str = ""
+    pool_id: str = ""         # belongs to which worker pool
     status: WorkerStatus = WorkerStatus.ONLINE
     max_concurrency: int = 3
     active_jobs: int = 0

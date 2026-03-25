@@ -121,6 +121,7 @@ class CreateProjectReq(BaseModel):
     use_browser: bool = False
     enable_pagination: bool = False
     proxy_config: dict = {}
+    worker_pool_id: str = ""  # preferred worker pool for task execution
 
 
 class UpdateSinkReq(BaseModel):
@@ -166,6 +167,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
     project_data["user_id"] = user["id"]
     project_data["sink_config"] = req.sink_config
     project_data["proxy_config"] = req.proxy_config
+    project_data["worker_pool_id"] = req.worker_pool_id
     project_data["use_browser"] = 1 if req.use_browser else 0
     project_data["enable_pagination"] = 1 if req.enable_pagination else 0
     await db.insert("projects", project_data)
@@ -450,7 +452,7 @@ async def update_project(pid: str, body: dict = Body(...), user: dict = Depends(
     """更新项目配置"""
     allowed_fields = ["name", "description", "target_url", "prompt", "mode", "cron_expr",
                       "proxy_pool_id", "sink_type", "sink_config", "stealth_level", "enable_screenshot",
-                      "use_browser", "enable_pagination"]
+                      "use_browser", "enable_pagination", "worker_pool_id"]
     updates = {k: v for k, v in body.items() if k in allowed_fields}
     if not updates:
         raise HTTPException(400, "No valid fields to update")
