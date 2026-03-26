@@ -389,8 +389,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
     </div>
     <div class="detail-tabs">
-      <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">编辑器</div>
-      <div class="detail-tab" data-tab="test" onclick="switchDetailTab('test')">测试</div>
+      <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">编辑器 & 测试</div>
       <div class="detail-tab" data-tab="sink" onclick="switchDetailTab('sink')">Sink配置</div>
       <div class="detail-tab" data-tab="proxy" onclick="switchDetailTab('proxy')">代理配置</div>
       <div class="detail-tab" data-tab="browser" onclick="switchDetailTab('browser')">🌐 浏览器</div>
@@ -421,29 +420,29 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <div id="editor-code-area" style="border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
           </div>
         </div>
+
+        <!-- Test Section (merged from test tab) -->
+        <div class="form-group">
+          <label><i class="ri-play-circle-line"></i> 测试运行</label>
+          <div style="display:flex;gap:8px">
+            <input class="form-input" id="test-url" placeholder="https://example.com" style="flex:1">
+            <button class="btn btn-primary" id="test-run-btn" onclick="runTest()"><i class="ri-play-line"></i> 运行测试</button>
+          </div>
+          <div id="test-result" style="margin-top:12px"></div>
+        </div>
+
+        <!-- AI Chat -->
         <div class="form-group">
           <label><i class="ri-robot-line"></i> AI 工作台</label>
           <div class="chat-box">
             <div class="chat-messages" id="chat-messages"></div>
             <div class="chat-input-row">
-              <input id="chat-input" placeholder="输入指令... (Enter发送)" onkeydown="if(event.key==='Enter')sendChat()">
+              <input id="chat-input" placeholder="输入指令让AI修改代码... (Enter发送)" onkeydown="if(event.key==='Enter')sendChat()">
               <button onclick="sendChat()"><i class="ri-send-plane-fill"></i></button>
             </div>
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Test Tab -->
-    <div id="tab-test" class="hidden">
-      <div class="form-group">
-        <label>目标 URL</label>
-        <div style="display:flex;gap:8px">
-          <input class="form-input" id="test-url" placeholder="https://example.com" style="flex:1">
-          <button class="btn btn-primary" id="test-run-btn" onclick="runTest()"><i class="ri-play-line"></i> 运行测试</button>
-        </div>
-      </div>
-      <div id="test-result" style="margin-top:16px"></div>
     </div>
 
     <!-- Sink Tab -->
@@ -1287,7 +1286,7 @@ async function openProject(id) {
 }
 
 function switchDetailTab(tab) {
-  ['editor','test','sink','proxy','browser','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
+  ['editor','sink','proxy','browser','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
   document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
   if (tab === 'browser') loadSavedSessions();
 }
