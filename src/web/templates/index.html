@@ -423,6 +423,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 
         <!-- Unified AI Workspace: chat + test results all in one -->
         <div class="form-group" style="flex:1;display:flex;flex-direction:column">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <input class="form-input" id="test-url" placeholder="目标 URL" style="flex:1">
+          </div>
           <div class="chat-box" style="flex:1;max-height:none">
             <div class="chat-messages" id="chat-messages" style="min-height:300px;max-height:60vh"></div>
             <div class="chat-input-row">
@@ -431,9 +434,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             </div>
           </div>
         </div>
-        <!-- Hidden elements for backward compat -->
         <div id="test-result" class="hidden"></div>
-        <input type="hidden" id="test-url">
       </div>
     </div>
 
@@ -1254,6 +1255,7 @@ async function openProject(id) {
       }
       box.scrollTop = box.scrollHeight;
     }
+    document.getElementById('test-url').value = currentProject.target_url || '';
     // sink
     const sinkCfg = currentProject.sink_config || {};
     if (typeof sinkCfg === 'string') { try { currentProject.sink_config = JSON.parse(sinkCfg); } catch(e) { currentProject.sink_config = {}; } }
@@ -1299,7 +1301,7 @@ async function sendChat() {
   const msg = input.value.trim();
   if (!msg || !currentProject) return;
   input.value = '';
-  const testUrl = currentProject.target_url || '';
+  const testUrl = document.getElementById('test-url')?.value?.trim() || currentProject.target_url || '';
 
   // User message
   _appendChat('user', msg);
