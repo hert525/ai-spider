@@ -458,6 +458,13 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div id="proxy-pool-info" style="margin-top:8px;font-size:13px;color:var(--text-secondary)"></div>
       </div>
       <div id="no-proxy-hint" class="hidden" style="padding:16px;color:var(--text-muted);text-align:center">暂无可用代理，请联系管理员</div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Worker Pool</label>
+        <select class="form-input" id="proj-worker-pool">
+          <option value="">默认 (不限)</option>
+        </select>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">指定任务分配到哪个 Worker Pool 执行</div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn btn-primary" onclick="saveProxy()"><i class="ri-save-line"></i> 保存配置</button>
         <button class="btn" onclick="testProxy()"><i class="ri-speed-line"></i> 测试代理</button>
@@ -1188,6 +1195,8 @@ async function openProject(id) {
     let proxyCfg = currentProject.proxy_config || {};
     if (typeof proxyCfg === 'string') { try { proxyCfg = JSON.parse(proxyCfg); } catch(e) { proxyCfg = {}; } currentProject.proxy_config = proxyCfg; }
     loadAvailableProxies(proxyCfg.proxy_pool_id || '');
+    // worker pool
+    loadAvailableWorkerPools(currentProject.worker_pool_id || '');
     // browser settings
     document.getElementById('use-browser').checked = !!currentProject.use_browser;
     document.getElementById('stealth-level').value = currentProject.stealth_level || 'off';
@@ -1413,13 +1422,37 @@ async function loadAvailableProxies(selectedId) {
   } catch(e) { hint.classList.remove('hidden'); }
 }
 
+async function loadAvailableWorkerPools(selectedId) {
+  const select = document.getElementById('proj-worker-pool');
+  if (!select) return;
+  try {
+    const pools = await api('GET', '/api/v1/worker-pools');
+    const list = Array.isArray(pools) ? pools : (pools.items||[]);
+    select.innerHTML = '<option value="">默认 (不限)</option>';
+    const flags = {us:'🇺🇸',cn:'🇨🇳',eu:'🇪🇺',jp:'🇯🇵',kr:'🇰🇷',sg:'🇸🇬',de:'🇩🇪',uk:'🇬🇧',fr:'🇫🇷',au:'🇦🇺',ap:'🌏'};
+    list.forEach(p => {
+      const flag = flags[(p.region||'').toLowerCase()] || '🌐';
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${flag} ${p.name} (${p.online_count||0}/${p.worker_count||0} workers)`;
+      select.appendChild(opt);
+    });
+    if (selectedId) select.value = selectedId;
+  } catch(e) {}
+}
+
 async function saveProxy() {
   if (!currentProject) return;
   const proxy_pool_id = document.getElementById('proxy-pool-select').value;
+  const worker_pool_id = document.getElementById('proj-worker-pool') ? document.getElementById('proj-worker-pool').value : '';
   try {
     const res = await api('PUT', `/api/v1/projects/${currentProject.id}/proxy`, { proxy_pool_id });
     currentProject.proxy_config = { proxy_pool_id };
-    toast('代理配置已保存');
+    if (worker_pool_id !== undefined) {
+      await api('PUT', `/api/v1/projects/${currentProject.id}`, { worker_pool_id: worker_pool_id || null });
+      currentProject.worker_pool_id = worker_pool_id || null;
+    }
+    toast('配置已保存');
   } catch(e) { toast(e.message,'error'); }
 }
 

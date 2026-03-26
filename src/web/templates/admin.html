@@ -155,6 +155,11 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 .empty-state .empty-title{font-size:18px;font-weight:600;margin-bottom:8px;color:var(--text-primary)}
 .empty-state .empty-desc{font-size:14px;color:var(--text-secondary);max-width:420px;margin:0 auto 20px;line-height:1.6}
 .empty-state .btn{width:auto;display:inline-block}
+.pool-chip{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);padding:4px 14px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.pool-chip:hover{border-color:var(--accent);color:var(--text-primary)}
+.pool-chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.pool-chip .pool-actions{display:none;margin-left:4px;gap:2px}.pool-chip:hover .pool-actions{display:inline-flex}
+.pool-chip .pool-action-btn{background:none;border:none;cursor:pointer;padding:0 2px;font-size:11px;opacity:.7;color:inherit}.pool-chip .pool-action-btn:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -282,6 +287,13 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
       <div style="margin-bottom:20px">
         <button class="btn btn-primary" onclick="showDeployModal()">🚀 部署新Worker</button>
       </div>
+      <!-- Worker Pool 管理 -->
+      <div id="pool-filter-bar" style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text-secondary);margin-right:4px">Pool:</span>
+        <button class="btn btn-sm pool-chip active" data-pool="" onclick="filterByPool('')" style="border-radius:20px">全部</button>
+        <div id="pool-chips" style="display:inline-flex;gap:6px;flex-wrap:wrap"></div>
+        <button class="btn btn-sm btn-outline" onclick="showCreatePool()" style="border-radius:20px;margin-left:4px">+ 创建Pool</button>
+      </div>
       <div class="worker-stats-bar" id="worker-stats-bar"></div>
       <div class="worker-grid" id="workers-grid"></div>
 
@@ -302,6 +314,35 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
           <div id="deploy-tokens-list" style="font-size:13px;color:var(--text-secondary)">加载中...</div>
           <div style="margin-top:20px;text-align:right">
             <button class="btn btn-outline" onclick="hideDeployModal()">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pool Modal (in Workers page) -->
+      <div id="pool-modal-workers" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)hidePoolModal()">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:0;width:480px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+          <div style="padding:24px 28px 0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+              <h3 id="pool-modal-title-w" style="margin:0;font-size:18px">创建 Worker Pool</h3>
+              <button onclick="hidePoolModal()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:20px;line-height:1">✕</button>
+            </div>
+            <input type="hidden" id="pool-edit-id-w">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div><label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:5px">名称 *</label><input id="wp-name-w" placeholder="US East Pool" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none"></div>
+              <div><label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:5px">描述</label><input id="wp-desc-w" placeholder="美东机房节点" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div><label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:5px">地区</label><input id="wp-region-w" placeholder="us / cn / eu" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none"></div>
+                <div><label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:5px">国家</label><input id="wp-country-w" placeholder="US / CN / DE" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none"></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div><label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:5px">最大并发</label><input id="wp-concurrency-w" type="number" value="50" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none"></div>
+                <div><label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:5px">标签 (逗号分隔)</label><input id="wp-tags-w" placeholder="fast, residential" style="width:100%;padding:9px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px;outline:none"></div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;padding:18px 28px;margin-top:8px;border-top:1px solid var(--border)">
+            <button onclick="saveWorkerPool()" style="flex:1;padding:9px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:500;cursor:pointer">💾 保存</button>
+            <button onclick="hidePoolModal()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:13px;cursor:pointer">取消</button>
           </div>
         </div>
       </div>
@@ -909,6 +950,8 @@ async function batchTaskAction(action) {
 
 // --- Workers ---
 let _workerRefreshTimer = null;
+let _workerPools = [];
+let _currentPoolFilter = '';
 function _barColor(pct) { return pct > 80 ? 'red' : pct > 50 ? 'yellow' : 'green'; }
 function _timeAgo(iso) {
   if (!iso) return '-';
@@ -930,6 +973,12 @@ async function loadWorkers() {
   const grid = document.getElementById('workers-grid');
   const statsBar = document.getElementById('worker-stats-bar');
   showLoading(grid);
+  // Load pools for filter bar
+  try {
+    const pools = await api('/api/v1/worker-pools') || [];
+    _workerPools = Array.isArray(pools) ? pools : (pools.items||[]);
+    renderPoolChips(_workerPools);
+  } catch(e) { _workerPools = []; }
   try {
     const d = await api('/api/v1/workers');
     if (!d) { grid.innerHTML='<div style="color:var(--text-muted)">无数据</div>'; return; }
@@ -956,17 +1005,20 @@ async function loadWorkers() {
       <div class="stat-card"><div class="label">平均CPU</div><div class="value">${avgCpu}%</div></div>
       <div class="stat-card"><div class="label">平均内存</div><div class="value">${avgMem}MB</div></div>`;
 
-    if (!list.length) { 
+    // Apply pool filter
+    const filteredList = _currentPoolFilter ? list.filter(w => w.pool_id === _currentPoolFilter) : list;
+
+    if (!filteredList.length) { 
       grid.innerHTML=`<div class="empty-state">
         <div class="empty-icon">🖥️</div>
-        <div class="empty-title">还没有 Worker 节点</div>
+        <div class="empty-title">${_currentPoolFilter ? '该 Pool 下没有 Worker' : '还没有 Worker 节点'}</div>
         <div class="empty-desc">Worker 负责执行爬取任务。点击"部署新Worker"在目标机器上安装。当前服务器自带的内置 Worker 会在有任务时自动启动。</div>
         <button class="btn btn-sm btn-primary" onclick="showDeployModal()">🚀 部署新 Worker</button>
       </div>`;
       return; 
     }
 
-    grid.innerHTML = list.map(w => {
+    grid.innerHTML = filteredList.map(w => {
       const st = w.status || 'offline';
       const cpu = w.cpu_percent || 0;
       const memMb = w.memory_mb || 0;
@@ -990,6 +1042,7 @@ async function loadWorkers() {
         </div>
         <div class="w-info">主机: ${w.hostname||'-'} | IP: ${w.ip||'-'}</div>
         <div class="w-info">系统: ${w.os_info||'-'} | Python ${w.python_version||'-'}</div>
+        <div class="w-info">Pool: ${w.pool_id ? '<span class="badge badge-blue">'+((_workerPools.find(p=>p.id===w.pool_id)||{}).name||w.pool_id.slice(0,8))+'</span>' : '<span class="badge badge-gray">未分配</span>'}</div>
         <hr class="w-separator">
         <div class="w-bar"><span class="w-bar-label">CPU</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(cpu)}" style="width:${cpu}%"></div></div><span class="w-bar-val">${cpu.toFixed?cpu.toFixed(1):cpu}%</span></div>
         <div class="w-bar"><span class="w-bar-label">内存</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(memPct)}" style="width:${memPct}%"></div></div><span class="w-bar-val">${Math.round(memMb)}/${Math.round(memTotal)} MB</span></div>
@@ -1001,6 +1054,11 @@ async function loadWorkers() {
         <div class="w-actions">
           ${st!=='draining'&&st!=='disabled' ? `<button class="btn btn-sm" onclick="workerAction('${wid}','drain')" title="排空：完成当前任务后不再接新任务">🟡 排空</button>` : ''}
           <button class="btn btn-sm" onclick="toggleWorkerDetail('${wid}')">📋 详情</button>
+          <select onchange="assignWorkerPool('${wid}',this.value)" style="padding:4px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:12px">
+            <option value="">分配Pool...</option>
+            <option value="__none__" ${!w.pool_id?'disabled':''}>移除分配</option>
+            ${_workerPools.map(p=>`<option value="${p.id}" ${w.pool_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
+          </select>
         </div>
         <div class="w-tasks-detail" id="wd-${wid}">加载中...</div>
       </div>`;
@@ -1887,6 +1945,118 @@ async function loadAlerts() {
 }
 
 // ============ Dashboard 加队列状态 ============
+// ============ Worker Pools ============
+const _regionFlags = {us:'🇺🇸',cn:'🇨🇳',eu:'🇪🇺',jp:'🇯🇵',kr:'🇰🇷',sg:'🇸🇬',de:'🇩🇪',uk:'🇬🇧',fr:'🇫🇷',au:'🇦🇺',ap:'🌏'};
+
+function renderPoolChips(pools) {
+  const container = document.getElementById('pool-chips');
+  if (!container) return;
+  container.innerHTML = pools.map(p => {
+    const flag = _regionFlags[(p.region||'').toLowerCase()] || '🌐';
+    const isActive = _currentPoolFilter === p.id;
+    return `<button class="btn btn-sm pool-chip ${isActive?'active':''}" data-pool="${p.id}" onclick="filterByPool('${p.id}')" style="border-radius:20px">
+      ${flag} ${esc(p.name)} <span style="opacity:.7">(${p.online_count||0}/${p.worker_count||0})</span>
+      <span class="pool-actions">
+        <button class="pool-action-btn" onclick="event.stopPropagation();editPool('${p.id}')" title="编辑">✏️</button>
+        <button class="pool-action-btn" onclick="event.stopPropagation();deletePool('${p.id}')" title="删除">🗑️</button>
+      </span>
+    </button>`;
+  }).join('');
+  const allBtn = document.querySelector('#pool-filter-bar > .pool-chip[data-pool=""]');
+  if (allBtn) allBtn.classList.toggle('active', !_currentPoolFilter);
+}
+
+function filterByPool(poolId) {
+  _currentPoolFilter = poolId;
+  loadWorkers();
+}
+
+function showCreatePool() {
+  const suffix = document.getElementById('pool-modal-workers') ? '-w' : '';
+  document.getElementById('pool-edit-id'+suffix).value = '';
+  document.getElementById('pool-modal-title'+suffix).textContent = '创建 Worker Pool';
+  document.getElementById('wp-name'+suffix).value = '';
+  document.getElementById('wp-desc'+suffix).value = '';
+  document.getElementById('wp-region'+suffix).value = '';
+  document.getElementById('wp-country'+suffix).value = '';
+  document.getElementById('wp-concurrency'+suffix).value = '50';
+  document.getElementById('wp-tags'+suffix).value = '';
+  const modal = document.getElementById('pool-modal-workers') || document.getElementById('pool-modal');
+  modal.classList.remove('hidden');
+}
+
+async function editPool(id) {
+  const pool = await api('/api/v1/worker-pools/' + id);
+  if (!pool) return toast('未找到', 'error');
+  const suffix = document.getElementById('pool-modal-workers') ? '-w' : '';
+  document.getElementById('pool-edit-id'+suffix).value = id;
+  document.getElementById('pool-modal-title'+suffix).textContent = '编辑 Worker Pool';
+  document.getElementById('wp-name'+suffix).value = pool.name || '';
+  document.getElementById('wp-desc'+suffix).value = pool.description || '';
+  document.getElementById('wp-region'+suffix).value = pool.region || '';
+  document.getElementById('wp-country'+suffix).value = pool.country || '';
+  document.getElementById('wp-concurrency'+suffix).value = pool.max_concurrency || 50;
+  document.getElementById('wp-tags'+suffix).value = (Array.isArray(pool.tags) ? pool.tags : []).join(', ');
+  const modal = document.getElementById('pool-modal-workers') || document.getElementById('pool-modal');
+  modal.classList.remove('hidden');
+}
+
+function hidePoolModal() {
+  const m1 = document.getElementById('pool-modal-workers');
+  const m2 = document.getElementById('pool-modal');
+  if (m1) m1.classList.add('hidden');
+  if (m2) m2.classList.add('hidden');
+}
+
+async function saveWorkerPool() {
+  const suffix = document.getElementById('pool-modal-workers') && !document.getElementById('pool-modal-workers').classList.contains('hidden') ? '-w' : '';
+  const id = document.getElementById('pool-edit-id'+suffix).value;
+  const body = {
+    name: document.getElementById('wp-name'+suffix).value.trim(),
+    description: document.getElementById('wp-desc'+suffix).value.trim(),
+    region: document.getElementById('wp-region'+suffix).value.trim(),
+    country: document.getElementById('wp-country'+suffix).value.trim().toUpperCase(),
+    max_concurrency: parseInt(document.getElementById('wp-concurrency'+suffix).value) || 50,
+    tags: document.getElementById('wp-tags'+suffix).value.split(',').map(s => s.trim()).filter(Boolean),
+  };
+  if (!body.name) return toast('请输入名称', 'warn');
+  try {
+    if (id) await api('/api/v1/worker-pools/' + id, { method: 'PUT', body: JSON.stringify(body) });
+    else await api('/api/v1/worker-pools', { method: 'POST', body: JSON.stringify(body) });
+    toast('保存成功', 'success');
+    hidePoolModal();
+    loadWorkers();
+    if (typeof loadWorkerPools === 'function') try { loadWorkerPools(); } catch(e) {}
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+async function deletePool(id) {
+  if (!confirm('确认删除？Pool内Worker将变为未分配。')) return;
+  try {
+    await api('/api/v1/worker-pools/' + id, { method: 'DELETE' });
+    toast('已删除', 'success');
+    if (_currentPoolFilter === id) _currentPoolFilter = '';
+    loadWorkers();
+    if (typeof loadWorkerPools === 'function') try { loadWorkerPools(); } catch(e) {}
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+async function assignWorkerPool(workerId, poolId) {
+  if (poolId === '') return;
+  try {
+    if (poolId === '__none__') {
+      const worker = await api('/api/v1/workers/' + workerId);
+      if (worker && worker.pool_id) {
+        await api(`/api/v1/worker-pools/${worker.pool_id}/workers/${workerId}`, { method: 'DELETE' });
+      }
+    } else {
+      await api(`/api/v1/worker-pools/${poolId}/workers/${workerId}`, { method: 'POST' });
+    }
+    toast('已更新', 'success');
+    loadWorkers();
+  } catch (e) { toast('分配失败: ' + e.message, 'error'); }
+}
+
 (function patchDashboard() {
   const origLoadDashboard = window.loadDashboard;
   window.loadDashboard = async function() {
