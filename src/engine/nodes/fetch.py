@@ -144,7 +144,12 @@ class FetchNode(BaseNode):
 
         try:
             if self.use_browser:
-                html = await self._fetch_browser(url, state)
+                try:
+                    html = await self._fetch_browser(url, state)
+                except Exception as browser_err:
+                    self.logger.warning(f"Browser fetch failed, falling back to httpx: {browser_err}")
+                    html = await self._fetch_httpx(url)
+                    state["_browser_fallback"] = True
             else:
                 html = await self._fetch_httpx(url)
 

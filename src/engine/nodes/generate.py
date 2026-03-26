@@ -22,11 +22,16 @@ class GenerateNode(BaseNode):
         # SPA detection: guide LLM to use API strategy instead of CSS selectors
         if state.get("is_spa"):
             self.logger.info("SPA detected — injecting API strategy hint into prompt")
+
+            # Try to probe common API endpoints and show the actual response structure to LLM
+            api_hint = await self._probe_api(target_url)
+
             content = (
                 "[SPA检测] 此页面是SPA应用（React/Vue/Next.js），HTML中不包含实际数据。"
                 "数据由JavaScript动态加载，通常来自后端API。"
-                "请使用策略A（直接请求API）获取数据，不要用CSS选择器解析HTML。\n\n"
-                + content[:15000]
+                "请使用策略A（直接请求API）获取数据，不要用CSS选择器解析HTML。\n"
+                + api_hint + "\n\n"
+                + content[:12000]
             )
 
         prompt = CODE_GEN_USER_PROMPT.format(
@@ -97,3 +102,57 @@ class GenerateNode(BaseNode):
         # Last resort: return as-is but log warning
         self.logger.warning("Could not extract code block from LLM response, using raw text")
         return text.strip()
+
+    async def _probe_api(self, target_url: str) -> str:
+        """Try common API patterns for a URL and return a hint with actual response structure."""
+        import httpx
+        import json
+        from urllib.parse import urlparse
+
+        parsed = urlparse(target_url)
+        domain = parsed.hostname or ""
+        path = parsed.path.rstrip("/")
+
+        # Build candidate API URLs based on common patterns
+        candidates = []
+        # Pattern: api.{domain}/api/...
+        base_domain = domain.removeprefix("www.")
+        # Extract path segments for hints
+        # e.g. /zh/market-activity/stocks/aapl/historical → extract 'aapl', 'historical'
+        segments = [s for s in path.split("/") if s and s not in ("zh", "en")]
+
+        # Common API patterns
+        candidates.append(f"https://api.{base_domain}/api/{'/'.join(segments[-3:])}")
+        candidates.append(f"https://api.{base_domain}/api/{'/'.join(segments[-2:])}")
+        candidates.append(f"https://{domain}/api/{'/'.join(segments[-3:])}")
+        candidates.append(f"https://{domain}/api/{'/'.join(segments[-2:])}")
+        candidates.append(f"https://{domain}/_next/data/{'/'.join(segments)}.json")
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+        }
+
+        for api_url in candidates:
+            try:
+                async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
+                    resp = await client.get(api_url)
+                    if resp.status_code == 200:
+                        text = resp.text[:3000]
+                        try:
+                            data = json.loads(text)
+                            # Truncate to show structure
+                            preview = json.dumps(data, ensure_ascii=False, indent=2)[:2000]
+                            self.logger.info(f"API probe hit: {api_url} → {len(resp.text)} chars")
+                            return (
+                                f"\n[API探测成功] 发现API: {api_url}\n"
+                                f"响应JSON结构（前2000字符）:\n```json\n{preview}\n```\n"
+                                f"请根据此真实JSON结构编写代码，确保字段路径正确！"
+                            )
+                        except json.JSONDecodeError:
+                            continue
+            except Exception:
+                continue
+
+        self.logger.info("API probe: no common API endpoints found")
+        return ""
