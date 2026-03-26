@@ -19,6 +19,16 @@ class GenerateNode(BaseNode):
 
         content = reduced_html[:25000] if reduced_html else clean_text[:25000]
 
+        # SPA detection: guide LLM to use API strategy instead of CSS selectors
+        if state.get("is_spa"):
+            self.logger.info("SPA detected — injecting API strategy hint into prompt")
+            content = (
+                "[SPA检测] 此页面是SPA应用（React/Vue/Next.js），HTML中不包含实际数据。"
+                "数据由JavaScript动态加载，通常来自后端API。"
+                "请使用策略A（直接请求API）获取数据，不要用CSS选择器解析HTML。\n\n"
+                + content[:15000]
+            )
+
         prompt = CODE_GEN_USER_PROMPT.format(
             description=description,
             target_url=target_url,

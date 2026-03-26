@@ -84,6 +84,20 @@ def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     return __builtins__["__import__"](name, globals, locals, fromlist, level)
 
 
+def _fix_common_httpx_mistakes(code: str) -> str:
+    """Fix common httpx usage mistakes that CodeSanitizer might miss."""
+    import re as _re
+    # resp.text() → resp.text (it's a property, not method)
+    code = _re.sub(r'\bresp\.text\(\)', 'resp.text', code)
+    code = _re.sub(r'\bresponse\.text\(\)', 'response.text', code)
+    # await resp.json() → resp.json() (when httpx is used)
+    if 'httpx' in code or 'AsyncClient' in code:
+        code = _re.sub(r'\bawait\s+(resp\.json\(\))', r'\1', code)
+        code = _re.sub(r'\bawait\s+(response\.json\(\))', r'\1', code)
+        code = _re.sub(r'\bawait\s+(r\.json\(\))', r'\1', code)
+    return code
+
+
 async def run_code_in_sandbox(
     code: str,
     target_url: str = "",
@@ -113,6 +127,9 @@ async def run_code_in_sandbox(
     code, applied_fixes = CodeSanitizer.sanitize(code)
     if applied_fixes:
         logger.info(f"Sandbox: 自动修复 {len(applied_fixes)} 个问题: {', '.join(applied_fixes)}")
+
+    # Quick static validation of common httpx patterns
+    code = _fix_common_httpx_mistakes(code)
 
     # 静态安全检查 — 在exec之前拦截
     security_error = _static_security_check(code)

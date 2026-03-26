@@ -41,6 +41,9 @@ class ParseNode(BaseNode):
         state["links"] = links
         state["reduced_html"] = reduced_html
 
+        # SPA detection
+        state["is_spa"] = self._detect_spa(raw_html, clean_text)
+
         # Markdown output
         if self.output_format == "markdown" or state.get("output_format") == "markdown":
             from src.engine.html_to_markdown import html_to_markdown
@@ -63,6 +66,24 @@ class ParseNode(BaseNode):
         # Collapse whitespace
         text = re.sub(r'\s+', ' ', text).strip()
         return text
+
+    def _detect_spa(self, html: str, clean_text: str) -> bool:
+        """Detect if page is a SPA (React/Vue/Next.js/Angular) with minimal server-rendered content."""
+        spa_markers = [
+            '<div id="root"', '<div id="app"', '<div id="__next"',
+            '__NEXT_DATA__', '__NUXT__', 'window.__INITIAL_STATE__',
+            'ng-app=', 'ng-version=',
+            'data-reactroot', 'data-reactid',
+        ]
+        marker_count = sum(1 for m in spa_markers if m in html)
+        # If the clean text (after removing tags) is very short relative to HTML size,
+        # it's likely an SPA with JS-rendered content
+        text_ratio = len(clean_text) / max(len(html), 1)
+        has_minimal_text = text_ratio < 0.05 and len(html) > 10000
+        is_spa = marker_count >= 1 or has_minimal_text
+        if is_spa:
+            self.logger.info(f"SPA detected: {marker_count} markers, text_ratio={text_ratio:.3f}")
+        return is_spa
 
     def _reduce_html(self, html: str) -> str:
         """Remove scripts/styles but keep DOM structure."""
