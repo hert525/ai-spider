@@ -459,7 +459,7 @@ async def update_project(pid: str, body: dict = Body(...), user: dict = Depends(
     """更新项目配置"""
     allowed_fields = ["name", "description", "target_url", "prompt", "mode", "cron_expr",
                       "proxy_pool_id", "sink_type", "sink_config", "stealth_level", "enable_screenshot",
-                      "use_browser", "enable_pagination", "worker_pool_id"]
+                      "use_browser", "enable_pagination", "worker_pool_id", "messages"]
     updates = {k: v for k, v in body.items() if k in allowed_fields}
     if not updates:
         raise HTTPException(400, "No valid fields to update")
@@ -955,7 +955,7 @@ async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_curr
 
     # Sanitize code (ensure crawl function, fix httpx issues, etc.)
     from src.engine.code_sanitizer import CodeSanitizer
-    new_code = CodeSanitizer.sanitize(new_code)
+    new_code, _fixes = CodeSanitizer.sanitize(new_code)
 
     messages = proj.get("messages", [])
     if isinstance(messages, str):

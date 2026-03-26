@@ -1236,7 +1236,10 @@ async function openProject(id) {
       let msgs = currentProject.messages || [];
       if (typeof msgs === 'string') { try { msgs = JSON.parse(msgs); } catch(e) { msgs = []; } }
       const box = document.getElementById('chat-messages');
-      box.innerHTML = msgs.map(m => `<div class="chat-msg ${m.role==='user'?'user':'ai'}">${esc(m.content)}</div>`).join('');
+      box.innerHTML = msgs.map(m => {
+        const cls = m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'ai';
+        return `<div class="chat-msg ${cls}">${m.isHtml ? m.content : esc(m.content)}</div>`;
+      }).join('');
       // Init chat with project context
       if (currentProject.code && currentProject.code.trim()) {
         _appendChat('system', '📝 已有爬虫代码 (v' + (currentProject.version || 1) + ')');
@@ -1358,6 +1361,21 @@ async function sendChat() {
       _updateLastChat('system', '❌ 修改失败: ' + e.message);
     }
   }
+  // Save chat to DB
+  _saveChatHistory();
+}
+
+async function _saveChatHistory() {
+  if (!currentProject) return;
+  const box = document.getElementById('chat-messages');
+  const msgs = Array.from(box.querySelectorAll('.chat-msg')).map(el => ({
+    role: el.classList.contains('user') ? 'user' : el.classList.contains('system') ? 'system' : 'assistant',
+    content: el.innerHTML,
+    isHtml: true,
+  }));
+  try {
+    await api('PUT', `/api/v1/projects/${currentProject.id}`, { messages: JSON.stringify(msgs) });
+  } catch(e) { /* ignore save errors */ }
 }
 
 function _appendChat(role, content, isHtml) {
