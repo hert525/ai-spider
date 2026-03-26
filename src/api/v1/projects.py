@@ -950,6 +950,12 @@ async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_curr
     new_code = resp.choices[0].message.content
     if "```python" in new_code:
         new_code = new_code.split("```python", 1)[1].split("```", 1)[0].strip()
+    elif "```" in new_code:
+        new_code = new_code.split("```", 1)[1].split("```", 1)[0].strip()
+
+    # Sanitize code (ensure crawl function, fix httpx issues, etc.)
+    from src.engine.code_sanitizer import CodeSanitizer
+    new_code = CodeSanitizer.sanitize(new_code)
 
     messages = proj.get("messages", [])
     if isinstance(messages, str):
