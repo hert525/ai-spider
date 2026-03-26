@@ -85,8 +85,7 @@ tr:hover td{background:var(--bg-hover)}
 .toolbar select:focus,.toolbar input:focus{border-color:var(--accent)}
 
 /* Worker cards */
-.worker-stats-bar{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:20px}
-.worker-stats-bar .stat-card{text-align:center}
+.worker-stats-bar{display:flex;gap:16px;font-size:12px;color:var(--text-secondary)}
 .worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
 .worker-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;transition:opacity .3s}
 .worker-card.offline{opacity:.6}
@@ -155,11 +154,9 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 .empty-state .empty-title{font-size:18px;font-weight:600;margin-bottom:8px;color:var(--text-primary)}
 .empty-state .empty-desc{font-size:14px;color:var(--text-secondary);max-width:420px;margin:0 auto 20px;line-height:1.6}
 .empty-state .btn{width:auto;display:inline-block}
-.pool-chip{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);padding:4px 14px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.pool-chip{background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);padding:5px 14px;border-radius:20px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
 .pool-chip:hover{border-color:var(--accent);color:var(--text-primary)}
 .pool-chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
-.pool-chip .pool-actions{display:none;margin-left:4px;gap:2px}.pool-chip:hover .pool-actions{display:inline-flex}
-.pool-chip .pool-action-btn{background:none;border:none;cursor:pointer;padding:0 2px;font-size:11px;opacity:.7;color:inherit}.pool-chip .pool-action-btn:hover{opacity:1}
 </style>
 </head>
 <body>
@@ -283,18 +280,22 @@ input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:po
 
     <!-- Workers -->
     <div class="page" id="page-workers">
-      <div class="page-title">🖥️ Worker节点</div>
-      <div style="margin-bottom:20px">
-        <button class="btn btn-primary" onclick="showDeployModal()">🚀 部署新Worker</button>
+      <!-- Header: title + actions -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div class="page-title" style="margin-bottom:0">🖥️ Worker 节点</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-outline" onclick="showCreatePool()">+ Pool</button>
+          <button class="btn btn-sm btn-primary" onclick="showDeployModal()">🚀 部署 Worker</button>
+        </div>
       </div>
-      <!-- Worker Pool 管理 -->
-      <div id="pool-filter-bar" style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap">
-        <span style="font-size:13px;color:var(--text-secondary);margin-right:4px">Pool:</span>
-        <button class="btn btn-sm pool-chip active" data-pool="" onclick="filterByPool('')" style="border-radius:20px">全部</button>
-        <div id="pool-chips" style="display:inline-flex;gap:6px;flex-wrap:wrap"></div>
-        <button class="btn btn-sm btn-outline" onclick="showCreatePool()" style="border-radius:20px;margin-left:4px">+ 创建Pool</button>
+      <!-- Pool filter + stats in one compact bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div id="pool-filter-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm pool-chip active" data-pool="" onclick="filterByPool('')" style="border-radius:20px">全部</button>
+          <div id="pool-chips" style="display:inline-flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+        <div id="worker-stats-bar" style="display:flex;gap:16px;font-size:12px;color:var(--text-secondary)"></div>
       </div>
-      <div class="worker-stats-bar" id="worker-stats-bar"></div>
       <div class="worker-grid" id="workers-grid"></div>
 
       <!-- Deploy Modal -->
@@ -973,7 +974,7 @@ async function loadWorkers() {
   const grid = document.getElementById('workers-grid');
   const statsBar = document.getElementById('worker-stats-bar');
   showLoading(grid);
-  // Load pools for filter bar
+  // Load pools
   try {
     const pools = await api('/api/v1/worker-pools') || [];
     _workerPools = Array.isArray(pools) ? pools : (pools.items||[]);
@@ -984,26 +985,15 @@ async function loadWorkers() {
     if (!d) { grid.innerHTML='<div style="color:var(--text-muted)">无数据</div>'; return; }
     const list = Array.isArray(d) ? d : (d.workers||d.items||[]);
 
-    // Stats
+    // Compact inline stats
     const total = list.length;
     const online = list.filter(w=>w.status==='online'||w.status==='busy').length;
-    const offline = list.filter(w=>w.status==='offline').length;
-    const disabled = list.filter(w=>w.status==='disabled').length;
-    const draining = list.filter(w=>w.status==='draining').length;
     const totalCompleted = list.reduce((s,w)=>s+(w.total_completed||0),0);
     const totalFailed = list.reduce((s,w)=>s+(w.total_failed||0),0);
-    const onlineList = list.filter(w=>w.status==='online'||w.status==='busy');
-    const avgCpu = onlineList.length ? (onlineList.reduce((s,w)=>s+(w.cpu_percent||0),0)/onlineList.length).toFixed(1) : '-';
-    const avgMem = onlineList.length ? (onlineList.reduce((s,w)=>s+(w.memory_mb||0),0)/onlineList.length).toFixed(0) : '-';
     statsBar.innerHTML = `
-      <div class="stat-card"><div class="label">总数</div><div class="value">${total}</div></div>
-      <div class="stat-card"><div class="label">🟢 在线</div><div class="value">${online}</div></div>
-      <div class="stat-card"><div class="label">🔴 离线</div><div class="value">${offline}</div></div>
-      <div class="stat-card"><div class="label">⚫ 禁用</div><div class="value">${disabled}</div></div>
-      <div class="stat-card"><div class="label">✅ 完成</div><div class="value">${totalCompleted}</div></div>
-      <div class="stat-card"><div class="label">❌ 失败</div><div class="value">${totalFailed}</div></div>
-      <div class="stat-card"><div class="label">平均CPU</div><div class="value">${avgCpu}%</div></div>
-      <div class="stat-card"><div class="label">平均内存</div><div class="value">${avgMem}MB</div></div>`;
+      <span>🟢 ${online}/${total} 在线</span>
+      <span>✅ ${totalCompleted} 完成</span>
+      <span>❌ ${totalFailed} 失败</span>`;
 
     // Apply pool filter
     const filteredList = _currentPoolFilter ? list.filter(w => w.pool_id === _currentPoolFilter) : list;
@@ -1012,8 +1002,7 @@ async function loadWorkers() {
       grid.innerHTML=`<div class="empty-state">
         <div class="empty-icon">🖥️</div>
         <div class="empty-title">${_currentPoolFilter ? '该 Pool 下没有 Worker' : '还没有 Worker 节点'}</div>
-        <div class="empty-desc">Worker 负责执行爬取任务。点击"部署新Worker"在目标机器上安装。当前服务器自带的内置 Worker 会在有任务时自动启动。</div>
-        <button class="btn btn-sm btn-primary" onclick="showDeployModal()">🚀 部署新 Worker</button>
+        <div class="empty-desc">点击右上角"部署 Worker"在目标机器上安装。</div>
       </div>`;
       return; 
     }
@@ -1027,47 +1016,55 @@ async function loadWorkers() {
       const disk = w.disk_percent || 0;
       const tasks = w.current_tasks || [];
       const cardClass = st === 'offline' ? 'offline' : st === 'disabled' ? 'disabled' : '';
-      const canDisable = st !== 'disabled';
-      const canEnable = st === 'disabled';
       const wid = w.id || w.worker_id;
+      const poolObj = w.pool_id ? _workerPools.find(p=>p.id===w.pool_id) : null;
+      const poolLabel = poolObj ? poolObj.name : '';
+      const poolFlag = poolObj ? (_regionFlags[(poolObj.region||'').toLowerCase()]||'') : '';
 
       return `<div class="worker-card ${cardClass}" id="wc-${wid}">
         <div class="w-header">
-          <h3 style="margin:0">${_statusIcon(st)} ${w.hostname || wid}</h3>
-          <div style="display:flex;gap:6px">
-            ${canDisable ? `<button class="btn btn-sm" onclick="workerAction('${wid}','disable')">禁用</button>` : ''}
-            ${canEnable ? `<button class="btn btn-sm btn-primary" onclick="workerAction('${wid}','enable')">启用</button>` : ''}
-            <button class="btn btn-sm btn-danger" onclick="removeWorker('${wid}')">删除</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <h3 style="margin:0;font-size:15px">${_statusIcon(st)} ${w.hostname || wid}</h3>
+            ${poolLabel ? `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(52,152,255,.12);color:var(--blue)">${poolFlag} ${esc(poolLabel)}</span>` : ''}
+          </div>
+          <div style="position:relative">
+            <button class="btn btn-sm btn-outline" onclick="this.nextElementSibling.classList.toggle('hidden')" style="padding:4px 8px;font-size:12px">⋯</button>
+            <div class="hidden" style="position:absolute;right:0;top:100%;margin-top:4px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:50;min-width:140px;padding:4px 0">
+              ${st!=='draining'&&st!=='disabled' ? `<div style="padding:7px 14px;font-size:12px;cursor:pointer;color:var(--text-secondary)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="this.parentElement.classList.add('hidden');workerAction('${wid}','drain')">🟡 排空</div>` : ''}
+              ${st!=='disabled' ? `<div style="padding:7px 14px;font-size:12px;cursor:pointer;color:var(--text-secondary)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="this.parentElement.classList.add('hidden');workerAction('${wid}','disable')">⚫ 禁用</div>` : `<div style="padding:7px 14px;font-size:12px;cursor:pointer;color:var(--green)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="this.parentElement.classList.add('hidden');workerAction('${wid}','enable')">🟢 启用</div>`}
+              <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+              <div style="padding:4px 14px;font-size:11px;color:var(--text-muted)">分配 Pool</div>
+              ${_workerPools.map(p=>`<div style="padding:6px 14px;font-size:12px;cursor:pointer;color:${w.pool_id===p.id?'var(--accent-light)':'var(--text-secondary)'}" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="this.closest('.hidden')||this.parentElement.classList.add('hidden');assignWorkerPool('${wid}','${p.id}')">${w.pool_id===p.id?'✓ ':''} ${esc(p.name)}</div>`).join('')}
+              ${w.pool_id ? `<div style="padding:6px 14px;font-size:12px;cursor:pointer;color:var(--text-muted)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="this.parentElement.classList.add('hidden');assignWorkerPool('${wid}','__none__')">✕ 移除分配</div>` : ''}
+              <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+              <div style="padding:7px 14px;font-size:12px;cursor:pointer;color:var(--red)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="this.parentElement.classList.add('hidden');removeWorker('${wid}')">🗑️ 删除</div>
+            </div>
           </div>
         </div>
-        <div class="w-info">主机: ${w.hostname||'-'} | IP: ${w.ip||'-'}</div>
-        <div class="w-info">系统: ${w.os_info||'-'} | Python ${w.python_version||'-'}</div>
-        <div class="w-info">Pool: ${w.pool_id ? '<span class="badge badge-blue">'+((_workerPools.find(p=>p.id===w.pool_id)||{}).name||w.pool_id.slice(0,8))+'</span>' : '<span class="badge badge-gray">未分配</span>'}</div>
-        <hr class="w-separator">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">${w.ip||'-'} · ${w.os_info||'-'} · Python ${w.python_version||'-'}</div>
         <div class="w-bar"><span class="w-bar-label">CPU</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(cpu)}" style="width:${cpu}%"></div></div><span class="w-bar-val">${cpu.toFixed?cpu.toFixed(1):cpu}%</span></div>
         <div class="w-bar"><span class="w-bar-label">内存</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(memPct)}" style="width:${memPct}%"></div></div><span class="w-bar-val">${Math.round(memMb)}/${Math.round(memTotal)} MB</span></div>
         <div class="w-bar"><span class="w-bar-label">磁盘</span><div class="w-bar-track"><div class="w-bar-fill ${_barColor(disk)}" style="width:${disk}%"></div></div><span class="w-bar-val">${disk.toFixed?disk.toFixed(1):disk}%</span></div>
-        <hr class="w-separator">
-        <div class="w-info">并发: ${w.active_jobs||0}/${w.max_concurrency||3} | ✅ ${w.total_completed||0} | ❌ ${w.total_failed||0}</div>
-        ${tasks.length ? `<div class="w-info">当前任务: ${tasks.join(', ')}</div>` : ''}
-        <div class="w-info">最后心跳: ${_timeAgo(w.last_heartbeat)} | 注册: ${w.registered_at ? w.registered_at.slice(0,16).replace('T',' ') : '-'}</div>
-        <div class="w-actions">
-          ${st!=='draining'&&st!=='disabled' ? `<button class="btn btn-sm" onclick="workerAction('${wid}','drain')" title="排空：完成当前任务后不再接新任务">🟡 排空</button>` : ''}
-          <button class="btn btn-sm" onclick="toggleWorkerDetail('${wid}')">📋 详情</button>
-          <select onchange="assignWorkerPool('${wid}',this.value)" style="padding:4px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:12px">
-            <option value="">分配Pool...</option>
-            <option value="__none__" ${!w.pool_id?'disabled':''}>移除分配</option>
-            ${_workerPools.map(p=>`<option value="${p.id}" ${w.pool_id===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
-          </select>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
+          <span>${w.active_jobs||0}/${w.max_concurrency||3} 并发 · ✅${w.total_completed||0} ❌${w.total_failed||0}</span>
+          <span>心跳 ${_timeAgo(w.last_heartbeat)}</span>
         </div>
-        <div class="w-tasks-detail" id="wd-${wid}">加载中...</div>
+        ${tasks.length ? `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">任务: ${tasks.join(', ')}</div>` : ''}
+        <div class="w-tasks-detail" id="wd-${wid}"></div>
       </div>`;
     }).join('');
+
+    // Close dropdown on outside click
+    document.addEventListener('click', function _closeMenus(e) {
+      if (!e.target.closest('.w-header')) {
+        grid.querySelectorAll('.w-header .hidden').forEach(el => {}); // menus auto-close via toggle
+      }
+    }, {once:true});
 
     // Auto-refresh
     if (_workerRefreshTimer) clearInterval(_workerRefreshTimer);
     _workerRefreshTimer = setInterval(() => {
-      if (document.getElementById('page-workers').style.display !== 'none') loadWorkers();
+      if (document.getElementById('page-workers').classList.contains('active')) loadWorkers();
       else { clearInterval(_workerRefreshTimer); _workerRefreshTimer = null; }
     }, 10000);
   } catch(e) { grid.innerHTML='<div style="color:var(--text-muted)">加载失败: '+e.message+'</div>'; }
@@ -1954,16 +1951,25 @@ function renderPoolChips(pools) {
   container.innerHTML = pools.map(p => {
     const flag = _regionFlags[(p.region||'').toLowerCase()] || '🌐';
     const isActive = _currentPoolFilter === p.id;
-    return `<button class="btn btn-sm pool-chip ${isActive?'active':''}" data-pool="${p.id}" onclick="filterByPool('${p.id}')" style="border-radius:20px">
-      ${flag} ${esc(p.name)} <span style="opacity:.7">(${p.online_count||0}/${p.worker_count||0})</span>
-      <span class="pool-actions">
-        <button class="pool-action-btn" onclick="event.stopPropagation();editPool('${p.id}')" title="编辑">✏️</button>
-        <button class="pool-action-btn" onclick="event.stopPropagation();deletePool('${p.id}')" title="删除">🗑️</button>
-      </span>
+    return `<button class="pool-chip ${isActive?'active':''}" data-pool="${p.id}" onclick="filterByPool('${p.id}')" oncontextmenu="event.preventDefault();showPoolMenu(event,'${p.id}')">
+      ${flag} ${esc(p.name)} <span style="opacity:.6;font-weight:400">${p.online_count||0}/${p.worker_count||0}</span>
     </button>`;
   }).join('');
   const allBtn = document.querySelector('#pool-filter-bar > .pool-chip[data-pool=""]');
   if (allBtn) allBtn.classList.toggle('active', !_currentPoolFilter);
+}
+
+function showPoolMenu(e, poolId) {
+  // Remove any existing menu
+  document.querySelectorAll('.pool-ctx-menu').forEach(m=>m.remove());
+  const menu = document.createElement('div');
+  menu.className = 'pool-ctx-menu';
+  menu.style.cssText = 'position:fixed;z-index:999;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.3);padding:4px 0;min-width:120px;left:'+e.clientX+'px;top:'+e.clientY+'px';
+  menu.innerHTML = `
+    <div style="padding:7px 14px;font-size:12px;cursor:pointer;color:var(--text-secondary)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="editPool('${poolId}');this.parentElement.remove()">✏️ 编辑</div>
+    <div style="padding:7px 14px;font-size:12px;cursor:pointer;color:var(--red)" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="deletePool('${poolId}');this.parentElement.remove()">🗑️ 删除</div>`;
+  document.body.appendChild(menu);
+  setTimeout(()=>document.addEventListener('click',()=>menu.remove(),{once:true}),0);
 }
 
 function filterByPool(poolId) {
