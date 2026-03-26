@@ -254,19 +254,6 @@ async def crawl(url: str, config: dict) -> list[dict]:
             (r'(?<!await\s)(\bclient\.head\s*\()', r'await \1'),
             (r'(?<!await\s)(\bclient\.request\s*\()', r'await \1'),
             (r'(?<!await\s)(\bclient\.send\s*\()', r'await \1'),
-            # playwright
-            (r'(?<!await\s)(\bpage\.goto\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bpage\.content\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bpage\.wait_for_selector\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bpage\.evaluate\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bbrowser\.new_page\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bbrowser\.close\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bcontext\.new_page\s*\()', r'await \1'),
-            # aiohttp
-            (r'(?<!await\s)(\bsession\.get\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bsession\.post\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bresp\.json\s*\()', r'await \1'),
-            (r'(?<!await\s)(\bresp\.text\s*\()', r'await \1'),
         ]
 
         for pattern, replacement in async_patterns:
@@ -277,6 +264,18 @@ async def crawl(url: str, config: dict) -> list[dict]:
 
         # Fix double-await: "await await" → "await"
         code = re.sub(r'\bawait\s+await\b', 'await', code)
+
+        # Fix httpx-specific: resp.json() and resp.text are NOT coroutines
+        # Remove incorrect await on these (LLMs confuse httpx with aiohttp)
+        if 'httpx' in code or 'AsyncClient' in code:
+            _before = code
+            code = re.sub(r'\bawait\s+(resp\.json\s*\()', r'\1', code)
+            code = re.sub(r'\bawait\s+(response\.json\s*\()', r'\1', code)
+            code = re.sub(r'\bawait\s+(r\.json\s*\()', r'\1', code)
+            code = re.sub(r'\bawait\s+(resp\.text)\b', r'\1', code)
+            code = re.sub(r'\bawait\s+(response\.text)\b', r'\1', code)
+            if code != _before:
+                fixed = True
 
         return code, fixed
 
