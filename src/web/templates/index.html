@@ -423,8 +423,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 
         <!-- Unified AI Workspace: chat + test results all in one -->
         <div class="form-group" style="flex:1;display:flex;flex-direction:column">
-          <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
             <input class="form-input" id="test-url" placeholder="目标 URL" style="flex:1">
+            <button onclick="clearChatHistory()" style="padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap" title="清空聊天记录">🗑 清空</button>
           </div>
           <div class="chat-box" style="flex:1;max-height:none">
             <div class="chat-messages" id="chat-messages" style="min-height:300px;max-height:60vh"></div>
@@ -1378,6 +1379,16 @@ async function _saveChatHistory() {
   } catch(e) { /* ignore save errors */ }
 }
 
+async function clearChatHistory() {
+  if (!currentProject) return;
+  const box = document.getElementById('chat-messages');
+  box.innerHTML = '';
+  _appendChat('system', '👋 输入你的数据需求，AI 将自动生成爬虫代码并运行测试', false);
+  try {
+    await api('PUT', `/api/v1/projects/${currentProject.id}`, { messages: '[]' });
+  } catch(e) {}
+}
+
 function _appendChat(role, content, isHtml) {
   const box = document.getElementById('chat-messages');
   const div = document.createElement('div');
@@ -1403,6 +1414,8 @@ function _buildMiniTable(rows) {
   const LIMIT = 50;
   const display = rows.slice(0, LIMIT);
   const tableId = 'dt-' + Date.now();
+  // Store full data for "show more"
+  if (rows.length > LIMIT) window['_tblData_' + tableId] = { rows, keys };
   let html = `<div id="${tableId}" style="overflow:auto;margin-top:8px;max-height:400px;border:1px solid var(--border);border-radius:6px">`;
   html += '<table style="width:100%;font-size:12px;border-collapse:collapse">';
   html += '<thead><tr>' + keys.map(k => '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-weight:500;white-space:nowrap;position:sticky;top:0;background:var(--bg-card)">' + esc(k) + '</th>').join('') + '</tr></thead><tbody>';
@@ -1416,9 +1429,33 @@ function _buildMiniTable(rows) {
   });
   html += '</tbody></table></div>';
   html += `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">共 ${rows.length} 条数据，${keys.length} 个字段`;
-  if (rows.length > LIMIT) html += `（显示前${LIMIT}条）`;
+  if (rows.length > LIMIT) html += ` <a href="javascript:void(0)" onclick="_expandTable('${tableId}')" style="color:var(--accent);margin-left:6px">显示全部 ▼</a>`;
   html += '</div>';
   return html;
+}
+
+function _expandTable(tableId) {
+  const d = window['_tblData_' + tableId];
+  if (!d) return;
+  const el = document.getElementById(tableId);
+  if (!el) return;
+  const tbody = el.querySelector('tbody');
+  const extra = d.rows.slice(50);
+  let html = '';
+  extra.forEach(row => {
+    html += '<tr>' + d.keys.map(k => {
+      let v = row[k] ?? '';
+      if (typeof v === 'object') v = JSON.stringify(v);
+      v = String(v).substring(0, 80);
+      return '<td style="padding:4px 8px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">' + esc(v) + '</td>';
+    }).join('') + '</tr>';
+  });
+  tbody.insertAdjacentHTML('beforeend', html);
+  el.style.maxHeight = '600px';
+  // Remove the "show all" link
+  const link = el.parentElement.querySelector('a[onclick*="_expandTable"]');
+  if (link) link.outerHTML = '（已全部展开）';
+  delete window['_tblData_' + tableId];
 }
 
 function toggleCodeEditor() {
