@@ -543,6 +543,19 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
             or "example.com" in code
             or (not re.search(r'async\s+def\s+crawl', code) and len(code) < 500)
         )
+
+        # Also regenerate if last test produced empty results (code strategy likely wrong)
+        _last_test = proj.get("test_results") or []
+        _last_was_empty = (
+            code.strip()
+            and isinstance(_last_test, list)
+            and len(_last_test) == 0
+            and proj.get("status") in ("tested", "testing", "failed")
+        )
+        if _last_was_empty and not _is_placeholder:
+            logger.info(f"Project {pid}: last test was empty, regenerating code with updated prompts")
+            _is_placeholder = True
+
         if _is_placeholder and url:
             await _push_progress("检测到默认模板", "正在用AI为目标URL生成专用爬虫代码...")
             try:
