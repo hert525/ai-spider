@@ -326,7 +326,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <div id="task-stats" style="display:flex;gap:16px;margin-bottom:16px;font-size:13px;color:var(--text-secondary)"></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th><th>操作</th></tr></thead>
+        <thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>上次执行</th><th>创建时间</th><th>操作</th></tr></thead>
         <tbody id="task-tbody"></tbody>
       </table>
     </div>
@@ -1877,14 +1877,12 @@ async function loadTasks() {
   try {
     const res = await api('GET', '/api/v1/tasks');
     const list = Array.isArray(res) ? res : (res.tasks || []);
-    // Load project names for mapping
     let projMap = {};
     try {
       const pRes = await api('GET', '/api/v1/projects');
       const pList = Array.isArray(pRes) ? pRes : (pRes.projects || []);
       pList.forEach(p => { projMap[p.id] = p.name || p.description?.substring(0,30) || p.target_url?.replace(/^https?:\/\//, '').substring(0,30) || shortId(p.id); });
     } catch(e) {}
-    // Task stats summary
     const statsEl = document.getElementById('task-stats');
     if (statsEl) {
       const total = list.length;
@@ -1895,18 +1893,19 @@ async function loadTasks() {
     }
     document.getElementById('task-tbody').innerHTML = list.length ? list.map(t => {
       const pName = t.project_name || projMap[t.project_id] || shortId(t.project_id);
-      return `<tr>
+      const lastRun = t.last_run_at ? fmtTime(t.last_run_at) : '-';
+      return `<tr style="cursor:pointer" onclick="toggleTaskDetail('${t.id}', this)">
       <td>${shortId(t.id)}</td><td title="${esc(t.project_id||'')}">${esc(pName)}</td>
       <td>${statusBadge(t.status)}</td><td>${t.task_type||t.type||'-'}</td>
-      <td>${fmtTime(t.created_at)}</td>
-      <td style="display:flex;gap:4px;flex-wrap:wrap">
+      <td>${lastRun}</td><td>${fmtTime(t.created_at)}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap" onclick="event.stopPropagation()">
         ${t.status==='running'||t.status==='pending'?`<button class="btn btn-secondary btn-sm" onclick="taskAction('${t.id}','cancel')">取消</button>`:''}
         ${t.status==='failed'?`<button class="btn btn-secondary btn-sm" onclick="taskAction('${t.id}','retry')">重试</button>`:''}
         ${t.status==='retrying'?`<span style="font-size:11px;color:var(--warning)">重试中(${t.retry_count||0}/${t.max_retries||3})</span>`:''}
-        ${t.status==='success'?`<div class="dropdown" style="display:inline-block"><button class="btn btn-secondary btn-sm" onclick="this.nextElementSibling.classList.toggle('show')">📥 导出</button><div class="dropdown-menu" style="display:none;position:absolute;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:4px;z-index:10"><a href="#" onclick="exportTaskData('${t.id}','csv');return false" style="display:block;padding:4px 8px">CSV</a><a href="#" onclick="exportTaskData('${t.id}','json');return false" style="display:block;padding:4px 8px">JSON</a><a href="#" onclick="exportTaskData('${t.id}','excel');return false" style="display:block;padding:4px 8px">Excel</a></div></div>`:''}
         <button class="btn btn-danger btn-sm" onclick="taskAction('${t.id}','delete')">删除</button>
-      </td></tr>`;
-    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
+      </td></tr>
+      <tr id="task-detail-${t.id}" style="display:none"><td colspan="7" style="padding:0"></td></tr>`;
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
   } catch(e) { toast(e.message,'error'); }
 }
 
@@ -1916,6 +1915,72 @@ async function taskAction(id, action) {
     else await api('POST', `/api/v1/tasks/${id}/${action}`);
     toast('操作成功'); loadTasks();
   } catch(e) { toast(e.message,'error'); }
+}
+
+async function toggleTaskDetail(tid, rowEl) {
+  const detailRow = document.getElementById('task-detail-' + tid);
+  if (!detailRow) return;
+  if (detailRow.style.display !== 'none') {
+    detailRow.style.display = 'none';
+    return;
+  }
+  detailRow.style.display = '';
+  const cell = detailRow.querySelector('td');
+  cell.innerHTML = '<div style="padding:12px;color:var(--text-muted)">加载中...</div>';
+
+  try {
+    const [task, runs] = await Promise.all([
+      api('GET', `/api/v1/tasks/${tid}`),
+      api('GET', `/api/v1/tasks/${tid}/runs`).catch(() => [])
+    ]);
+
+    let urls = task.target_urls || [];
+    if (typeof urls === 'string') try { urls = JSON.parse(urls); } catch(e) { urls = [urls]; }
+
+    let html = '<div style="padding:12px 16px;background:var(--bg-hover);border-bottom:1px solid var(--border)">';
+    // Task info
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12px;margin-bottom:12px">';
+    html += `<div><span style="color:var(--text-muted)">完整ID:</span> ${esc(task.id)}</div>`;
+    html += `<div><span style="color:var(--text-muted)">目标URL:</span> ${urls.map(u => `<a href="${esc(u)}" target="_blank" style="color:var(--accent)">${esc(String(u).substring(0,40))}</a>`).join(', ') || '-'}</div>`;
+    html += `<div><span style="color:var(--text-muted)">Worker:</span> ${esc(task.worker_id || '-')}</div>`;
+    html += `<div><span style="color:var(--text-muted)">重试:</span> ${task.retry_count||0}/${task.max_retries||3}</div>`;
+    if (task.cron_expr) html += `<div><span style="color:var(--text-muted)">Cron:</span> ${esc(task.cron_expr)}</div>`;
+    if (task.next_run_at) html += `<div><span style="color:var(--text-muted)">下次执行:</span> ${fmtTime(task.next_run_at)}</div>`;
+    html += '</div>';
+
+    // Export buttons
+    html += '<div style="margin-bottom:12px;display:flex;gap:6px">';
+    html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','csv')">📥 CSV</button>`;
+    html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','json')">📥 JSON</button>`;
+    html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','excel')">📥 Excel</button>`;
+    html += '</div>';
+
+    // Run history
+    if (Array.isArray(runs) && runs.length > 0) {
+      html += '<div style="font-size:13px;font-weight:500;margin-bottom:6px">执行历史</div>';
+      html += '<div style="overflow:auto;max-height:300px;border:1px solid var(--border);border-radius:6px">';
+      html += '<table style="width:100%;font-size:12px;border-collapse:collapse">';
+      html += '<thead><tr><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-card)">时间</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-card)">状态</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-card)">耗时</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-card)">数据量</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-card)">详情</th></tr></thead><tbody>';
+      runs.forEach(r => {
+        const dur = r.duration_ms ? (r.duration_ms/1000).toFixed(1)+'s' : '-';
+        const cnt = r.output_count ?? r.items_count ?? '-';
+        const err = r.error ? `<span style="color:var(--red)">${esc(String(r.error).substring(0,80))}</span>` : '-';
+        html += `<tr><td style="padding:4px 8px;border-bottom:1px solid var(--border)">${fmtTime(r.started_at||r.created_at)}</td>`;
+        html += `<td style="padding:4px 8px;border-bottom:1px solid var(--border)">${statusBadge(r.status)}</td>`;
+        html += `<td style="padding:4px 8px;border-bottom:1px solid var(--border)">${dur}</td>`;
+        html += `<td style="padding:4px 8px;border-bottom:1px solid var(--border)">${cnt}</td>`;
+        html += `<td style="padding:4px 8px;border-bottom:1px solid var(--border)">${err}</td></tr>`;
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--text-muted)">暂无执行记录</div>';
+    }
+
+    html += '</div>';
+    cell.innerHTML = html;
+  } catch(e) {
+    cell.innerHTML = `<div style="padding:12px;color:var(--red)">加载失败: ${esc(e.message)}</div>`;
+  }
 }
 
 // Data
