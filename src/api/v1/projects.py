@@ -551,10 +551,15 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                 _last_test = json.loads(_last_test)
             except Exception:
                 _last_test = []
+        # Check if the LAST test record had zero output (not the list itself being empty)
+        _last_record_empty = False
+        if isinstance(_last_test, list) and len(_last_test) > 0:
+            _last_rec = _last_test[-1]
+            if isinstance(_last_rec, dict) and _last_rec.get("output_count", 0) == 0:
+                _last_record_empty = True
         _last_was_empty = (
             code.strip()
-            and isinstance(_last_test, list)
-            and len(_last_test) == 0
+            and _last_record_empty
             and proj.get("status") in ("tested", "testing", "failed")
         )
         if _last_was_empty and not _is_placeholder:
@@ -841,6 +846,13 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         new_code = new_code.split("```python", 1)[1].split("```", 1)[0].strip()
                     elif "```" in new_code:
                         new_code = new_code.split("```", 1)[1].split("```", 1)[0].strip()
+                    else:
+                        # No code blocks — find code start
+                        _lines = new_code.split('\n')
+                        for _ci, _cl in enumerate(_lines):
+                            if _cl.strip().startswith(('import ', 'from ', 'async def ', 'def ')):
+                                new_code = '\n'.join(_lines[_ci:]).strip()
+                                break
                     
                     await _push_progress(f"第{fix_round+1}轮修复", "重新执行修复后的代码...")
                     result = await run_code_in_sandbox(new_code, url, proxy_config=proxy_cfg, html=pre_rendered_html)
@@ -862,6 +874,13 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                 except Exception as fix_e:
                     logger.warning(f"Auto-fix round {fix_round+1} failed: {fix_e}")
                     break
+            # Even if all fix rounds failed, save the last attempted code
+            # so next test can regenerate instead of re-running the same broken code
+            if fix_code != code:
+                await db.update("projects", pid, {
+                    "code": fix_code,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
 
     # Update test results
     test_results = proj.get("test_results", [])

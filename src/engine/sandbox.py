@@ -88,16 +88,17 @@ def _fix_common_httpx_mistakes(code: str) -> str:
     """Fix common httpx usage mistakes that CodeSanitizer might miss."""
     import re as _re
     # resp.text() → resp.text (it's a property, not method)
+    # This applies regardless of httpx — resp.text() is wrong in httpx context
     code = _re.sub(r'\bresp\.text\(\)', 'resp.text', code)
     code = _re.sub(r'\bresponse\.text\(\)', 'response.text', code)
-    # await resp.json() → resp.json() (when httpx is used)
-    if 'httpx' in code or 'AsyncClient' in code:
-        code = _re.sub(r'\bawait\s+(resp\.json\(\))', r'\1', code)
-        code = _re.sub(r'\bawait\s+(response\.json\(\))', r'\1', code)
-        code = _re.sub(r'\bawait\s+(r\.json\(\))', r'\1', code)
-        # Also fix: await resp.text → resp.text (it's a property)
-        code = _re.sub(r'\bawait\s+(resp\.text)\b(?!\s*\()', r'\1', code)
-        code = _re.sub(r'\bawait\s+(response\.text)\b(?!\s*\()', r'\1', code)
+    # In sandbox context we always use httpx, so always fix these
+    # await resp.json() → resp.json()
+    code = _re.sub(r'\bawait\s+(resp\.json\s*\()', r'\1', code)
+    code = _re.sub(r'\bawait\s+(response\.json\s*\()', r'\1', code)
+    code = _re.sub(r'\bawait\s+(r\.json\s*\()', r'\1', code)
+    # await resp.text → resp.text (it's a property)
+    code = _re.sub(r'\bawait\s+(resp\.text)\b(?!\s*\()', r'\1', code)
+    code = _re.sub(r'\bawait\s+(response\.text)\b(?!\s*\()', r'\1', code)
     return code
 
 

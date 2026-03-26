@@ -79,9 +79,14 @@ class CodeSanitizer:
             fixes.append("added missing await to async calls")
 
         # Fix 11: Ensure crawl() checks config.get("pre_rendered_html") before HTTP requests
+        # Only inject for HTML-parsing strategies (has CSS/XPath selectors), NOT for API-first code
+        _has_html_parsing = ('sel.css(' in code or 'sel.xpath(' in code 
+                            or '.select(' in code or 'Selector(' in code
+                            or 'BeautifulSoup(' in code)
         if ('async def crawl' in code
             and 'pre_rendered_html' not in code
-            and 'client.get(' in code):
+            and 'client.get(' in code
+            and _has_html_parsing):
             code = CodeSanitizer._inject_pre_rendered_html_check(code)
             fixes.append("injected pre_rendered_html check")
 
