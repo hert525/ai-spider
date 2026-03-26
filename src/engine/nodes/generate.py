@@ -112,45 +112,64 @@ class GenerateNode(BaseNode):
         parsed = urlparse(target_url)
         domain = parsed.hostname or ""
         path = parsed.path.rstrip("/")
-
-        # Build candidate API URLs based on common patterns
-        candidates = []
-        # Pattern: api.{domain}/api/...
         base_domain = domain.removeprefix("www.")
-        # Extract path segments for hints
-        # e.g. /zh/market-activity/stocks/aapl/historical → extract 'aapl', 'historical'
-        segments = [s for s in path.split("/") if s and s not in ("zh", "en")]
+        segments = [s for s in path.split("/") if s and len(s) > 1 and s not in ("zh", "en", "cn")]
 
-        # Common API patterns
-        candidates.append(f"https://api.{base_domain}/api/{'/'.join(segments[-3:])}")
-        candidates.append(f"https://api.{base_domain}/api/{'/'.join(segments[-2:])}")
-        candidates.append(f"https://{domain}/api/{'/'.join(segments[-3:])}")
-        candidates.append(f"https://{domain}/api/{'/'.join(segments[-2:])}")
+        # Build candidate API URLs
+        candidates = []
+        seg_tail2 = "/".join(segments[-2:]) if len(segments) >= 2 else ""
+        seg_tail3 = "/".join(segments[-3:]) if len(segments) >= 3 else ""
+
+        # api.{domain}/api/... patterns
+        if seg_tail3:
+            candidates.append(f"https://api.{base_domain}/api/{seg_tail3}")
+        if seg_tail2:
+            candidates.append(f"https://api.{base_domain}/api/{seg_tail2}")
+            # Common renames: stocks→quote, articles→article, etc.
+            for orig, repl in [("stocks/", "quote/"), ("articles/", "article/")]:
+                for seg in (seg_tail2, seg_tail3):
+                    if seg and orig in seg:
+                        candidates.append(f"https://api.{base_domain}/api/{seg.replace(orig, repl)}")
+
+        # Same domain /api/... patterns
+        if seg_tail3:
+            candidates.append(f"https://{domain}/api/{seg_tail3}")
+        if seg_tail2:
+            candidates.append(f"https://{domain}/api/{seg_tail2}")
+
+        # _next/data pattern
         candidates.append(f"https://{domain}/_next/data/{'/'.join(segments)}.json")
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json",
+            "Referer": target_url,
         }
 
         for api_url in candidates:
             try:
                 async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
-                    resp = await client.get(api_url)
-                    if resp.status_code == 200:
-                        text = resp.text[:3000]
-                        try:
-                            data = json.loads(text)
-                            # Truncate to show structure
-                            preview = json.dumps(data, ensure_ascii=False, indent=2)[:2000]
-                            self.logger.info(f"API probe hit: {api_url} → {len(resp.text)} chars")
-                            return (
-                                f"\n[API探测成功] 发现API: {api_url}\n"
-                                f"响应JSON结构（前2000字符）:\n```json\n{preview}\n```\n"
-                                f"请根据此真实JSON结构编写代码，确保字段路径正确！"
-                            )
-                        except json.JSONDecodeError:
-                            continue
+                    # Try with and without common query params
+                    attempts = [api_url]
+                    if "historical" in api_url:
+                        attempts.append(api_url + "?assetclass=stocks&fromdate=2025-01-01&todate=2025-12-31&limit=10")
+                    for attempt_url in attempts:
+                        resp = await client.get(attempt_url)
+                        if resp.status_code == 200 and resp.headers.get("content-type", "").startswith(("application/json", "text/json")):
+                            try:
+                                data = json.loads(resp.text[:5000])
+                                # Skip if response indicates error
+                                if isinstance(data, dict) and data.get("data") is None and data.get("status", {}).get("rCode", 200) >= 400:
+                                    continue
+                                preview = json.dumps(data, ensure_ascii=False, indent=2)[:2000]
+                                self.logger.info(f"API probe hit: {attempt_url} → {len(resp.text)} chars")
+                                return (
+                                    f"\n[API探测成功] 发现API: {attempt_url}\n"
+                                    f"响应JSON结构（前2000字符）:\n```json\n{preview}\n```\n"
+                                    f"请根据此真实JSON结构编写代码，确保字段路径正确！"
+                                )
+                            except json.JSONDecodeError:
+                                continue
             except Exception:
                 continue
 
