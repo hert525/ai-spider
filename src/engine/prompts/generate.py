@@ -102,7 +102,7 @@ async def crawl(url: str, config: dict) -> list[dict]:
     api_url = "替换为实际API地址"
     async with httpx.AsyncClient(**client_kwargs) as client:
         resp = await client.get(api_url)
-        data = resp.json()
+        data = resp.json()  # ⚠️ 不要 await！httpx 的 json() 不是协程
         # 从JSON中提取数据到results
     return results
 ```
@@ -141,8 +141,12 @@ async def crawl(url: str, config: dict) -> list[dict]:
 - ⚠️ 分析HTML内容，判断数据是在标签里还是需要通过API获取
 - ⚠️ 如果HTML看起来是SPA空壳（React/Vue/Next.js），优先推断API地址并直接请求
 - ⚠️ 对于知名网站，使用你已知的API地址（如nasdaq/twitter/reddit等）
+- ⚠️ httpx 注意事项（非常重要，不要搞混）：
+  - `resp = await client.get(url)` — get/post 是协程，必须 await
+  - `data = resp.json()` — json() 是普通方法，**不要 await**！写 `resp.json()` 不是 `await resp.json()`
+  - `text = resp.text` — text 是属性，不是方法，**不要加括号**！写 `resp.text` 不是 `resp.text()`
+  - 这和 aiohttp 不同！httpx 的 json()/text 不是协程
 - 所有 `await` 必须在 `async def` 函数内部
-- ⚠️ httpx.AsyncClient 的 get/post 是协程，必须 await
 - 不要用 asyncio.run() / open() / eval() / exec()
 - 只用白名单库，不要 import os/sys/subprocess/playwright
 - 不要在沙箱里启动 playwright，浏览器渲染由外部系统处理
