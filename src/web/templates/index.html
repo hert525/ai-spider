@@ -1877,6 +1877,13 @@ async function loadTasks() {
   try {
     const res = await api('GET', '/api/v1/tasks');
     const list = Array.isArray(res) ? res : (res.tasks || []);
+    // Load project names for mapping
+    let projMap = {};
+    try {
+      const pRes = await api('GET', '/api/v1/projects');
+      const pList = Array.isArray(pRes) ? pRes : (pRes.projects || []);
+      pList.forEach(p => { projMap[p.id] = p.name || p.description?.substring(0,30) || p.target_url?.replace(/^https?:\/\//, '').substring(0,30) || shortId(p.id); });
+    } catch(e) {}
     // Task stats summary
     const statsEl = document.getElementById('task-stats');
     if (statsEl) {
@@ -1886,8 +1893,10 @@ async function loadTasks() {
       const failed = list.filter(t=>t.status==='failed').length;
       statsEl.innerHTML = `<span>总数: ${total}</span><span>🟢 运行: ${running}</span><span>✅ 完成: ${done}</span><span>❌ 失败: ${failed}</span>`;
     }
-    document.getElementById('task-tbody').innerHTML = list.length ? list.map(t => `<tr>
-      <td>${shortId(t.id)}</td><td>${esc(t.project_name||t.project_id||'-')}</td>
+    document.getElementById('task-tbody').innerHTML = list.length ? list.map(t => {
+      const pName = t.project_name || projMap[t.project_id] || shortId(t.project_id);
+      return `<tr>
+      <td>${shortId(t.id)}</td><td title="${esc(t.project_id||'')}">${esc(pName)}</td>
       <td>${statusBadge(t.status)}</td><td>${t.task_type||t.type||'-'}</td>
       <td>${fmtTime(t.created_at)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
@@ -1896,7 +1905,8 @@ async function loadTasks() {
         ${t.status==='retrying'?`<span style="font-size:11px;color:var(--warning)">重试中(${t.retry_count||0}/${t.max_retries||3})</span>`:''}
         ${t.status==='success'?`<div class="dropdown" style="display:inline-block"><button class="btn btn-secondary btn-sm" onclick="this.nextElementSibling.classList.toggle('show')">📥 导出</button><div class="dropdown-menu" style="display:none;position:absolute;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:4px;z-index:10"><a href="#" onclick="exportTaskData('${t.id}','csv');return false" style="display:block;padding:4px 8px">CSV</a><a href="#" onclick="exportTaskData('${t.id}','json');return false" style="display:block;padding:4px 8px">JSON</a><a href="#" onclick="exportTaskData('${t.id}','excel');return false" style="display:block;padding:4px 8px">Excel</a></div></div>`:''}
         <button class="btn btn-danger btn-sm" onclick="taskAction('${t.id}','delete')">删除</button>
-      </td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
+      </td></tr>`;
+    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无任务</td></tr>';
   } catch(e) { toast(e.message,'error'); }
 }
 
