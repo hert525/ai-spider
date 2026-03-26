@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from src.core.database import db as _db
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel
 
 from src.core.database import db
