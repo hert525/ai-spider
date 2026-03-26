@@ -1400,10 +1400,13 @@ function _updateLastChat(role, content, isHtml) {
 function _buildMiniTable(rows) {
   if (!rows.length) return '';
   const keys = Object.keys(rows[0]).slice(0, 8);
-  let html = '<div style="overflow:auto;margin-top:8px;max-height:400px;border:1px solid var(--border);border-radius:6px">';
+  const LIMIT = 50;
+  const display = rows.slice(0, LIMIT);
+  const tableId = 'dt-' + Date.now();
+  let html = `<div id="${tableId}" style="overflow:auto;margin-top:8px;max-height:400px;border:1px solid var(--border);border-radius:6px">`;
   html += '<table style="width:100%;font-size:12px;border-collapse:collapse">';
   html += '<thead><tr>' + keys.map(k => '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-weight:500;white-space:nowrap;position:sticky;top:0;background:var(--bg-card)">' + esc(k) + '</th>').join('') + '</tr></thead><tbody>';
-  rows.forEach(row => {
+  display.forEach(row => {
     html += '<tr>' + keys.map(k => {
       let v = row[k] ?? '';
       if (typeof v === 'object') v = JSON.stringify(v);
@@ -1412,7 +1415,9 @@ function _buildMiniTable(rows) {
     }).join('') + '</tr>';
   });
   html += '</tbody></table></div>';
-  html += `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">共 ${rows.length} 条数据，${keys.length} 个字段</div>`;
+  html += `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">共 ${rows.length} 条数据，${keys.length} 个字段`;
+  if (rows.length > LIMIT) html += `（显示前${LIMIT}条）`;
+  html += '</div>';
   return html;
 }
 
