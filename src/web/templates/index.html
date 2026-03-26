@@ -173,14 +173,17 @@ tr:hover td{background:var(--bg-hover)}
 .toolbar h2{font-size:20px}
 
 /* Chat */
-.chat-box{border:1px solid var(--border);border-radius:12px;height:300px;display:flex;flex-direction:column;overflow:hidden;margin-top:12px}
-.chat-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
-.chat-msg{padding:8px 12px;border-radius:8px;font-size:13px;max-width:80%;word-break:break-word}
-.chat-msg.user{background:var(--accent);color:#fff;align-self:flex-end}
-.chat-msg.ai{background:var(--bg-hover);align-self:flex-start}
-.chat-input-row{display:flex;border-top:1px solid var(--border)}
-.chat-input-row input{flex:1;padding:10px 14px;background:transparent;border:none;color:var(--text-primary);font-size:14px;outline:none}
-.chat-input-row button{padding:10px 16px;background:var(--accent);color:#fff;border:none;cursor:pointer}
+.chat-box{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden;max-height:500px}
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:400px}
+.chat-msg{padding:10px 14px;border-radius:10px;font-size:13px;max-width:85%;word-break:break-word;line-height:1.6}
+.chat-msg.user{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-msg.ai{background:var(--bg-hover);align-self:flex-start;border-bottom-left-radius:4px}
+.chat-msg.system{background:transparent;border:1px solid var(--border);width:100%;max-width:100%;align-self:flex-start;border-bottom-left-radius:4px;padding:10px 14px;border-radius:10px;font-size:13px;word-break:break-word;line-height:1.6}
+.chat-msg table{margin-top:6px}
+.chat-input-row{display:flex;border-top:1px solid var(--border);background:var(--bg-card)}
+.chat-input-row input{flex:1;padding:12px 16px;background:transparent;border:none;color:var(--text-primary);font-size:14px;outline:none}
+.chat-input-row button{padding:12px 18px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:14px;transition:opacity 0.2s}
+.chat-input-row button:hover{opacity:0.85}
 
 /* Slider */
 input[type=range]{width:100%;accent-color:var(--accent)}
@@ -408,18 +411,22 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <div id="editor-code" class="hidden">
         <div class="form-group">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <label style="margin:0">代码编辑器</label>
-            <button class="btn btn-sm btn-primary" onclick="saveCode()" id="save-code-btn"><i class="ri-save-line"></i> 保存代码</button>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;cursor:pointer" onclick="toggleCodeEditor()">
+            <label style="margin:0;cursor:pointer"><i id="code-toggle-icon" class="ri-arrow-right-s-line"></i> 代码编辑器</label>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();saveCode()" id="save-code-btn"><i class="ri-save-line"></i> 保存</button>
+            </div>
           </div>
-          <div id="editor-code-area" style="border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
+          <div id="code-editor-collapse" style="display:none">
+            <div id="editor-code-area" style="border:1px solid var(--border);border-radius:8px;overflow:hidden"></div>
+          </div>
         </div>
         <div class="form-group">
-          <label>AI 对话 — 让 AI 帮你修改代码</label>
+          <label><i class="ri-robot-line"></i> AI 工作台</label>
           <div class="chat-box">
             <div class="chat-messages" id="chat-messages"></div>
             <div class="chat-input-row">
-              <input id="chat-input" placeholder="输入指令让AI修改代码..." onkeydown="if(event.key==='Enter')sendChat()">
+              <input id="chat-input" placeholder="输入指令... (Enter发送)" onkeydown="if(event.key==='Enter')sendChat()">
               <button onclick="sendChat()"><i class="ri-send-plane-fill"></i></button>
             </div>
           </div>
@@ -1238,6 +1245,22 @@ async function openProject(id) {
       if (typeof msgs === 'string') { try { msgs = JSON.parse(msgs); } catch(e) { msgs = []; } }
       const box = document.getElementById('chat-messages');
       box.innerHTML = msgs.map(m => `<div class="chat-msg ${m.role==='user'?'user':'ai'}">${esc(m.content)}</div>`).join('');
+      // Init chat with project context
+      if (currentProject.code && currentProject.code.trim()) {
+        _appendChat('system', '📝 已有爬虫代码 (v' + (currentProject.version || 1) + ')');
+        let tests = currentProject.test_results;
+        if (typeof tests === 'string') try { tests = JSON.parse(tests); } catch(e) { tests = []; }
+        if (tests && tests.length > 0) {
+          const last = tests[tests.length - 1];
+          if (last.status === 'success') {
+            _appendChat('system', '✅ 上次测试: 获取到 ' + (last.output_count||0) + ' 条数据 (' + (last.duration_ms/1000).toFixed(1) + 's)');
+          } else {
+            _appendChat('system', '❌ 上次测试失败: ' + (last.error||'').substring(0,100));
+          }
+        }
+      } else if (msgs.length === 0) {
+        _appendChat('system', '👋 输入目标URL和数据需求，AI将自动生成爬虫代码并测试');
+      }
       box.scrollTop = box.scrollHeight;
     }
     document.getElementById('test-url').value = currentProject.target_url || '';
@@ -1286,25 +1309,97 @@ async function sendChat() {
   const msg = input.value.trim();
   if (!msg || !currentProject) return;
   input.value = '';
-  const box = document.getElementById('chat-messages');
-  box.innerHTML += `<div class="chat-msg user">${esc(msg)}</div>`;
-  box.scrollTop = box.scrollHeight;
+
+  // User message
+  _appendChat('user', msg);
+
+  // Step 1: Refine code
+  _appendChat('system', '⏳ AI 正在修改代码...');
   try {
     const res = await api('POST', `/api/v1/projects/${currentProject.id}/refine`, { feedback: msg });
-    // Backend returns updated project object; extract last assistant message
-    let reply = '';
-    try {
-      const msgs = typeof res.messages === 'string' ? JSON.parse(res.messages) : (res.messages || []);
-      const lastAi = msgs.filter(m=>m.role==='assistant').pop();
-      reply = lastAi ? lastAi.content : JSON.stringify(res);
-    } catch(e) { reply = JSON.stringify(res); }
-    box.innerHTML += `<div class="chat-msg ai">${esc(reply)}</div>`;
     if (res.code) _setCode(res.code);
     currentProject = res;
+    _updateLastChat('system', '✅ 代码已修改 (v' + (res.version || '') + ')');
+
+    // Show AI reply if any
+    try {
+      const msgs2 = typeof res.messages === 'string' ? JSON.parse(res.messages) : (res.messages || []);
+      const lastAi = msgs2.filter(m=>m.role==='assistant').pop();
+      if (lastAi && lastAi.content) _appendChat('ai', lastAi.content);
+    } catch(e) {}
+
+    // Step 2: Auto-run test
+    const testUrl = document.getElementById('test-url')?.value || currentProject.target_url;
+    if (testUrl) {
+      _appendChat('system', '⏳ 正在测试新代码...');
+      try {
+        const testRes = await api('POST', `/api/v1/projects/${currentProject.id}/test`, { target_url: testUrl });
+        if (testRes.error) {
+          _updateLastChat('system', '❌ 测试失败: ' + String(testRes.error).substring(0, 200));
+        } else {
+          const data = testRes.output || [];
+          let resultHtml = '✅ 测试完成: 获取到 ' + data.length + ' 条数据';
+          if (data.length > 0) {
+            resultHtml += _buildMiniTable(data.slice(0, 5));
+          }
+          _updateLastChat('system', resultHtml, true);
+        }
+      } catch(e) {
+        _updateLastChat('system', '❌ 测试出错: ' + e.message);
+      }
+    }
   } catch(e) {
-    box.innerHTML += `<div class="chat-msg ai" style="color:var(--red)">错误: ${esc(e.message)}</div>`;
+    _updateLastChat('system', '❌ 修改失败: ' + e.message);
   }
+}
+
+function _appendChat(role, content, isHtml) {
+  const box = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + role;
+  if (isHtml) { div.innerHTML = content; } else { div.textContent = content; }
+  div.dataset.chatIdx = box.children.length;
+  box.appendChild(div);
   box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function _updateLastChat(role, content, isHtml) {
+  const box = document.getElementById('chat-messages');
+  const msgs = box.querySelectorAll('.chat-msg.' + role);
+  const last = msgs[msgs.length - 1];
+  if (last) { if (isHtml) { last.innerHTML = content; } else { last.textContent = content; } }
+  box.scrollTop = box.scrollHeight;
+}
+
+function _buildMiniTable(rows) {
+  if (!rows.length) return '';
+  const keys = Object.keys(rows[0]).slice(0, 6);
+  let html = '<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;font-size:12px;border-collapse:collapse">';
+  html += '<tr>' + keys.map(k => '<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-weight:500;white-space:nowrap">' + esc(k) + '</th>').join('') + '</tr>';
+  rows.forEach(row => {
+    html += '<tr>' + keys.map(k => {
+      let v = row[k] ?? '';
+      if (typeof v === 'object') v = JSON.stringify(v);
+      v = String(v).substring(0, 50);
+      return '<td style="padding:4px 8px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">' + esc(v) + '</td>';
+    }).join('') + '</tr>';
+  });
+  html += '</table></div>';
+  if (rows.length >= 5) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">显示前5条，完整数据请切换到"测试"标签查看</div>';
+  return html;
+}
+
+function toggleCodeEditor() {
+  const el = document.getElementById('code-editor-collapse');
+  const icon = document.getElementById('code-toggle-icon');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    icon.className = 'ri-arrow-down-s-line';
+  } else {
+    el.style.display = 'none';
+    icon.className = 'ri-arrow-right-s-line';
+  }
 }
 
 // Test
