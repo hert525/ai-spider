@@ -164,6 +164,17 @@ async def pause_task(tid: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+@router.put("/tasks/{tid}")
+async def update_task_config(tid: str, body: dict = Body(...), user: dict = Depends(get_current_user)):
+    await _verify_task_owner(tid, user["id"])
+    allowed = ["name", "cron_expr", "max_retries", "timeout_seconds", "concurrency", "priority", "max_pages", "max_items"]
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        raise HTTPException(400, "No valid fields")
+    await db.update("tasks", tid, updates)
+    return {"ok": True}
+
+
 @router.delete("/tasks/{tid}")
 async def delete_task(tid: str, user: dict = Depends(get_current_user)):
     await _verify_task_owner(tid, user["id"])

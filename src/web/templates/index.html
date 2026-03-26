@@ -1948,8 +1948,9 @@ async function toggleTaskDetail(tid, rowEl) {
     if (task.next_run_at) html += `<div><span style="color:var(--text-muted)">下次执行:</span> ${fmtTime(task.next_run_at)}</div>`;
     html += '</div>';
 
-    // Export buttons
+    // Export buttons + Edit
     html += '<div style="margin-bottom:12px;display:flex;gap:6px">';
+    html += `<button class="btn btn-secondary btn-sm" onclick="editTask('${tid}')">✏️ 编辑</button>`;
     html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','csv')">📥 CSV</button>`;
     html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','json')">📥 JSON</button>`;
     html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','excel')">📥 Excel</button>`;
@@ -1981,6 +1982,51 @@ async function toggleTaskDetail(tid, rowEl) {
   } catch(e) {
     cell.innerHTML = `<div style="padding:12px;color:var(--red)">加载失败: ${esc(e.message)}</div>`;
   }
+}
+
+async function editTask(tid) {
+  try {
+    const task = await api('GET', `/api/v1/tasks/${tid}`);
+    const fields = [
+      { key: 'name', label: '名称', val: task.name || '' },
+      { key: 'cron_expr', label: 'Cron 表达式', val: task.cron_expr || '' },
+      { key: 'max_retries', label: '最大重试', val: task.max_retries ?? 3, type: 'number' },
+      { key: 'timeout_seconds', label: '超时(秒)', val: task.timeout_seconds ?? 300, type: 'number' },
+      { key: 'concurrency', label: '并发数', val: task.concurrency ?? 3, type: 'number' },
+      { key: 'priority', label: '优先级', val: task.priority ?? 5, type: 'number' },
+      { key: 'max_pages', label: '最大页数', val: task.max_pages ?? 100, type: 'number' },
+      { key: 'max_items', label: '最大条数', val: task.max_items ?? 10000, type: 'number' },
+    ];
+    let formHtml = fields.map(f =>
+      `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><label style="width:80px;font-size:12px;color:var(--text-secondary)">${f.label}</label><input class="form-input" id="tedit-${f.key}" value="${esc(String(f.val))}" type="${f.type||'text'}" style="flex:1;padding:6px 10px;font-size:13px"></div>`
+    ).join('');
+    formHtml += '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary btn-sm" onclick="saveTaskEdit(\'' + tid + '\')">保存</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'task-edit-modal\').remove()">取消</button></div>';
+    // Show modal
+    const existing = document.getElementById('task-edit-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'task-edit-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000';
+    modal.innerHTML = `<div style="background:var(--bg-card);border-radius:12px;padding:24px;min-width:360px;max-width:480px"><h3 style="margin:0 0 16px;font-size:16px">编辑任务</h3>${formHtml}</div>`;
+    modal.onclick = e => { if(e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function saveTaskEdit(tid) {
+  const fields = ['name','cron_expr','max_retries','timeout_seconds','concurrency','priority','max_pages','max_items'];
+  const numFields = ['max_retries','timeout_seconds','concurrency','priority','max_pages','max_items'];
+  const body = {};
+  fields.forEach(k => {
+    const el = document.getElementById('tedit-' + k);
+    if (el) body[k] = numFields.includes(k) ? Number(el.value) : el.value;
+  });
+  try {
+    await api('PUT', `/api/v1/tasks/${tid}`, body);
+    toast('保存成功');
+    document.getElementById('task-edit-modal')?.remove();
+    loadTasks();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 // Data

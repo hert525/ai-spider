@@ -212,7 +212,7 @@ class TaskManager:
         return await db.delete("tasks", task_id)
 
     async def get_runs(self, task_id: str) -> list[TaskRun]:
-        rows = await db.list("task_runs", where={"task_id": task_id})
+        rows = await db.list("task_runs", where={"task_id": task_id}, order="started_at DESC")
         return [TaskRun(**r) for r in rows]
 
     async def stats(self) -> dict:
