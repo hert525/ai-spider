@@ -95,6 +95,9 @@ def _fix_common_httpx_mistakes(code: str) -> str:
         code = _re.sub(r'\bawait\s+(resp\.json\(\))', r'\1', code)
         code = _re.sub(r'\bawait\s+(response\.json\(\))', r'\1', code)
         code = _re.sub(r'\bawait\s+(r\.json\(\))', r'\1', code)
+        # Also fix: await resp.text → resp.text (it's a property)
+        code = _re.sub(r'\bawait\s+(resp\.text)\b(?!\s*\()', r'\1', code)
+        code = _re.sub(r'\bawait\s+(response\.text)\b(?!\s*\()', r'\1', code)
     return code
 
 
@@ -234,6 +237,22 @@ async def run_code_in_sandbox(
                             def raise_for_status(self): pass
                         return _FakeResp()
                     return await super().get(url, **kwargs)
+
+                async def post(self, url, **kwargs):
+                    if not _PatchedClient._html_served and self._urls_match(url, self._target):
+                        _PatchedClient._html_served = True
+                        _html = self._pre_rendered_html
+                        _req_url = url
+                        class _FakeResp:
+                            status_code = 200
+                            text = _html
+                            content = _html.encode('utf-8')
+                            headers = {"content-type": "text/html; charset=utf-8"}
+                            url = _req_url
+                            def json(self): import json as _j; return _j.loads(_html)
+                            def raise_for_status(self): pass
+                        return _FakeResp()
+                    return await super().post(url, **kwargs)
 
             _real_httpx.AsyncClient = _PatchedClient
             sandbox_globals["httpx"] = _real_httpx

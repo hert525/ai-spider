@@ -32,6 +32,11 @@ REFINE_CODE_PROMPT = """## 当前代码
 - 不要用 asyncio.run()，直接用 await
 - 检查 config.get("pre_rendered_html")，如果是SPA空壳则改用API请求策略
 - 不要在沙箱里启动 playwright，浏览器渲染由外部系统处理
+- ⚠️ httpx注意事项（极重要）：
+  - `resp = await client.get(url)` — get/post是协程，必须await
+  - `data = resp.json()` — json()是普通方法，不要await！
+  - `text = resp.text` — text是属性不是方法，不要加括号！不要await！
+  - 这和aiohttp完全不同
 
 只输出修改后的完整代码，用 ```python 包裹。"""
 

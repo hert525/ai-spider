@@ -83,4 +83,17 @@ class GenerateNode(BaseNode):
             if "```" in code:
                 code = code.split("```", 1)[0]
             return code.strip()
+        # No code blocks — try to extract just the code part
+        # Look for 'import' or 'async def' or 'def' as start markers
+        lines = text.split('\n')
+        code_start = None
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith(('import ', 'from ', 'async def ', 'def ', '#!')):
+                code_start = i
+                break
+        if code_start is not None:
+            return '\n'.join(lines[code_start:]).strip()
+        # Last resort: return as-is but log warning
+        self.logger.warning("Could not extract code block from LLM response, using raw text")
         return text.strip()

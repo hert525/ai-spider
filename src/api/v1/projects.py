@@ -546,6 +546,11 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 
         # Also regenerate if last test produced empty results (code strategy likely wrong)
         _last_test = proj.get("test_results") or []
+        if isinstance(_last_test, str):
+            try:
+                _last_test = json.loads(_last_test)
+            except Exception:
+                _last_test = []
         _last_was_empty = (
             code.strip()
             and isinstance(_last_test, list)
@@ -560,7 +565,11 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
             await _push_progress("检测到默认模板", "正在用AI为目标URL生成专用爬虫代码...")
             try:
                 from src.engine.graphs.code_generator import CodeGeneratorGraph
-                graph = CodeGeneratorGraph(max_retries=3)
+                graph = CodeGeneratorGraph(
+                    use_browser=bool(proj.get("use_browser")),
+                    max_retries=3,
+                    proxy_config=proxy_cfg,
+                )
                 state = await graph.run(url=url, description=proj.get("description", ""))
                 generated = state.get("generated_code", "")
                 if generated and "crawl" in generated:
@@ -774,7 +783,18 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     if pre_rendered_html:
                         _html_for_fix = f"\n\n页面HTML结构(截取前3000字符):\n```html\n{pre_rendered_html[:3000]}\n```"
 
+                    # Strategy escalation: after 2 failures, force API approach
+                    _strategy_hint = ""
+                    if fix_round >= 2:
+                        _strategy_hint = """
+⚠️ 前几轮修复都失败了！请完全换一种策略：
+- 如果之前用的是CSS选择器 → 改为直接请求JSON API
+- 如果之前用的是API → 检查API URL是否正确，尝试其他API路径
+- 常见API模式: /api/, /_next/data/, /graphql, api.{domain}
+不要再微调选择器了，直接换策略！"""
+
                     fix_prompt = f"""以下Python爬虫代码执行出错或返回空结果，请修复。只返回修复后的完整Python代码，不要解释。
+{_strategy_hint}
 
 错误信息:
 {error_msg[:500]}
@@ -804,7 +824,12 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 7. 不要使用 open()/exec()/eval()/compile() 等不安全函数
 8. 检查 config.get("pre_rendered_html")，有则先分析是否有实际数据
 9. 不要在沙箱里启动 playwright
-10. **如果HTML是SPA空壳，果断切换到API请求策略，不要继续调CSS选择器**"""
+10. **如果HTML是SPA空壳，果断切换到API请求策略，不要继续调CSS选择器**
+11. ⚠️ httpx注意事项（极重要）：
+   - `resp = await client.get(url)` — get/post是协程，必须await
+   - `data = resp.json()` — json()是普通方法，不要await！
+   - `text = resp.text` — text是属性不是方法，不要加括号！不要await！
+   - 这和aiohttp完全不同"""
                     resp = await llm_completion(
                         messages=[{"role": "user", "content": fix_prompt}],
                         temperature=0.2,
