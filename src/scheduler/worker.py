@@ -254,16 +254,37 @@ class WorkerProcess:
         from src.engine.sandbox import run_code_in_sandbox
 
         proxy_config = task.get("proxy_config")
+        use_browser = task.get("use_browser", False)
 
         all_items: list[dict] = []
         total_pages = 0
         for url in target_urls:
-            result = await run_code_in_sandbox(code, url, timeout=timeout, proxy_config=proxy_config)
+            pre_html = None
+            if use_browser and "pre_rendered_html" in code:
+                pre_html = await self._pre_render(url)
+            result = await run_code_in_sandbox(code, url, timeout=timeout, proxy_config=proxy_config, html=pre_html)
             output = result.get("output", [])
             if output:
                 all_items.extend(output)
             total_pages += result.get("pages_crawled", 0)
         return all_items, total_pages
+
+    async def _pre_render(self, url: str) -> str | None:
+        """Pre-render a page with Playwright for browser-dependent crawlers."""
+        try:
+            from playwright.async_api import async_playwright
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-http2"])
+                page = await browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+                await page.wait_for_timeout(2000)
+                html = await page.content()
+                await browser.close()
+                logger.info(f"Pre-rendered {url}: {len(html)} chars")
+                return html
+        except Exception as e:
+            logger.warning(f"Pre-render failed for {url}: {e}")
+            return None
 
     async def _run_smart_scraper(self, task: dict, target_urls: list[str], timeout: int) -> tuple[list[dict], int]:
         description = task.get("description", "")
