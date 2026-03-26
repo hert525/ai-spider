@@ -18,13 +18,21 @@ REFINE_CODE_PROMPT = """## 当前代码
 ## 页面HTML(截取)
 {html_content}
 
-请修复代码中的问题。注意沙箱环境限制:
-- 只能import白名单模块: httpx, parsel, bs4, lxml, json, re, csv, math, time, datetime, asyncio, collections, itertools, functools, string, hashlib, base64, html
+请修复代码中的问题。
+
+## 诊断思路
+1. 如果返回空结果且HTML看起来是SPA框架（React/Vue/Next.js）→ 数据不在HTML中，需要**直接请求后端API获取JSON数据**
+2. 如果CSS选择器不匹配 → 对照HTML用正确的选择器
+3. 如果数据在 `<script>` 标签中 → 用正则提取JSON
+
+## 沙箱限制
+- 只能import白名单模块: httpx, parsel, bs4, lxml, json, re, csv, math, time, datetime, asyncio, collections, itertools, functools, string, hashlib, base64, html, urllib.parse
 - 禁止: os, subprocess, sys, pathlib, socket, pickle, playwright 等
 - 禁止: open(), eval(), exec(), compile()
 - 不要用 asyncio.run()，直接用 await
-- ⚠️ 必须优先检查 config.get("pre_rendered_html")，有则直接解析HTML，无则用httpx请求
+- 检查 config.get("pre_rendered_html")，如果是SPA空壳则改用API请求策略
 - 不要在沙箱里启动 playwright，浏览器渲染由外部系统处理
+
 只输出修改后的完整代码，用 ```python 包裹。"""
 
 REFINE_WITH_FEEDBACK_PROMPT = """## 当前代码

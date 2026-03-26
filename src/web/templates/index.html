@@ -91,6 +91,7 @@ select.form-input{cursor:pointer}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
 .card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;cursor:pointer;transition:.2s}
 .card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.card:hover button[title="删除"]{opacity:.6!important}
 .card h3{font-size:16px;margin-bottom:6px}
 .card p{font-size:13px;color:var(--text-secondary);margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card .meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted)}
@@ -194,6 +195,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   .data-modal-drawer{width:100vw}
   .data-stat-value{font-size:24px}
   .data-table-toolbar{padding:14px}
+  #dash-bottom-grid{grid-template-columns:1fr!important}
 }
 </style>
 </head>
@@ -272,7 +274,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div class="data-stat-meta" id="dash-workers-meta"></div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="dash-bottom-grid">
       <div class="card" style="cursor:default">
         <h3 style="font-size:15px;margin-bottom:12px">📋 最近项目</h3>
         <div id="dash-recent-projects" style="font-size:13px;color:var(--text-secondary)">加载中...</div>
@@ -305,9 +307,12 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 
   <!-- Projects Page -->
   <div id="page-projects" class="container hidden">
-    <div class="toolbar">
-      <h2>我的项目</h2>
-      <button class="btn btn-primary" onclick="showNewProjectModal()"><i class="ri-add-line"></i> 新建项目</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+      <h2 style="font-size:20px;margin:0">我的项目</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="project-search" placeholder="搜索项目..." oninput="filterProjectList()" style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);color:var(--text-primary);font-size:13px;width:180px;outline:none">
+        <button class="btn btn-primary btn-sm" onclick="showNewProjectModal()"><i class="ri-add-line"></i> 新建</button>
+      </div>
     </div>
     <div class="card-grid" id="project-list"></div>
   </div>
@@ -315,6 +320,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   <!-- Tasks Page -->
   <div id="page-tasks" class="container hidden">
     <div class="toolbar"><h2>任务列表</h2></div>
+    <div id="task-stats" style="display:flex;gap:16px;margin-bottom:16px;font-size:13px;color:var(--text-secondary)"></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>ID</th><th>项目</th><th>状态</th><th>类型</th><th>创建时间</th><th>操作</th></tr></thead>
@@ -925,17 +931,27 @@ async function loadDashboard() {
     const recent = (Array.isArray(projects) ? projects : []).slice(0, 5);
     document.getElementById('dash-recent-projects').innerHTML = recent.length
       ? recent.map(p => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-          <a onclick="openProject('${p.id}')" style="cursor:pointer">${esc(p.name || p.description?.slice(0,30) || p.id.slice(0,8))}</a>
-          ${statusBadge(p.status)}
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px">${p.mode==='smart_scraper'?'🧠':'⚡'}</span>
+            <a onclick="openProject('${p.id}')" style="cursor:pointer;font-size:13px">${esc(p.name || p.description?.slice(0,30) || p.id.slice(0,8))}</a>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="width:6px;height:6px;border-radius:50%;background:${statusDotColor(p.status)};display:inline-block"></span>
+            <span style="font-size:11px;color:var(--text-secondary)">${p.status}</span>
+          </div>
         </div>`).join('')
       : '<div style="color:var(--text-muted)">暂无项目</div>';
 
     // Recent activity (from tasks)
     const recentTasks = taskArr.slice(0, 5);
     document.getElementById('dash-recent-activity').innerHTML = recentTasks.length
-      ? recentTasks.map(t => `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
-          <span>${esc(t.name || t.id?.slice(0,8))}</span> ${statusBadge(t.status)}
-          <span style="float:right;font-size:11px;color:var(--text-muted)">${t.last_run_at ? new Date(t.last_run_at).toLocaleString('zh-CN') : ''}</span>
+      ? recentTasks.map(t => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="width:6px;height:6px;border-radius:50%;background:${statusDotColor(t.status)};display:inline-block"></span>
+            <span style="font-size:13px">${esc(t.name || t.id?.slice(0,8))}</span>
+            <span style="font-size:11px;color:var(--text-secondary)">${t.status}</span>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">${t.last_run_at ? new Date(t.last_run_at).toLocaleString('zh-CN') : ''}</span>
         </div>`).join('')
       : '<div style="color:var(--text-muted)">暂无任务活动</div>';
   } catch(e) {
@@ -1060,12 +1076,44 @@ function submitSeedUse(sid, fields) {
 
 // Projects
 let _projectPollTimer = null;
+let _allProjects = [];
+
+function statusColor(s) {
+  const m = {tested:'var(--green)',success:'var(--green)',approved:'var(--green)',generating:'var(--yellow)',testing:'var(--blue)',generated:'var(--blue)',running:'var(--blue)',draft:'var(--border)',failed:'var(--red)'};
+  return m[s] || 'var(--border)';
+}
+
+function statusDotColor(s) {
+  const m = {tested:'var(--green)',success:'var(--green)',approved:'var(--green)',generating:'var(--yellow)',testing:'var(--blue)',generated:'var(--blue)',running:'var(--blue)',draft:'var(--text-muted)',failed:'var(--red)'};
+  return m[s] || 'var(--text-muted)';
+}
+
+function filterProjectList() {
+  const q = (document.getElementById('project-search').value || '').trim().toLowerCase();
+  const cards = document.querySelectorAll('#project-list .card');
+  cards.forEach(card => {
+    const text = (card.getAttribute('data-search') || '').toLowerCase();
+    card.style.display = !q || text.includes(q) ? '' : 'none';
+  });
+}
+
+async function deleteProject(id, ev) {
+  ev.stopPropagation();
+  if (!confirm('确定删除此项目？')) return;
+  try {
+    await api('DELETE', `/api/v1/projects/${id}`);
+    toast('项目已删除');
+    loadProjects();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 async function loadProjects() {
   try {
     const res = await api('GET', '/api/v1/projects');
     const list = Array.isArray(res) ? res : (res.projects || []);
+    _allProjects = list;
     const el = document.getElementById('project-list');
-    if (!list.length) { el.innerHTML = '<p style="color:var(--text-muted)">暂无项目，点击"新建项目"开始</p>'; return; }
+    if (!list.length) { el.innerHTML = '<p style="color:var(--text-muted)">暂无项目，点击"新建"开始</p>'; return; }
     el.innerHTML = list.map(p => {
       let progressHtml = '';
       if (p.status === 'generating') {
@@ -1086,12 +1134,21 @@ async function loadProjects() {
           progressHtml = `<div style="margin-top:8px;font-size:12px;color:var(--yellow)"><i class="ri-loader-4-line ri-spin"></i> 准备中...</div>`;
         }
       }
-      return `<div class="card" onclick="openProject('${p.id}')">
-        <h3>${esc(p.name)}</h3>
-        <p>${esc(p.description||'无描述')}</p>
-        <div class="meta">
-          <span class="badge badge-blue">${modeLabel(p.mode)}</span>
-          ${statusBadge(p.status)}
+      return `<div class="card" onclick="openProject('${p.id}')" data-search="${esc(p.name + ' ' + (p.description||''))}" style="border-left:3px solid ${statusColor(p.status)};position:relative">
+        <button onclick="deleteProject('${p.id}',event)" title="删除" style="position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;opacity:0;transition:opacity .2s;padding:4px" onmouseenter="this.style.color='var(--red)';this.style.opacity=1" onmouseleave="this.style.color='var(--text-muted)';this.style.opacity=0"><i class="ri-delete-bin-line"></i></button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:16px">${p.mode==='smart_scraper'?'🧠':'⚡'}</span>
+            <h3 style="font-size:15px;margin:0">${esc(p.name)}</h3>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-right:24px">
+            <span style="width:7px;height:7px;border-radius:50%;background:${statusDotColor(p.status)};display:inline-block"></span>
+            <span style="font-size:12px;color:var(--text-secondary)">${p.status}</span>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.description||'')}</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-muted)">
+          <span style="font-family:monospace;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.target_url||'')}</span>
           <span>${fmtTime(p.created_at)}</span>
         </div>
         ${progressHtml}
@@ -1657,6 +1714,15 @@ async function loadTasks() {
   try {
     const res = await api('GET', '/api/v1/tasks');
     const list = Array.isArray(res) ? res : (res.tasks || []);
+    // Task stats summary
+    const statsEl = document.getElementById('task-stats');
+    if (statsEl) {
+      const total = list.length;
+      const running = list.filter(t=>t.status==='running'||t.status==='pending').length;
+      const done = list.filter(t=>t.status==='success'||t.status==='completed').length;
+      const failed = list.filter(t=>t.status==='failed').length;
+      statsEl.innerHTML = `<span>总数: ${total}</span><span>🟢 运行: ${running}</span><span>✅ 完成: ${done}</span><span>❌ 失败: ${failed}</span>`;
+    }
     document.getElementById('task-tbody').innerHTML = list.length ? list.map(t => `<tr>
       <td>${shortId(t.id)}</td><td>${esc(t.project_name||t.project_id||'-')}</td>
       <td>${statusBadge(t.status)}</td><td>${t.task_type||t.type||'-'}</td>

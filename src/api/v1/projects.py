@@ -309,9 +309,9 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                             from src.core.llm import llm_completion
                             fix_code = code
                             for fix_round in range(3):
-                                error_msg = test_result.get("error") or "代码执行成功但返回空结果，CSS选择器可能不匹配页面结构"
+                                error_msg = test_result.get("error") or "代码执行成功但返回空结果，数据提取策略可能有误（CSS选择器不匹配或需要改用API请求）"
                                 _html_ctx = f"\n\n页面HTML结构(前3000字符):\n```html\n{_test_html}\n```" if _test_html else ""
-                                fix_prompt = f"""以下Python爬虫代码执行出错，请修复。只返回修复后的完整Python代码，不要解释。
+                                fix_prompt = f"""以下Python爬虫代码执行出错或返回空结果，请修复。只返回修复后的完整Python代码，不要解释。
 
 错误信息: {error_msg[:500]}
 
@@ -323,13 +323,20 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
 目标URL: {req.target_url}
 {_html_ctx}
 
-要求:
+## 诊断建议
+如果结果为空，最可能原因：
+1. 页面是SPA（React/Vue/Next.js），数据由API动态加载 → 推断API地址直接请求JSON
+2. CSS选择器不匹配实际DOM → 看HTML用正确选择器
+3. 数据在 <script> 标签中 → 用正则提取JSON
+
+## 要求:
 1. 必须定义 async def crawl(url, config) -> list[dict] 函数
 2. 返回 list[dict]
-3. 只用白名单库: httpx, parsel, bs4, lxml, re, json, csv, math, datetime, collections
-4. ⚠️ 必须优先检查 config.get("pre_rendered_html")！有则直接解析，不要发HTTP请求
+3. 只用白名单库: httpx, parsel, bs4, lxml, re, json, csv, math, datetime, collections, urllib.parse
+4. 检查 config.get("pre_rendered_html")，如果是SPA空壳则改用API策略
 5. 禁止: os/subprocess/sys/pathlib/socket/pickle/playwright
-6. 不要用 asyncio.run()，直接用 await"""
+6. 不要用 asyncio.run()，直接用 await
+7. **如果上一轮用CSS选择器还是空结果，果断换API策略**"""
                                 try:
                                     resp = await llm_completion(
                                         messages=[{"role": "user", "content": fix_prompt}],
@@ -754,7 +761,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                     if pre_rendered_html:
                         _html_for_fix = f"\n\n页面HTML结构(截取前3000字符):\n```html\n{pre_rendered_html[:3000]}\n```"
 
-                    fix_prompt = f"""以下Python爬虫代码执行出错，请修复。只返回修复后的完整Python代码，不要解释。
+                    fix_prompt = f"""以下Python爬虫代码执行出错或返回空结果，请修复。只返回修复后的完整Python代码，不要解释。
 
 错误信息:
 {error_msg[:500]}
@@ -767,18 +774,24 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
 目标URL: {url}
 {_html_for_fix}
 
-要求:
+## 诊断建议
+如果结果为空（output=[]），最可能的原因是：
+1. **页面是SPA（React/Vue/Next.js）** — HTML中没有实际数据，数据由API动态加载。CSS选择器不管怎么改都不会有结果。
+   → **解决方案：推断并直接请求JSON API。** 比如 nasdaq.com 的数据在 api.nasdaq.com/api/ 下。
+2. **CSS选择器不匹配** — 选择器名称是猜的，和实际DOM不符。看HTML结构用正确的选择器。
+3. **数据在 `<script>` 标签中** — 用正则提取 JSON（如 __NEXT_DATA__, window.__INITIAL_STATE__）。
+
+## 修复规则
 1. 必须定义 async def crawl(url, config) -> list[dict] 函数
 2. 返回 list[dict]
 3. 不要用 asyncio.run()，直接用 await
-4. 只用 httpx, parsel, bs4, lxml, re, json, csv, math, datetime, collections 等白名单库
+4. 只用 httpx, parsel, bs4, lxml, re, json, csv, math, datetime, collections, urllib.parse 等白名单库
 5. 如果需要代理，从 config.get("proxy") 获取
 6. 沙箱限制: 禁止 import os/subprocess/sys/pathlib/socket/pickle/playwright 等系统模块
-7. 可用的内置函数: len/range/enumerate/zip/map/filter/sorted/min/max/sum/abs/print/isinstance/type/hasattr/getattr/globals/locals 等常用函数
-8. 不要使用 open()/exec()/eval()/compile() 等不安全函数
-9. ⚠️ 必须优先检查 config.get("pre_rendered_html")！有则直接用 Selector 解析，不要发HTTP请求
-10. 不要在沙箱里启动 playwright
-11. 仔细看上面的HTML结构，用正确的CSS选择器匹配实际标签"""
+7. 不要使用 open()/exec()/eval()/compile() 等不安全函数
+8. 检查 config.get("pre_rendered_html")，有则先分析是否有实际数据
+9. 不要在沙箱里启动 playwright
+10. **如果HTML是SPA空壳，果断切换到API请求策略，不要继续调CSS选择器**"""
                     resp = await llm_completion(
                         messages=[{"role": "user", "content": fix_prompt}],
                         temperature=0.2,
