@@ -389,7 +389,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
     </div>
     <div class="detail-tabs">
-      <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">编辑器 & 测试</div>
+      <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">工作台</div>
       <div class="detail-tab" data-tab="sink" onclick="switchDetailTab('sink')">Sink配置</div>
       <div class="detail-tab" data-tab="proxy" onclick="switchDetailTab('proxy')">代理配置</div>
       <div class="detail-tab" data-tab="browser" onclick="switchDetailTab('browser')">🌐 浏览器</div>
@@ -421,27 +421,19 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           </div>
         </div>
 
-        <!-- Test Section (merged from test tab) -->
-        <div class="form-group">
-          <label><i class="ri-play-circle-line"></i> 测试运行</label>
-          <div style="display:flex;gap:8px">
-            <input class="form-input" id="test-url" placeholder="https://example.com" style="flex:1">
-            <button class="btn btn-primary" id="test-run-btn" onclick="runTest()"><i class="ri-play-line"></i> 运行测试</button>
-          </div>
-          <div id="test-result" style="margin-top:12px"></div>
-        </div>
-
-        <!-- AI Chat -->
-        <div class="form-group">
-          <label><i class="ri-robot-line"></i> AI 工作台</label>
-          <div class="chat-box">
-            <div class="chat-messages" id="chat-messages"></div>
+        <!-- Unified AI Workspace: chat + test results all in one -->
+        <div class="form-group" style="flex:1;display:flex;flex-direction:column">
+          <div class="chat-box" style="flex:1;max-height:none">
+            <div class="chat-messages" id="chat-messages" style="min-height:300px;max-height:60vh"></div>
             <div class="chat-input-row">
-              <input id="chat-input" placeholder="输入指令让AI修改代码... (Enter发送)" onkeydown="if(event.key==='Enter')sendChat()">
+              <input id="chat-input" placeholder="输入需求或修改指令... (Enter发送)" onkeydown="if(event.key==='Enter')sendChat()">
               <button onclick="sendChat()"><i class="ri-send-plane-fill"></i></button>
             </div>
           </div>
         </div>
+        <!-- Hidden elements for backward compat -->
+        <div id="test-result" class="hidden"></div>
+        <input type="hidden" id="test-url">
       </div>
     </div>
 
@@ -1258,11 +1250,10 @@ async function openProject(id) {
           }
         }
       } else if (msgs.length === 0) {
-        _appendChat('system', '👋 输入目标URL和数据需求，AI将自动生成爬虫代码并测试');
+        _appendChat('system', '👋 输入你的数据需求，AI 将自动生成爬虫代码并运行测试\n例如: "抓取日期、收盘价、成交量"', false);
       }
       box.scrollTop = box.scrollHeight;
     }
-    document.getElementById('test-url').value = currentProject.target_url || '';
     // sink
     const sinkCfg = currentProject.sink_config || {};
     if (typeof sinkCfg === 'string') { try { currentProject.sink_config = JSON.parse(sinkCfg); } catch(e) { currentProject.sink_config = {}; } }
@@ -1308,47 +1299,62 @@ async function sendChat() {
   const msg = input.value.trim();
   if (!msg || !currentProject) return;
   input.value = '';
+  const testUrl = currentProject.target_url || '';
 
   // User message
   _appendChat('user', msg);
 
-  // Step 1: Refine code
-  _appendChat('system', '⏳ AI 正在修改代码...');
-  try {
-    const res = await api('POST', `/api/v1/projects/${currentProject.id}/refine`, { feedback: msg });
-    if (res.code) _setCode(res.code);
-    currentProject = res;
-    _updateLastChat('system', '✅ 代码已修改 (v' + (res.version || '') + ')');
+  const hasCode = currentProject.code && currentProject.code.trim() && currentProject.code.trim().length > 50;
 
-    // Show AI reply if any
+  if (!hasCode) {
+    // === First time: generate code + test ===
+    _appendChat('system', '⏳ AI 正在生成爬虫代码...');
     try {
-      const msgs2 = typeof res.messages === 'string' ? JSON.parse(res.messages) : (res.messages || []);
-      const lastAi = msgs2.filter(m=>m.role==='assistant').pop();
-      if (lastAi && lastAi.content) _appendChat('ai', lastAi.content);
-    } catch(e) {}
+      const testRes = await api('POST', `/api/v1/projects/${currentProject.id}/test`, { target_url: testUrl });
+      // Refresh project to get new code
+      const proj = await api('GET', `/api/v1/projects/${currentProject.id}`);
+      if (proj.code) { _setCode(proj.code); currentProject = proj; }
 
-    // Step 2: Auto-run test
-    const testUrl = document.getElementById('test-url')?.value || currentProject.target_url;
-    if (testUrl) {
-      _appendChat('system', '⏳ 正在测试新代码...');
+      if (testRes.error && (!testRes.output || !testRes.output.length)) {
+        _updateLastChat('system', '❌ 生成代码测试失败: ' + String(testRes.error).substring(0, 300));
+      } else {
+        const data = testRes.output || [];
+        const autoTag = testRes.auto_fixed ? ` 🔧自动修复(${testRes.fix_rounds}轮)` : '';
+        let html = `✅ 代码生成并测试完成: 获取到 <b>${data.length}</b> 条数据${autoTag}`;
+        if (data.length > 0) html += _buildMiniTable(data.slice(0, 5));
+        else html += '<div style="color:var(--text-muted);margin-top:6px">未获取到数据，请输入修改指令让AI重试</div>';
+        _updateLastChat('system', html, true);
+      }
+    } catch(e) {
+      _updateLastChat('system', '❌ 失败: ' + e.message);
+    }
+  } else {
+    // === Has code: refine + auto re-test ===
+    _appendChat('system', '⏳ AI 正在修改代码...');
+    try {
+      const res = await api('POST', `/api/v1/projects/${currentProject.id}/refine`, { feedback: msg });
+      if (res.code) { _setCode(res.code); currentProject = res; }
+      _updateLastChat('system', '✅ 代码已修改 (v' + (res.version || '') + ')，正在测试...');
+
+      // Auto re-test
       try {
         const testRes = await api('POST', `/api/v1/projects/${currentProject.id}/test`, { target_url: testUrl });
-        if (testRes.error) {
-          _updateLastChat('system', '❌ 测试失败: ' + String(testRes.error).substring(0, 200));
+        if (testRes.error && (!testRes.output || !testRes.output.length)) {
+          _appendChat('system', '❌ 测试失败: ' + String(testRes.error).substring(0, 300));
         } else {
           const data = testRes.output || [];
-          let resultHtml = '✅ 测试完成: 获取到 ' + data.length + ' 条数据';
-          if (data.length > 0) {
-            resultHtml += _buildMiniTable(data.slice(0, 5));
-          }
-          _updateLastChat('system', resultHtml, true);
+          const autoTag = testRes.auto_fixed ? ` 🔧自动修复(${testRes.fix_rounds}轮)` : '';
+          let html = `✅ 测试完成: 获取到 <b>${data.length}</b> 条数据${autoTag}`;
+          if (data.length > 0) html += _buildMiniTable(data.slice(0, 5));
+          else html += '<div style="color:var(--text-muted);margin-top:6px">未获取到数据，继续输入指令修改</div>';
+          _appendChat('system', html, true);
         }
       } catch(e) {
-        _updateLastChat('system', '❌ 测试出错: ' + e.message);
+        _appendChat('system', '❌ 测试出错: ' + e.message);
       }
+    } catch(e) {
+      _updateLastChat('system', '❌ 修改失败: ' + e.message);
     }
-  } catch(e) {
-    _updateLastChat('system', '❌ 修改失败: ' + e.message);
   }
 }
 
@@ -1385,7 +1391,7 @@ function _buildMiniTable(rows) {
     }).join('') + '</tr>';
   });
   html += '</table></div>';
-  if (rows.length >= 5) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">显示前5条，完整数据请切换到"测试"标签查看</div>';
+  if (rows.length >= 5) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">显示前5条</div>';
   return html;
 }
 
