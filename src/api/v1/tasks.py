@@ -13,13 +13,14 @@ from src.scheduler.task_manager import task_manager
 router = APIRouter()
 
 
-async def _verify_task_owner(task_id: str, user_id: str):
+async def _verify_task_owner(task_id: str, user_id: str, user: dict = None):
     row = await _db.get("tasks", task_id)
     if not row:
         raise HTTPException(404, "Task not found")
-    if True:
-        if row["user_id"] != user_id:
-            raise HTTPException(403, "Not your task")
+    if user and user.get("role") == "admin":
+        return
+    if row["user_id"] != user_id:
+        raise HTTPException(403, "Not your task")
 
 
 class CreateTaskReq(BaseModel):
@@ -141,7 +142,7 @@ async def get_task_runs(tid: str, user: dict = Depends(get_current_user)):
 
 @router.post("/tasks/{tid}/cancel")
 async def cancel_task(tid: str, user: dict = Depends(get_current_user)):
-    await _verify_task_owner(tid, user["id"])
+    await _verify_task_owner(tid, user["id"], user)
     ok = await task_manager.cancel_task(tid)
     if not ok:
         raise HTTPException(404)
@@ -150,7 +151,7 @@ async def cancel_task(tid: str, user: dict = Depends(get_current_user)):
 
 @router.post("/tasks/{tid}/retry")
 async def retry_task(tid: str, user: dict = Depends(get_current_user)):
-    await _verify_task_owner(tid, user["id"])
+    await _verify_task_owner(tid, user["id"], user)
     ok = await task_manager.retry_task(tid)
     if not ok:
         raise HTTPException(404)
@@ -159,14 +160,14 @@ async def retry_task(tid: str, user: dict = Depends(get_current_user)):
 
 @router.post("/tasks/{tid}/pause")
 async def pause_task(tid: str, user: dict = Depends(get_current_user)):
-    await _verify_task_owner(tid, user["id"])
+    await _verify_task_owner(tid, user["id"], user)
     await task_manager.update_task(tid, status=TaskStatus.PAUSED)
     return {"ok": True}
 
 
 @router.put("/tasks/{tid}")
 async def update_task_config(tid: str, body: dict = Body(...), user: dict = Depends(get_current_user)):
-    await _verify_task_owner(tid, user["id"])
+    await _verify_task_owner(tid, user["id"], user)
     allowed = ["name", "cron_expr", "max_retries", "timeout_seconds", "concurrency", "priority", "max_pages", "max_items"]
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
@@ -177,7 +178,7 @@ async def update_task_config(tid: str, body: dict = Body(...), user: dict = Depe
 
 @router.delete("/tasks/{tid}")
 async def delete_task(tid: str, user: dict = Depends(get_current_user)):
-    await _verify_task_owner(tid, user["id"])
+    await _verify_task_owner(tid, user["id"], user)
     if not await task_manager.delete_task(tid):
         raise HTTPException(404)
     return {"ok": True}
