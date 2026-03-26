@@ -1895,7 +1895,7 @@ async function loadTasks() {
       const pName = t.project_name || projMap[t.project_id] || shortId(t.project_id);
       const lastRun = t.last_run_at ? fmtTime(t.last_run_at) : '-';
       return `<tr style="cursor:pointer" onclick="toggleTaskDetail('${t.id}', this)">
-      <td>${shortId(t.id)}</td><td title="${esc(t.project_id||'')}">${esc(pName)}</td>
+      <td>${shortId(t.id)}</td><td title="${esc(t.project_id||'')}"><a href="javascript:void(0)" onclick="event.stopPropagation();openProject('${t.project_id}')" style="color:var(--accent)">${esc(pName)}</a></td>
       <td>${statusBadge(t.status)}</td><td>${t.task_type||t.type||'-'}</td>
       <td>${lastRun}</td><td>${fmtTime(t.created_at)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap" onclick="event.stopPropagation()">
@@ -1951,6 +1951,7 @@ async function toggleTaskDetail(tid, rowEl) {
     // Export buttons + Edit
     html += '<div style="margin-bottom:12px;display:flex;gap:6px">';
     html += `<button class="btn btn-secondary btn-sm" onclick="editTask('${tid}')">✏️ 编辑</button>`;
+    html += `<button class="btn btn-secondary btn-sm" onclick="openProject('${task.project_id}')">📂 打开项目</button>`;
     html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','csv')">📥 CSV</button>`;
     html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','json')">📥 JSON</button>`;
     html += `<button class="btn btn-secondary btn-sm" onclick="exportTaskData('${tid}','excel')">📥 Excel</button>`;
