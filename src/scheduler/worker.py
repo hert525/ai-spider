@@ -181,7 +181,14 @@ class WorkerProcess:
 
         try:
             target_urls = task.get("target_urls", [])
+            if isinstance(target_urls, str):
+                import json as _json
+                try:
+                    target_urls = _json.loads(target_urls)
+                except Exception:
+                    target_urls = [target_urls]
             timeout = task.get("timeout_seconds", 300)
+            logger.info(f"Task {task_id}: mode={mode}, use_browser={task.get('use_browser')}, urls={target_urls}, code_len={len(task.get('code',''))}")
             all_items: list[dict] = []
             total_pages = 0
 
@@ -254,37 +261,140 @@ class WorkerProcess:
         from src.engine.sandbox import run_code_in_sandbox
 
         proxy_config = task.get("proxy_config")
+        if isinstance(proxy_config, str):
+            import json as _json
+            try:
+                proxy_config = _json.loads(proxy_config)
+            except Exception:
+                proxy_config = None
         use_browser = task.get("use_browser", False)
+
+        # Extract pagination config from proxy_config if present
+        pagination = None
+        if proxy_config and isinstance(proxy_config, dict):
+            pagination = proxy_config.get("pagination")
 
         all_items: list[dict] = []
         total_pages = 0
         for url in target_urls:
             pre_html = None
+            api_data = None
             if use_browser and "pre_rendered_html" in code:
-                pre_html = await self._pre_render(url)
-            result = await run_code_in_sandbox(code, url, timeout=timeout, proxy_config=proxy_config, html=pre_html)
+                pre_html, api_data = await self._pre_render(url, pagination=pagination)
+            result = await run_code_in_sandbox(
+                code, url, timeout=timeout, proxy_config=proxy_config,
+                html=pre_html, api_data=api_data,
+            )
             output = result.get("output", [])
             if output:
                 all_items.extend(output)
             total_pages += result.get("pages_crawled", 0)
         return all_items, total_pages
 
-    async def _pre_render(self, url: str) -> str | None:
-        """Pre-render a page with Playwright for browser-dependent crawlers."""
+    async def _pre_render(self, url: str, pagination: dict | None = None) -> tuple[str | None, list | None]:
+        """Pre-render a page with Playwright and return (html, api_data).
+
+        Handles JS challenge (cookie-based anti-bot) by:
+        1. Injecting stealth scripts to hide webdriver detection
+        2. Waiting for JS challenge to complete (cookie set + redirect)
+        3. Intercepting all JSON API responses during page load
+        4. If pagination config provided, auto-paginate to collect all data
+
+        pagination config (from project.proxy_config["pagination"]):
+        {
+            "api_pattern": "showreportdata",     # URL pattern to intercept
+            "page_fn": "gotoPage('bdzq', {page}, {size})",  # JS to call
+            "page_size": 500,
+            "total_key": "totalCount",           # JSON key for total count
+            "data_key": "data",                  # JSON key for items array
+        }
+
+        Returns (html, api_data) where api_data is a list of all JSON items
+        collected from API responses, or None if no pagination.
+        """
         try:
+            import json as _json
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-http2"])
-                page = await browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                await page.goto(url, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(2000)
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                )
+                page = await context.new_page()
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    window.chrome = {runtime: {}};
+                """)
+
+                # Intercept JSON API responses
+                api_responses: list[str] = []
+                api_pattern = (pagination or {}).get("api_pattern", "")
+
+                async def _capture(response):
+                    if api_pattern and api_pattern in response.url:
+                        try:
+                            api_responses.append(await response.text())
+                        except Exception:
+                            pass
+                if api_pattern:
+                    page.on("response", _capture)
+
+                await page.goto(url, wait_until="networkidle", timeout=45000)
+                await page.wait_for_timeout(8000)
+
+                # Verify JS challenge passed — if page is still a challenge page,
+                # wait longer and retry (challenge scripts need variable time)
+                if pagination and not api_responses:
+                    html_check = await page.content()
+                    if len(html_check) < 65000 or "document.cookie" in html_check[:2000]:
+                        logger.info("JS challenge may not have completed, waiting longer...")
+                        await page.wait_for_timeout(5000)
+                        # If still stuck, try reload (cookies should be set now)
+                        if not api_responses:
+                            logger.info("Reloading page after challenge wait...")
+                            await page.reload(wait_until="networkidle", timeout=30000)
+                            await page.wait_for_timeout(8000)
+
+                all_api_data = None
+
+                # Auto-paginate if config provided and initial API response captured
+                if pagination and api_responses:
+                    data_key = pagination.get("data_key", "data")
+                    total_key = pagination.get("total_key", "totalCount")
+                    page_fn = pagination.get("page_fn", "")
+                    page_size = pagination.get("page_size", 500)
+
+                    first = _json.loads(api_responses[0])
+                    total_count = first.get(total_key, 0)
+                    all_api_data = list(first.get(data_key, []))
+                    logger.info(f"Pre-render pagination: total={total_count}, first_page={len(all_api_data)}")
+
+                    if total_count > len(all_api_data) and page_fn:
+                        pages_needed = (total_count + page_size - 1) // page_size
+                        for pi in range(0, pages_needed):
+                            api_responses.clear()
+                            js = page_fn.replace("{page}", str(pi)).replace("{size}", str(page_size))
+                            await page.evaluate(js)
+                            await page.wait_for_timeout(3000)
+                            if api_responses:
+                                batch = _json.loads(api_responses[0])
+                                items = batch.get(data_key, [])
+                                if items:
+                                    all_api_data.extend(items)
+                                    logger.info(f"  Page {pi}: +{len(items)} (total: {len(all_api_data)})")
+                                if len(items) < page_size:
+                                    break
+                            else:
+                                logger.warning(f"  Page {pi}: no API response, stopping")
+                                break
+
                 html = await page.content()
                 await browser.close()
-                logger.info(f"Pre-rendered {url}: {len(html)} chars")
-                return html
+                logger.info(f"Pre-rendered {url}: {len(html)} chars, api_items={len(all_api_data) if all_api_data else 0}")
+                return html, all_api_data
         except Exception as e:
             logger.warning(f"Pre-render failed for {url}: {e}")
-            return None
+            return None, None
 
     async def _run_smart_scraper(self, task: dict, target_urls: list[str], timeout: int) -> tuple[list[dict], int]:
         description = task.get("description", "")
@@ -395,7 +505,7 @@ class WorkerManager:
         """Detect workers that missed heartbeats and recover their tasks."""
         from src.scheduler.queue import task_queue
         workers = await db.list("workers", order="last_heartbeat DESC")
-        now = datetime.now()
+        now = datetime.utcnow()
         for w in workers:
             if w.get("status") in ("offline", "disabled"):
                 continue
@@ -403,6 +513,7 @@ class WorkerManager:
             if not last_hb:
                 continue
             try:
+                # Strip timezone info to get naive UTC datetime for comparison
                 hb_time = datetime.fromisoformat(last_hb.replace("Z", "+00:00").replace("+00:00", ""))
                 elapsed = (now - hb_time).total_seconds()
             except (ValueError, TypeError):

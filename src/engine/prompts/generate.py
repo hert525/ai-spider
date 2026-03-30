@@ -10,9 +10,29 @@ crawl() 函数有两种运行模式，通过 config 参数区分：
 代码自己用 httpx 请求页面、解析数据。
 
 ### 模式2: 浏览器预渲染模式 (config["pre_rendered_html"] 存在时)
-页面已由 Playwright 预渲染好，HTML 通过 config["pre_rendered_html"] 传入。
-代码**不需要发 HTTP 请求**，直接解析 HTML 即可。
-这用于有 JS 反爬/动态加载的站点，浏览器已经处理好了 JS 挑战和数据加载。
+页面已由 Playwright 预渲染好，首页HTML 通过 config["pre_rendered_html"] 传入。
+⚠️ **重要：pre_rendered_html 只包含首页数据！** 如果页面有分页，你需要自己翻页。
+浏览器的 cookies 已自动注入到 httpx 中，你可以直接用 httpx 请求同域 API，会自动带上
+认证 cookies（绕过 JS challenge）。
+
+**分页数据：**
+如果页面有分页，系统会自动检测翻页模式并在浏览器内翻完所有页。
+全量数据通过 `config["api_data"]`（list[dict]）传入。
+代码应优先检查 `config.get("api_data")`，有则直接处理 JSON 数据（字段映射、过滤清洗），
+无则 fallback 到 pre_rendered_html 解析。
+
+```python
+# 推荐模式
+api_data = config.get("api_data")
+if api_data:
+    # 直接处理 JSON 数据，每个 item 是 dict
+    for item in api_data:
+        results.append({"字段": item.get("key", "")})
+    return results
+
+# Fallback: 解析首页 HTML
+pre_html = config.get("pre_rendered_html")
+```
 
 ## ⚡ 策略选择（极其重要）
 

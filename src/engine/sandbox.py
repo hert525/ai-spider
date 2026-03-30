@@ -108,6 +108,8 @@ async def run_code_in_sandbox(
     html: str = "",
     timeout: int | None = None,
     proxy_config: dict | None = None,
+    browser_cookies: list[dict] | None = None,
+    api_data: list | None = None,
 ) -> dict:
     """在受限沙箱中执行爬虫代码。
 
@@ -222,8 +224,6 @@ async def run_code_in_sandbox(
                             and r.path.rstrip('/') == t.path.rstrip('/'))
 
                 async def get(self, url, **kwargs):
-                    # If requesting the target URL (ignoring query params), return pre-rendered HTML
-                    # Only serve it once to prevent infinite pagination loops
                     if not _PatchedClient._html_served and self._urls_match(url, self._target):
                         _PatchedClient._html_served = True
                         _html = self._pre_rendered_html
@@ -323,6 +323,10 @@ async def run_code_in_sandbox(
         # 注入预渲染HTML到config (推荐方式，代码通过 config.get("pre_rendered_html") 获取)
         if html:
             config["pre_rendered_html"] = html
+
+        # 注入浏览器翻页收集的 API 数据 (通过 config.get("api_data") 获取)
+        if api_data:
+            config["api_data"] = api_data
 
         # 注入代理配置
         if proxy_config and proxy_config.get("enabled"):

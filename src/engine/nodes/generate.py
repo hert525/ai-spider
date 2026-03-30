@@ -34,6 +34,19 @@ class GenerateNode(BaseNode):
                 + content[:12000]
             )
 
+        # Inject pagination info if detected
+        if state.get("_pagination_config"):
+            import json
+            pg_cfg = state["_pagination_config"]
+            content = (
+                f"[自动翻页已配置] 系统已检测到此页面有分页机制，会自动翻页收集全量数据。\n"
+                f"翻页配置: {json.dumps(pg_cfg, ensure_ascii=False)}\n"
+                f"全量数据将通过 config['api_data'] 传入（list[dict]）。\n"
+                f"请优先从 config.get('api_data') 获取数据并做字段映射/清洗，"
+                f"不需要自己处理翻页逻辑。\n\n"
+                + content
+            )
+
         prompt = CODE_GEN_USER_PROMPT.format(
             description=description,
             target_url=target_url,

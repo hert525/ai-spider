@@ -200,6 +200,23 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   .data-table-toolbar{padding:14px}
   #dash-bottom-grid{grid-template-columns:1fr!important}
 }
+/* Data summary cards */
+.data-summary-card{background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:8px 14px;cursor:pointer;transition:all .15s}
+.data-summary-card:hover{border-color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.data-summary-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.data-summary-name{font-size:15px;font-weight:600;color:var(--text-primary)}
+.data-summary-badge{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--primary);color:#fff}
+.data-summary-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.data-summary-stat{display:flex;flex-direction:column;gap:2px}
+.data-summary-stat-label{font-size:11px;color:var(--text-muted)}
+.data-summary-stat-value{font-size:14px;font-weight:500;color:var(--text-secondary)}
+.data-summary-fields{margin-top:10px;display:flex;flex-wrap:wrap;gap:4px}
+.data-summary-field{font-size:11px;padding:2px 6px;border-radius:3px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-muted)}
+.data-summary-expand{margin-top:12px;display:none;border-top:1px solid var(--border);padding-top:12px}
+.data-summary-card.expanded .data-summary-expand{display:block}
+.data-summary-preview-table{width:100%;font-size:12px;border-collapse:collapse}
+.data-summary-preview-table th{text-align:left;padding:4px 8px;color:var(--text-muted);font-weight:500;border-bottom:1px solid var(--border)}
+.data-summary-preview-table td{padding:4px 8px;color:var(--text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -365,17 +382,29 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     <div class="data-panel data-table-panel">
       <div class="data-table-toolbar">
         <div>
-          <div class="data-table-title">数据记录</div>
-          <div class="data-table-subtitle" id="data-table-summary">加载中...</div>
+          <div class="data-table-title">数据概览</div>
+          <div class="data-table-subtitle" id="data-table-summary">按项目汇总</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-secondary" id="data-view-toggle" onclick="toggleDataView()" style="font-size:12px">
+            <i class="ri-list-check"></i> 切换原始记录
+          </button>
         </div>
       </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead id="data-thead"><tr><th>加载中...</th></tr></thead>
-          <tbody id="data-tbody"></tbody>
-        </table>
+      <!-- 项目摘要视图（默认） -->
+      <div id="data-summary-view">
+        <div id="data-summary-list" style="padding:4px 0"></div>
       </div>
-      <div class="pagination" id="data-pagination"></div>
+      <!-- 原始记录视图（隐藏） -->
+      <div id="data-raw-view" class="hidden">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead id="data-thead"><tr><th>加载中...</th></tr></thead>
+            <tbody id="data-tbody"></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="data-pagination"></div>
+      </div>
     </div>
   </div>
 
@@ -2053,7 +2082,12 @@ async function refreshDataPage(resetPage=false) {
   if (resetPage) dataState.page = 1;
   const pid = document.getElementById('data-project-filter').value;
   dataState.currentProjectId = pid;
-  await Promise.all([loadDataStats(pid), loadDataTimeline(pid), loadData(dataState.page)]);
+  await Promise.all([loadDataStats(pid), loadDataTimeline(pid)]);
+  if (dataViewMode === 'summary') {
+    await loadDataSummary();
+  } else {
+    await loadData(dataState.page);
+  }
 }
 
 function buildDisplayRows(records) {
@@ -2100,6 +2134,156 @@ function formatCellValue(value) {
     return json.length > 120 ? `${json.slice(0, 117)}...` : json;
   }
   return String(value);
+}
+
+// === Data Summary View ===
+let dataViewMode = 'summary'; // 'summary' or 'raw'
+
+function toggleDataView() {
+  const btn = document.getElementById('data-view-toggle');
+  const summaryView = document.getElementById('data-summary-view');
+  const rawView = document.getElementById('data-raw-view');
+  if (dataViewMode === 'summary') {
+    dataViewMode = 'raw';
+    summaryView.classList.add('hidden');
+    rawView.classList.remove('hidden');
+    btn.innerHTML = '<i class="ri-dashboard-line"></i> 切换概览';
+    loadData(1);
+  } else {
+    dataViewMode = 'summary';
+    summaryView.classList.remove('hidden');
+    rawView.classList.add('hidden');
+    btn.innerHTML = '<i class="ri-list-check"></i> 切换原始记录';
+  }
+}
+
+async function loadDataSummary() {
+  const container = document.getElementById('data-summary-list');
+  try {
+    const [projects, stats] = await Promise.all([
+      api('GET', '/api/v1/projects'),
+      api('GET', '/api/v1/data/stats').catch(() => ({})),
+    ]);
+    const projList = Array.isArray(projects) ? projects : (projects.items || []);
+    
+    if (!projList.length) {
+      container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)">暂无项目数据</div>';
+      return;
+    }
+
+    // Fetch tasks + latest runs in parallel (one request per project)
+    const projData = await Promise.all(projList.map(async (proj) => {
+      let latestRun = null, totalRuns = 0, successRuns = 0, latestItems = 0, fields = [];
+      try {
+        const tasks = await api('GET', `/api/v1/tasks?project_id=${proj.id}`);
+        const taskList = Array.isArray(tasks) ? tasks : (tasks.items || []);
+        // Get runs for all tasks in parallel
+        const allRuns = await Promise.all(taskList.map(t =>
+          api('GET', `/api/v1/tasks/${t.id}/runs?limit=10`).catch(() => [])
+        ));
+        for (const runs of allRuns) {
+          const runList = Array.isArray(runs) ? runs : (runs.items || runs.runs || []);
+          totalRuns += runList.length;
+          for (const run of runList) {
+            if (run.status === 'success') successRuns++;
+            if (!latestRun || run.started_at > latestRun.started_at) {
+              latestRun = run;
+              latestItems = run.items_count || 0;
+            }
+          }
+        }
+      } catch(e) {}
+      // Get sample field names
+      try {
+        const sample = await api('GET', `/api/v1/data?page=1&page_size=1&project_id=${proj.id}`);
+        const items = sample.items || sample.data || (Array.isArray(sample) ? sample : []);
+        if (items.length && items[0].data) fields = Object.keys(items[0].data).slice(0, 8);
+      } catch(e) {}
+      return { proj, latestRun, totalRuns, successRuns, latestItems, fields };
+    }));
+
+    let html = '';
+    for (const { proj, latestRun, totalRuns, successRuns, latestItems, fields } of projData) {
+      const successRate = totalRuns > 0 ? Math.round(successRuns / totalRuns * 100) : 0;
+      const lastTime = latestRun ? new Date(latestRun.started_at).toLocaleString('zh-CN') : '未运行';
+      const statusColor = latestRun?.status === 'success' && latestItems > 0 ? '#52c41a' : 
+                          latestRun?.status === 'success' ? '#faad14' : '#ff4d4f';
+      const statusText = latestRun?.status === 'success' && latestItems > 0 ? '正常' :
+                         latestRun?.status === 'success' ? '空结果' : (latestRun?.status || '未运行');
+
+      html += `
+        <div class="data-summary-card" onclick="toggleSummaryExpand(this, '${proj.id}')">
+          <div class="data-summary-header">
+            <div class="data-summary-name">${esc(proj.name || proj.id)}</div>
+            <div class="data-summary-badge" style="background:${statusColor}">${statusText}</div>
+          </div>
+          <div class="data-summary-stats">
+            <div class="data-summary-stat">
+              <div class="data-summary-stat-label">最新采集</div>
+              <div class="data-summary-stat-value">${latestItems.toLocaleString()} 条</div>
+            </div>
+            <div class="data-summary-stat">
+              <div class="data-summary-stat-label">最后运行</div>
+              <div class="data-summary-stat-value">${lastTime}</div>
+            </div>
+            <div class="data-summary-stat">
+              <div class="data-summary-stat-label">成功率</div>
+              <div class="data-summary-stat-value">${successRate}% (${successRuns}/${totalRuns})</div>
+            </div>
+            <div class="data-summary-stat">
+              <div class="data-summary-stat-label">模式</div>
+              <div class="data-summary-stat-value">${proj.mode === 'code_generator' ? '代码生成' : '智能提取'}</div>
+            </div>
+          </div>
+          ${fields.length ? '<div class="data-summary-fields">' + fields.map(f => `<span class="data-summary-field">${esc(f)}</span>`).join('') + '</div>' : ''}
+          <div class="data-summary-expand" id="expand-${proj.id}">
+            <div style="text-align:center;padding:8px;color:var(--text-muted)">点击展开预览</div>
+          </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+    document.getElementById('data-table-summary').textContent = `${projList.length} 个项目，累计 ${(stats.total || 0).toLocaleString()} 条记录`;
+  } catch(e) {
+    container.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">加载失败: ${esc(e.message)}</div>`;
+  }
+}
+
+async function toggleSummaryExpand(card, projectId) {
+  const expandDiv = document.getElementById('expand-' + projectId);
+  if (card.classList.contains('expanded')) {
+    card.classList.remove('expanded');
+    return;
+  }
+  // Collapse others
+  document.querySelectorAll('.data-summary-card.expanded').forEach(c => c.classList.remove('expanded'));
+  card.classList.add('expanded');
+  
+  // Load preview data
+  try {
+    const res = await api('GET', `/api/v1/data?page=1&page_size=5&project_id=${projectId}`);
+    const items = res.items || res.data || (Array.isArray(res) ? res : []);
+    if (!items.length) {
+      expandDiv.innerHTML = '<div style="text-align:center;padding:8px;color:var(--text-muted)">暂无数据</div>';
+      return;
+    }
+    const allFields = Object.keys(items[0].data || {});
+    const showFields = allFields.slice(0, 6);
+    let tableHtml = '<table class="data-summary-preview-table"><thead><tr>';
+    tableHtml += showFields.map(f => `<th>${esc(f)}</th>`).join('');
+    if (allFields.length > 6) tableHtml += `<th style="color:var(--text-muted)">+${allFields.length - 6}列</th>`;
+    tableHtml += '</tr></thead><tbody>';
+    for (const item of items) {
+      const d = item.data || {};
+      tableHtml += '<tr>' + showFields.map(f => `<td title="${esc(String(d[f]||''))}">${esc(String(d[f]||'-'))}</td>`).join('');
+      if (allFields.length > 6) tableHtml += '<td>...</td>';
+      tableHtml += '</tr>';
+    }
+    tableHtml += '</tbody></table>';
+    tableHtml += `<div style="text-align:center;margin-top:8px"><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();document.getElementById('data-project-filter').value='${projectId}';toggleDataView();loadData(1)">查看全部 →</button></div>`;
+    expandDiv.innerHTML = tableHtml;
+  } catch(e) {
+    expandDiv.innerHTML = `<div style="color:var(--text-muted);padding:8px">${esc(e.message)}</div>`;
+  }
 }
 
 function renderDataTable() {

@@ -409,6 +409,58 @@ class FetchNode(BaseNode):
                     except Exception as e:
                         self.logger.warning(f"Failed to save updated cookies: {e}")
 
+                # Auto-detect pagination patterns while browser is still open
+                try:
+                    from src.engine.pagination_detector import detect_pagination, detect_api_structure
+                    pg_result = await detect_pagination(page)
+                    if pg_result.detected:
+                        state["_pagination_detected"] = True
+                        pg_config = pg_result.to_config()
+
+                        # If we detected a page function, try to find the API pattern
+                        # by triggering one pagination call and intercepting the response
+                        if pg_result.page_fn and not pg_result.api_pattern:
+                            api_captured = []
+                            async def _capture_api(response):
+                                ct = response.headers.get("content-type", "")
+                                if "json" in ct or "javascript" in ct:
+                                    try:
+                                        body = await response.text()
+                                        if body.startswith("{") or body.startswith("["):
+                                            api_captured.append((response.url, body))
+                                    except Exception:
+                                        pass
+                            page.on("response", _capture_api)
+
+                            try:
+                                test_js = pg_result.page_fn.replace("{page}", "1").replace("{size}", "10")
+                                await page.evaluate(test_js)
+                                await page.wait_for_timeout(3000)
+                            except Exception as e:
+                                self.logger.debug(f"Pagination test call failed: {e}")
+
+                            if api_captured:
+                                api_url, api_body = api_captured[0]
+                                # Extract distinctive URL pattern
+                                from urllib.parse import urlparse
+                                path = urlparse(api_url).path
+                                parts = path.strip("/").split("/")
+                                pg_config["api_pattern"] = parts[-1] if parts else ""
+
+                                # Analyze response structure
+                                data_key, total_key, detected_size = await detect_api_structure(api_body)
+                                pg_config["data_key"] = data_key
+                                pg_config["total_key"] = total_key
+                                if not pg_config.get("page_size"):
+                                    pg_config["page_size"] = 500  # Use large pages for efficiency
+
+                            page.remove_listener("response", _capture_api)
+
+                        state["_pagination_config"] = pg_config
+                        self.logger.info(f"Pagination config: {pg_config}")
+                except Exception as e:
+                    self.logger.warning(f"Pagination detection failed: {e}")
+
                 await browser.close()
                 return html
         except ImportError:

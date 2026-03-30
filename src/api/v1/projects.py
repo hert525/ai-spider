@@ -257,7 +257,7 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                     })
                 except Exception:
                     pass
-                await db.update("projects", project.id, {
+                update_fields = {
                     "status": ProjectStatus.GENERATED,
                     "code": code,
                     "messages": json.dumps([
@@ -266,7 +266,23 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                     ], ensure_ascii=False),
                     "progress": None,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
-                })
+                }
+
+                # Auto-save detected pagination config
+                if state.get("_pagination_config"):
+                    existing_proxy = project_data.get("proxy_config")
+                    if existing_proxy and isinstance(existing_proxy, str):
+                        try:
+                            existing_proxy = json.loads(existing_proxy)
+                        except Exception:
+                            existing_proxy = {}
+                    if not isinstance(existing_proxy, dict):
+                        existing_proxy = {}
+                    existing_proxy["pagination"] = state["_pagination_config"]
+                    update_fields["proxy_config"] = json.dumps(existing_proxy, ensure_ascii=False)
+                    logger.info(f"Auto-saved pagination config for project {project.id}")
+
+                await db.update("projects", project.id, update_fields)
 
                 # === Auto-test after code generation ===
                 try:
