@@ -842,7 +842,10 @@ function enterApp() {
 
 // WebSocket
 let _ws = null;
+let _wsRetryCount = 0;
+let _wsPingTimer = null;
 function connectWS() {
+  if (_wsPingTimer) { clearInterval(_wsPingTimer); _wsPingTimer = null; }
   if (_ws) { try { _ws.close(); } catch(e){} }
   const apiKey = localStorage.getItem('api_key');
   if (!apiKey) return;
@@ -858,14 +861,14 @@ function connectWS() {
     } catch(err) { console.warn('WS parse error', err); }
   };
   _ws.onclose = () => {
-    _wsRetryCount = (_wsRetryCount || 0) + 1;
+    _wsRetryCount++;
     const delay = Math.min(5000 * Math.pow(2, _wsRetryCount - 1), 60000);
     console.log(`WS disconnected, reconnecting in ${delay/1000}s (attempt ${_wsRetryCount})...`);
     setTimeout(connectWS, delay);
   };
   _ws.onerror = (e) => { console.warn('WS error', e); };
-  // Keepalive ping every 30s
-  setInterval(() => {
+  // Keepalive ping every 30s (single timer, cleared on reconnect)
+  _wsPingTimer = setInterval(() => {
     if (_ws && _ws.readyState === WebSocket.OPEN) {
       _ws.send(JSON.stringify({type: 'ping'}));
     }
