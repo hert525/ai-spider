@@ -34,6 +34,10 @@ async def get_config(user: dict = Depends(get_current_user)):
                 r["events"] = json.loads(r["events"])
             except Exception:
                 pass
+        # Mask telegram_bot_token for security
+        token = r.get("telegram_bot_token", "")
+        if token:
+            r["telegram_bot_token"] = token[:5] + "***" if len(token) > 5 else "***"
         return r
     return {
         "webhook_url": "",
@@ -48,7 +52,7 @@ async def get_config(user: dict = Depends(get_current_user)):
 @router.post("/config")
 async def save_config(req: NotificationConfigReq, user: dict = Depends(get_current_user)):
     now = datetime.now().isoformat()
-    existing = await db.query("SELECT id FROM notification_configs WHERE user_id = ?", [user["id"]])
+    existing = await db.query("SELECT * FROM notification_configs WHERE user_id = ?", [user["id"]])
     data = {
         "webhook_url": req.webhook_url,
         "email": req.email,
@@ -58,6 +62,12 @@ async def save_config(req: NotificationConfigReq, user: dict = Depends(get_curre
         "enabled": 1 if req.enabled else 0,
         "updated_at": now,
     }
+    # If token is masked (contains ***), don't overwrite the real token
+    if "***" in (req.telegram_bot_token or ""):
+        if existing:
+            data["telegram_bot_token"] = existing[0].get("telegram_bot_token", "")
+        else:
+            data.pop("telegram_bot_token", None)
     if existing:
         await db.update("notification_configs", existing[0]["id"], data)
     else:

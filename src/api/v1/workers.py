@@ -11,6 +11,7 @@ from src.scheduler.task_manager import task_manager
 from src.core.database import db
 from src.core.models import DataRecord, Worker, WorkerStatus, _uid
 from src.core.settings_manager import settings_manager
+from src.core.notifier import notifier
 
 router = APIRouter(prefix="/workers", tags=["workers"])
 
@@ -76,9 +77,13 @@ async def _offline_threshold_async() -> int:
 
 
 def _mark_offline_if_stale(w: dict, threshold: int = 60) -> dict:
-    """Mark worker offline if heartbeat is stale (unless disabled)."""
+    """Mark worker offline if heartbeat is stale (unless disabled).
+    
+    Returns the worker dict. Sets w["_went_offline"] = True if status transitioned to offline.
+    """
     if w.get("status") in ("disabled",):
         return w
+    prev_status = w.get("status", "")
     lh = w.get("last_heartbeat", "")
     if lh:
         try:
@@ -90,6 +95,9 @@ def _mark_offline_if_stale(w: dict, threshold: int = 60) -> dict:
             pass
     else:
         w["status"] = "offline"
+    # Track transition for notification
+    if w["status"] == "offline" and prev_status not in ("offline", "disabled"):
+        w["_went_offline"] = True
     return w
 
 
@@ -101,6 +109,16 @@ async def list_workers():
     threshold = await _offline_threshold_async()
     for w in rows:
         _mark_offline_if_stale(w, threshold)
+        if w.pop("_went_offline", False):
+            try:
+                await notifier.notify("worker_offline", {
+                    "worker_id": w.get("id", ""),
+                    "hostname": w.get("hostname", ""),
+                    "ip": w.get("ip", ""),
+                    "last_heartbeat": w.get("last_heartbeat", ""),
+                })
+            except Exception as _ne:
+                logger.warning(f"Failed to send worker_offline notification: {_ne}")
     return rows
 
 
@@ -111,6 +129,16 @@ async def get_worker(worker_id: str):
         raise HTTPException(404, "Worker not found")
     threshold = await _offline_threshold_async()
     _mark_offline_if_stale(w, threshold)
+    if w.pop("_went_offline", False):
+        try:
+            await notifier.notify("worker_offline", {
+                "worker_id": w.get("id", ""),
+                "hostname": w.get("hostname", ""),
+                "ip": w.get("ip", ""),
+                "last_heartbeat": w.get("last_heartbeat", ""),
+            })
+        except Exception as _ne:
+            logger.warning(f"Failed to send worker_offline notification: {_ne}")
     # Attach recent task runs
     runs = await db.query(
         "SELECT * FROM task_runs WHERE worker_id = ? ORDER BY started_at DESC LIMIT 20",
@@ -328,6 +356,16 @@ async def get_stats_async() -> dict:
     threshold = await _offline_threshold_async()
     for w in rows:
         _mark_offline_if_stale(w, threshold)
+        if w.pop("_went_offline", False):
+            try:
+                await notifier.notify("worker_offline", {
+                    "worker_id": w.get("id", ""),
+                    "hostname": w.get("hostname", ""),
+                    "ip": w.get("ip", ""),
+                    "last_heartbeat": w.get("last_heartbeat", ""),
+                })
+            except Exception:
+                pass
     online = sum(1 for w in rows if w.get("status") == "online")
     disabled = sum(1 for w in rows if w.get("status") == "disabled")
     draining = sum(1 for w in rows if w.get("status") == "draining")

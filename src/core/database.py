@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS browser_sessions (
 
 CREATE TABLE IF NOT EXISTS notification_configs (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
+    user_id TEXT NOT NULL UNIQUE,
     webhook_url TEXT DEFAULT '',
     email TEXT DEFAULT '',
     telegram_bot_token TEXT DEFAULT '',

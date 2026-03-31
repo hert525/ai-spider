@@ -12,6 +12,7 @@ from loguru import logger
 from src.core.database import db
 from src.core.models import Project, ProjectMode, ProjectStatus, _uid
 from src.core.auth import get_current_user
+from src.api.v1.project_versions import save_project_version
 
 router = APIRouter()
 
@@ -284,6 +285,16 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
 
                 await db.update("projects", project.id, update_fields)
 
+                # Save initial version
+                try:
+                    await save_project_version(
+                        project_id=project.id,
+                        code=code,
+                        change_summary="AI 初始生成",
+                    )
+                except Exception as _ve:
+                    logger.warning(f"Failed to save initial version: {_ve}")
+
                 # === Auto-test after code generation ===
                 try:
                     logger.info(f"Auto-test: running generated code for project {project.id}")
@@ -381,6 +392,14 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                                             "status": ProjectStatus.TESTED,
                                             "updated_at": datetime.now(timezone.utc).isoformat(),
                                         })
+                                        try:
+                                            await save_project_version(
+                                                project_id=project.id,
+                                                code=new_code,
+                                                change_summary=f"AI 自动修复(第{fix_round+1}轮)",
+                                            )
+                                        except Exception:
+                                            pass
                                         break
                                 except Exception as fx_e:
                                     logger.warning(f"Auto-test fix round {fix_round+1} failed: {fx_e}")
@@ -898,6 +917,14 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                             "code": new_code,
                             "updated_at": datetime.now(timezone.utc).isoformat(),
                         })
+                        try:
+                            await save_project_version(
+                                project_id=pid,
+                                code=new_code,
+                                change_summary=f"AI 自动修复(第{fix_round+1}轮)",
+                            )
+                        except Exception:
+                            pass
                         result["auto_fixed"] = True
                         result["fix_rounds"] = fix_round + 1
                         break

@@ -161,7 +161,7 @@ class Notifier:
         await asyncio.to_thread(self._send_email_sync, msg, smtp_host, smtp_port, smtp_user, smtp_pass)
 
     def _send_email_sync(self, msg, host, port, user, passwd):
-        with smtplib.SMTP(host, port) as server:
+        with smtplib.SMTP(host, port, timeout=15) as server:
             server.starttls()
             server.login(user, passwd)
             server.send_message(msg)
