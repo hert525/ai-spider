@@ -30,3 +30,4 @@ lz4>=4.3.0
 curl_cffi>=0.7.0
 
 # scrapegraphai  # optional: AI scraping graphs
+bcrypt>=4.0.0

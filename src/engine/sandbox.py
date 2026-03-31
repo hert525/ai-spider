@@ -43,7 +43,7 @@ _SAFE_BUILTINS = {
     "chr": chr, "ord": ord,
     "hex": hex, "oct": oct, "bin": bin,
     "format": format,
-    "globals": globals, "locals": locals,
+    # globals/locals REMOVED — sandbox escape risk
     "ValueError": ValueError, "TypeError": TypeError, "KeyError": KeyError,
     "IndexError": IndexError, "AttributeError": AttributeError,
     "StopIteration": StopIteration, "RuntimeError": RuntimeError,
@@ -413,5 +413,18 @@ def _static_security_check(code: str) -> str | None:
             if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
                 if func.value.id == "os":
                     return f"禁止调用: os.{func.attr}()"
+
+        # 检查危险 dunder 属性访问 — 防止沙箱逃逸
+        # e.g. ().__class__.__bases__[0].__subclasses__()
+        if isinstance(node, ast.Attribute):
+            _DANGEROUS_DUNDERS = {
+                "__subclasses__", "__bases__", "__mro__", "__base__",
+                "__globals__", "__code__", "__func__",
+                "__self__", "__dict__", "__class__",
+                "__init_subclass__", "__set_name__",
+                "__builtins__", "__loader__", "__spec__",
+            }
+            if node.attr in _DANGEROUS_DUNDERS:
+                return f"禁止访问危险属性: {node.attr}"
 
     return None

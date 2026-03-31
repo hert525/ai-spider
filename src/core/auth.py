@@ -1,32 +1,45 @@
 """Authentication and authorization."""
 from __future__ import annotations
 
-import hashlib
+import asyncio
 import secrets
 from typing import Optional
 
+import bcrypt
 from fastapi import Header, HTTPException, Depends
 
 from src.core.database import db
 
 
-def _hash_with_salt(password: str, salt: str) -> str:
-    return hashlib.sha256((salt + password).encode()).hexdigest()
-
-
 async def hash_password(password: str) -> str:
-    """Hash password with random salt. Returns 'salt$hash'."""
-    salt = secrets.token_hex(16)
-    h = _hash_with_salt(password, salt)
-    return f"{salt}${h}"
+    """Hash password with bcrypt. Returns bcrypt hash string."""
+    return await asyncio.to_thread(
+        bcrypt.hashpw, password.encode("utf-8"), bcrypt.gensalt()
+    )
 
 
 async def verify_password(password: str, hashed: str) -> bool:
-    """Verify password against 'salt$hash'."""
-    if "$" not in hashed:
+    """Verify password against bcrypt hash.
+
+    Also supports legacy 'salt$sha256hash' format for migration.
+    """
+    hashed_bytes = hashed.encode("utf-8") if isinstance(hashed, str) else hashed
+    # Legacy SHA-256 format: salt$hash (64-char hex after $)
+    if b"$" in hashed_bytes and not hashed_bytes.startswith(b"$2"):
+        import hashlib
+        salt, h = hashed.split("$", 1)
+        if len(h) == 64:  # SHA-256 hex digest
+            legacy_match = hashlib.sha256((salt + password).encode()).hexdigest() == h
+            if legacy_match:
+                # TODO: upgrade hash to bcrypt on next login
+                pass
+            return legacy_match
+    try:
+        return await asyncio.to_thread(
+            bcrypt.checkpw, password.encode("utf-8"), hashed_bytes
+        )
+    except (ValueError, TypeError):
         return False
-    salt, h = hashed.split("$", 1)
-    return _hash_with_salt(password, salt) == h
 
 
 def generate_api_key() -> str:
