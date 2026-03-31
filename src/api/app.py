@@ -31,6 +31,7 @@ from src.api.v1.monitoring import router as monitoring_router
 from src.api.v1.export import router as export_router
 from src.api.v1.notifications import router as notifications_router
 from src.api.v1.quota import router as quota_router
+from src.api.v1.project_versions import router as project_versions_router
 from src.api.ws import ws_manager
 
 # Configure logging before anything else
@@ -120,6 +121,7 @@ app.include_router(monitoring_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(quota_router, prefix="/api/v1")
+app.include_router(project_versions_router, prefix="/api/v1")
 app.include_router(probe_router, prefix="/api/v1", tags=["probe"])
 
 # Also mount under /api/ for backward compat

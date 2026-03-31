@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS notification_configs (
     user_id TEXT NOT NULL,
     webhook_url TEXT DEFAULT '',
     email TEXT DEFAULT '',
+    telegram_bot_token TEXT DEFAULT '',
     telegram_chat_id TEXT DEFAULT '',
     events TEXT DEFAULT '["task_failed"]',
     enabled INTEGER DEFAULT 1,
@@ -254,6 +255,19 @@ CREATE TABLE IF NOT EXISTS proxy_permissions (
     created_at TEXT DEFAULT '',
     UNIQUE(user_id, proxy_pool_id)
 );
+
+CREATE TABLE IF NOT EXISTS project_versions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    code TEXT DEFAULT '',
+    extraction_rules TEXT DEFAULT '',
+    config_json TEXT DEFAULT '{}',
+    change_summary TEXT DEFAULT '',
+    created_at TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_project_versions_project ON project_versions(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_versions_pv ON project_versions(project_id, version);
 """
 
 # JSON字段需要序列化/反序列化
@@ -273,7 +287,7 @@ _ALLOWED_TABLES = {
     "users", "projects", "tasks", "task_runs", "workers", "worker_pools",
     "data_records", "proxy_pools", "system_config", "seed_templates",
     "browser_sessions", "notification_configs", "notification_logs",
-    "proxy_permissions",
+    "proxy_permissions", "project_versions",
 }
 
 
@@ -329,6 +343,7 @@ if USE_PG:
     _MIGRATIONS = [
         "ALTER TABLE workers ADD COLUMN IF NOT EXISTS pool_id TEXT DEFAULT ''",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS worker_pool_id TEXT DEFAULT ''",
+        "ALTER TABLE notification_configs ADD COLUMN IF NOT EXISTS telegram_bot_token TEXT DEFAULT ''",
     ]
 
     async def init_db():
@@ -494,6 +509,7 @@ else:
     _SQLITE_MIGRATIONS = [
         ("workers", "pool_id", "ALTER TABLE workers ADD COLUMN pool_id TEXT DEFAULT ''"),
         ("projects", "worker_pool_id", "ALTER TABLE projects ADD COLUMN worker_pool_id TEXT DEFAULT ''"),
+        ("notification_configs", "telegram_bot_token", "ALTER TABLE notification_configs ADD COLUMN telegram_bot_token TEXT DEFAULT ''"),
     ]
 
     async def init_db():

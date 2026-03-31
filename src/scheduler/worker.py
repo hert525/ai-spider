@@ -204,14 +204,15 @@ class WorkerProcess:
             self.total_completed += 1
             logger.info(f"Task {task_id} done: {len(all_items)} items")
 
-            # Notify on success
+            # Notify on success (resolve user_id from task)
             try:
                 from src.core.notifier import notifier
+                _user_id = task.get("user_id", "")
                 await notifier.notify("task_completed", {
                     "task_id": task_id,
                     "items_count": len(all_items),
                     "pages_crawled": total_pages,
-                })
+                }, user_id=_user_id)
             except Exception:
                 pass
 
@@ -225,11 +226,12 @@ class WorkerProcess:
             if retry_count >= max_retries:
                 try:
                     from src.core.notifier import notifier
+                    _user_id = task.get("user_id", "")
                     await notifier.notify("task_failed", {
                         "task_id": task_id,
                         "error": str(e),
                         "retries": max_retries,
-                    })
+                    }, user_id=_user_id)
                 except Exception:
                     pass
         finally:

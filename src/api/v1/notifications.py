@@ -18,6 +18,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 class NotificationConfigReq(BaseModel):
     webhook_url: str = ""
     email: str = ""
+    telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     events: list[str] = ["task_failed"]
     enabled: bool = True
@@ -34,7 +35,14 @@ async def get_config(user: dict = Depends(get_current_user)):
             except Exception:
                 pass
         return r
-    return {"webhook_url": "", "email": "", "telegram_chat_id": "", "events": ["task_failed"], "enabled": True}
+    return {
+        "webhook_url": "",
+        "email": "",
+        "telegram_bot_token": "",
+        "telegram_chat_id": "",
+        "events": ["task_failed"],
+        "enabled": True,
+    }
 
 
 @router.post("/config")
@@ -44,6 +52,7 @@ async def save_config(req: NotificationConfigReq, user: dict = Depends(get_curre
     data = {
         "webhook_url": req.webhook_url,
         "email": req.email,
+        "telegram_bot_token": req.telegram_bot_token,
         "telegram_chat_id": req.telegram_chat_id,
         "events": json.dumps(req.events),
         "enabled": 1 if req.enabled else 0,
@@ -61,14 +70,29 @@ async def save_config(req: NotificationConfigReq, user: dict = Depends(get_curre
 
 @router.post("/test")
 async def test_notification(user: dict = Depends(get_current_user)):
-    """Send a test notification."""
+    """Send a test notification to all configured channels for the user."""
+    # Let notifier resolve channels from user config (pass channels=None)
     await notifier.notify(
         "test_notification",
-        {"message": "这是一条测试通知", "user": user.get("username", "")},
-        channels=["webhook"],
+        {"message": "这是一条测试通知", "user": user.get("username", ""), "time": datetime.now().isoformat()},
+        channels=None,
         user_id=user["id"],
     )
-    return {"ok": True, "message": "Test notification sent"}
+    return {"ok": True, "message": "Test notification sent to all configured channels"}
+
+
+@router.post("/test/{channel}")
+async def test_notification_channel(channel: str, user: dict = Depends(get_current_user)):
+    """Send a test notification to a specific channel."""
+    if channel not in ("webhook", "email", "telegram"):
+        raise HTTPException(400, f"Unknown channel: {channel}")
+    await notifier.notify(
+        "test_notification",
+        {"message": f"这是一条 {channel} 测试通知", "user": user.get("username", ""), "time": datetime.now().isoformat()},
+        channels=[channel],
+        user_id=user["id"],
+    )
+    return {"ok": True, "message": f"Test notification sent via {channel}"}
 
 
 @router.get("/history")

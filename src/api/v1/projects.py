@@ -456,10 +456,26 @@ async def update_project_code(pid: str, body: dict = Body(...), user: dict = Dep
     if not proj:
         raise HTTPException(404)
     code = body.get("code", "")
+    old_code = proj.get("code", "")
+
     await db.update("projects", pid, {
         "code": code,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
+
+    # Auto-save version if code actually changed
+    if code.strip() and code.strip() != old_code.strip():
+        try:
+            from src.api.v1.project_versions import save_project_version
+            await save_project_version(
+                project_id=pid,
+                code=code,
+                extraction_rules=proj.get("extraction_rules", "") or "",
+                change_summary="Manual code edit",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save version: {e}")
+
     return {"ok": True, "chars": len(code)}
 
 
@@ -988,6 +1004,17 @@ async def refine_project(pid: str, req: RefineReq, user: dict = Depends(get_curr
         "messages": json.dumps(messages, ensure_ascii=False),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     })
+
+    # Auto-save version
+    try:
+        from src.api.v1.project_versions import save_project_version
+        await save_project_version(
+            project_id=pid,
+            code=new_code,
+            change_summary=f"Refine: {req.feedback[:80]}",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to save version: {e}")
 
     return await db.get("projects", pid)
 

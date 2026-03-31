@@ -419,6 +419,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </div>
     <div class="detail-tabs">
       <div class="detail-tab active" data-tab="editor" onclick="switchDetailTab('editor')">工作台</div>
+      <div class="detail-tab" data-tab="versions" onclick="switchDetailTab('versions')">📋 版本历史</div>
       <div class="detail-tab" data-tab="sink" onclick="switchDetailTab('sink')">Sink配置</div>
       <div class="detail-tab" data-tab="proxy" onclick="switchDetailTab('proxy')">代理配置</div>
       <div class="detail-tab" data-tab="browser" onclick="switchDetailTab('browser')">🌐 浏览器</div>
@@ -465,6 +466,25 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           </div>
         </div>
         <div id="test-result" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- Versions Tab -->
+    <div id="tab-versions" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;margin:0">版本历史</h3>
+        <button class="btn btn-secondary btn-sm" onclick="loadVersions()"><i class="ri-refresh-line"></i> 刷新</button>
+      </div>
+      <div id="versions-list" style="color:var(--text-muted)">加载中...</div>
+      <div id="version-diff-panel" class="hidden" style="margin-top:16px;border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="padding:12px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span id="version-diff-title" style="font-size:14px;font-weight:500"></span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" id="version-rollback-btn" onclick="rollbackVersion()"><i class="ri-arrow-go-back-line"></i> 回滚到此版本</button>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('version-diff-panel').classList.add('hidden')">关闭</button>
+          </div>
+        </div>
+        <pre id="version-diff-code" style="margin:0;padding:14px;background:var(--bg-input);font-size:12px;overflow:auto;max-height:500px;color:var(--text-secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap"></pre>
       </div>
     </div>
 
@@ -1317,9 +1337,10 @@ async function openProject(id) {
 }
 
 function switchDetailTab(tab) {
-  ['editor','sink','proxy','browser','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
+  ['editor','versions','sink','proxy','browser','deploy'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab));
   document.querySelectorAll('.detail-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
   if (tab === 'browser') loadSavedSessions();
+  if (tab === 'versions') loadVersions();
 }
 
 // Chat
@@ -2586,43 +2607,207 @@ async function loadQuotaBar() {
 
 async function showNotificationSettings() {
   try {
-    const cfg = await apiFetch('/api/v1/notifications/config');
-    const html = `<div style="padding:20px">
-      <h3>🔔 通知设置</h3>
-      <label>Webhook URL</label><input id="noti-webhook" class="form-input" value="${cfg.webhook_url||''}" placeholder="https://...">
-      <label>邮箱</label><input id="noti-email" class="form-input" value="${cfg.email||''}" placeholder="user@example.com">
-      <label>Telegram Chat ID</label><input id="noti-telegram" class="form-input" value="${cfg.telegram_chat_id||''}" placeholder="123456">
-      <div style="margin-top:12px;display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="saveNotificationConfig()">保存</button>
-        <button class="btn btn-secondary" onclick="testNotification()">发送测试</button>
+    const cfg = await api('GET', '/api/v1/notifications/config');
+    const allEvents = [
+      {key:'task_completed', label:'任务完成'},
+      {key:'task_failed', label:'任务失败'},
+      {key:'worker_offline', label:'Worker离线'},
+      {key:'worker_online', label:'Worker上线'},
+      {key:'quota_warning', label:'配额告警'},
+    ];
+    const userEvents = cfg.events || ['task_failed'];
+    const eventsHtml = allEvents.map(ev =>
+      `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" class="noti-event-cb" value="${ev.key}" ${userEvents.includes(ev.key)?'checked':''} style="accent-color:var(--accent)"> ${ev.label}
+      </label>`
+    ).join('');
+    const html = `<div style="padding:24px">
+      <h3 style="margin-bottom:16px">🔔 通知设置</h3>
+      <div class="form-group">
+        <label>Webhook URL</label>
+        <input id="noti-webhook" class="form-input" value="${esc(cfg.webhook_url||'')}" placeholder="https://your-webhook.com/notify">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">POST JSON: {"event": "...", "data": {...}}</div>
       </div>
+      <div class="form-group">
+        <label>通知邮箱</label>
+        <input id="noti-email" class="form-input" value="${esc(cfg.email||'')}" placeholder="user@example.com">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">需要管理员在系统设置中配置SMTP服务器</div>
+      </div>
+      <div class="form-group">
+        <label>Telegram Bot Token</label>
+        <input id="noti-tg-token" class="form-input" type="password" value="${esc(cfg.telegram_bot_token||'')}" placeholder="123456:ABC-DEF...">
+      </div>
+      <div class="form-group">
+        <label>Telegram Chat ID</label>
+        <input id="noti-tg-chatid" class="form-input" value="${esc(cfg.telegram_chat_id||'')}" placeholder="-100123456789">
+      </div>
+      <div class="form-group">
+        <label style="margin-bottom:8px">通知事件</label>
+        <div style="display:flex;flex-direction:column;gap:6px">${eventsHtml}</div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="noti-enabled" ${cfg.enabled!==false?'checked':''} style="accent-color:var(--accent)"> 启用通知
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveNotificationConfig()"><i class="ri-save-line"></i> 保存</button>
+        <button class="btn btn-secondary" onclick="testNotification()"><i class="ri-send-plane-line"></i> 测试全部</button>
+        <button class="btn btn-secondary btn-sm" onclick="testNotificationChannel('webhook')">测试 Webhook</button>
+        <button class="btn btn-secondary btn-sm" onclick="testNotificationChannel('email')">测试邮件</button>
+        <button class="btn btn-secondary btn-sm" onclick="testNotificationChannel('telegram')">测试 Telegram</button>
+      </div>
+      <div id="noti-history" style="margin-top:16px"></div>
     </div>`;
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.id = 'noti-modal';
     modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center';
-    modal.innerHTML = `<div style="background:var(--card-bg);border-radius:12px;max-width:450px;width:90%">${html}<button class="btn btn-secondary" style="margin:0 20px 20px" onclick="this.closest('.modal-overlay').remove()">关闭</button></div>`;
+    modal.onclick = e => { if(e.target === modal) modal.remove(); };
+    modal.innerHTML = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto">${html}<button class="btn btn-secondary" style="margin:0 24px 20px" onclick="this.closest('.modal-overlay').remove()">关闭</button></div>`;
     document.body.appendChild(modal);
+    // Load history
+    loadNotificationHistory();
   } catch(e) { toast(e.message,'error'); }
 }
 
 async function saveNotificationConfig() {
   try {
-    await apiFetch('/api/v1/notifications/config', {method:'POST', body:JSON.stringify({
+    const events = Array.from(document.querySelectorAll('.noti-event-cb:checked')).map(cb => cb.value);
+    await api('POST', '/api/v1/notifications/config', {
       webhook_url: document.getElementById('noti-webhook').value,
       email: document.getElementById('noti-email').value,
-      telegram_chat_id: document.getElementById('noti-telegram').value,
-    })});
-    toast('通知配置已保存','success');
-    document.getElementById('noti-modal')?.remove();
+      telegram_bot_token: document.getElementById('noti-tg-token').value,
+      telegram_chat_id: document.getElementById('noti-tg-chatid').value,
+      events: events,
+      enabled: document.getElementById('noti-enabled').checked,
+    });
+    toast('通知配置已保存');
   } catch(e) { toast(e.message,'error'); }
 }
 
 async function testNotification() {
   try {
-    await apiFetch('/api/v1/notifications/test', {method:'POST'});
-    toast('测试通知已发送','success');
+    await api('POST', '/api/v1/notifications/test');
+    toast('测试通知已发送到所有已配置渠道');
+    setTimeout(loadNotificationHistory, 2000);
   } catch(e) { toast(e.message,'error'); }
+}
+
+async function testNotificationChannel(channel) {
+  try {
+    await api('POST', `/api/v1/notifications/test/${channel}`);
+    toast(`${channel} 测试通知已发送`);
+    setTimeout(loadNotificationHistory, 2000);
+  } catch(e) { toast(e.message,'error'); }
+}
+
+async function loadNotificationHistory() {
+  const el = document.getElementById('noti-history');
+  if (!el) return;
+  try {
+    const rows = await api('GET', '/api/v1/notifications/history?limit=10');
+    if (!rows.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;margin-top:8px">暂无通知记录</div>'; return; }
+    el.innerHTML = '<div style="font-size:13px;font-weight:500;margin-bottom:8px">最近通知</div>' +
+      rows.map(r => {
+        const icon = r.status === 'sent' ? '✅' : '❌';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <span>${icon} ${esc(r.event)} → ${esc(r.channel)}</span>
+          <span style="color:var(--text-muted)">${fmtTime(r.created_at)}</span>
+        </div>`;
+      }).join('');
+  } catch(e) { el.innerHTML = ''; }
+}
+
+// ── Version Management ──
+let _selectedVersion = null;
+let _versionsCache = [];
+
+async function loadVersions() {
+  if (!currentProject) return;
+  const el = document.getElementById('versions-list');
+  try {
+    const versions = await api('GET', `/api/v1/projects/${currentProject.id}/versions`);
+    _versionsCache = versions;
+    if (!versions.length) {
+      el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)">暂无版本记录<br><span style="font-size:12px">编辑或修改代码后会自动保存版本</span></div>';
+      return;
+    }
+    el.innerHTML = '<div class="table-wrap"><table><thead><tr><th>版本</th><th>变更说明</th><th>代码长度</th><th>时间</th><th>操作</th></tr></thead><tbody>' +
+      versions.map(v => `<tr>
+        <td><span class="badge badge-blue">v${v.version}</span></td>
+        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.change_summary || '-')}</td>
+        <td>${v.code_length || 0} chars</td>
+        <td>${fmtTime(v.created_at)}</td>
+        <td style="display:flex;gap:4px">
+          <button class="btn btn-secondary btn-sm" onclick="viewVersion(${v.version})"><i class="ri-eye-line"></i> 查看</button>
+          <button class="btn btn-secondary btn-sm" onclick="diffVersion(${v.version})"><i class="ri-file-copy-line"></i> 对比</button>
+          <button class="btn btn-sm" style="background:var(--yellow);color:#000" onclick="confirmRollback(${v.version})"><i class="ri-arrow-go-back-line"></i></button>
+        </td>
+      </tr>`).join('') +
+      '</tbody></table></div>';
+  } catch(e) { el.innerHTML = `<div style="color:var(--red)">${esc(e.message)}</div>`; }
+}
+
+async function viewVersion(version) {
+  if (!currentProject) return;
+  try {
+    const v = await api('GET', `/api/v1/projects/${currentProject.id}/versions/${version}`);
+    _selectedVersion = version;
+    const panel = document.getElementById('version-diff-panel');
+    panel.classList.remove('hidden');
+    document.getElementById('version-diff-title').textContent = `版本 v${version} — ${v.change_summary || ''}`;
+    document.getElementById('version-diff-code').textContent = v.code || '(空)';
+    document.getElementById('version-rollback-btn').onclick = () => confirmRollback(version);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function diffVersion(version) {
+  if (!currentProject) return;
+  try {
+    const v = await api('GET', `/api/v1/projects/${currentProject.id}/versions/${version}`);
+    _selectedVersion = version;
+    const panel = document.getElementById('version-diff-panel');
+    panel.classList.remove('hidden');
+    document.getElementById('version-diff-title').textContent = `对比: 当前 vs v${version}`;
+
+    const currentCode = (currentProject.code || '').split('\n');
+    const versionCode = (v.code || '').split('\n');
+
+    // Simple line-by-line diff
+    let diffHtml = '';
+    const maxLen = Math.max(currentCode.length, versionCode.length);
+    for (let i = 0; i < maxLen; i++) {
+      const curLine = currentCode[i] ?? '';
+      const verLine = versionCode[i] ?? '';
+      if (curLine === verLine) {
+        diffHtml += `  ${esc(verLine)}\n`;
+      } else {
+        if (curLine) diffHtml += `<span style="color:var(--red);background:rgba(255,71,87,.1)">- ${esc(curLine)}</span>\n`;
+        if (verLine) diffHtml += `<span style="color:var(--green);background:rgba(0,214,143,.1)">+ ${esc(verLine)}</span>\n`;
+      }
+    }
+    document.getElementById('version-diff-code').innerHTML = diffHtml || '(无差异)';
+    document.getElementById('version-rollback-btn').onclick = () => confirmRollback(version);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function confirmRollback(version) {
+  if (!confirm(`确定回滚到版本 v${version}？当前代码会先自动保存。`)) return;
+  try {
+    const res = await api('POST', `/api/v1/projects/${currentProject.id}/versions/${version}/rollback`);
+    toast(res.message || '回滚成功');
+    // Refresh project
+    const proj = await api('GET', `/api/v1/projects/${currentProject.id}`);
+    currentProject = proj;
+    _setCode(proj.code || '');
+    loadVersions();
+    document.getElementById('version-diff-panel').classList.add('hidden');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function rollbackVersion() {
+  if (_selectedVersion) confirmRollback(_selectedVersion);
 }
 
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
