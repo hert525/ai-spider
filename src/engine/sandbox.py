@@ -416,15 +416,25 @@ def _static_security_check(code: str) -> str | None:
 
         # 检查危险 dunder 属性访问 — 防止沙箱逃逸
         # e.g. ().__class__.__bases__[0].__subclasses__()
+        # NOTE: __class__ and __dict__ are NOT blocked — too many false positives
         if isinstance(node, ast.Attribute):
             _DANGEROUS_DUNDERS = {
                 "__subclasses__", "__bases__", "__mro__", "__base__",
                 "__globals__", "__code__", "__func__",
-                "__self__", "__dict__", "__class__",
-                "__init_subclass__", "__set_name__",
                 "__builtins__", "__loader__", "__spec__",
+                "__getattribute__", "__reduce__", "__reduce_ex__",
+                "__closure__", "__traceback__",
             }
             if node.attr in _DANGEROUS_DUNDERS:
                 return f"禁止访问危险属性: {node.attr}"
+
+        # 检查 getattr(obj, "__dangerous__") 字符串绕过
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "getattr" and len(node.args) >= 2:
+                arg = node.args[1]
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    if arg.value in _DANGEROUS_DUNDERS:
+                        return f"禁止通过 getattr 访问: {arg.value}"
 
     return None

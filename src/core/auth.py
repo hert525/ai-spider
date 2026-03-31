@@ -13,9 +13,10 @@ from src.core.database import db
 
 async def hash_password(password: str) -> str:
     """Hash password with bcrypt. Returns bcrypt hash string."""
-    return await asyncio.to_thread(
+    hashed = await asyncio.to_thread(
         bcrypt.hashpw, password.encode("utf-8"), bcrypt.gensalt()
     )
+    return hashed.decode("utf-8")
 
 
 async def verify_password(password: str, hashed: str) -> bool:
