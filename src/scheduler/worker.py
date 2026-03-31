@@ -221,16 +221,17 @@ class WorkerProcess:
             logger.error(f"Task {task_id} failed (attempt {retry_count+1}/{max_retries+1}): {e}")
             await self._report(task_id, run_id, "failed", error=str(e))
             self.total_failed += 1
-            # Notify on final failure
-            try:
-                from src.core.notifier import notifier
-                await notifier.notify("task_failed", {
-                    "task_id": task_id,
-                    "error": str(e),
-                    "retries": max_retries,
-                })
-            except Exception:
-                pass
+            # Only notify on final failure (not during retries)
+            if retry_count >= max_retries:
+                try:
+                    from src.core.notifier import notifier
+                    await notifier.notify("task_failed", {
+                        "task_id": task_id,
+                        "error": str(e),
+                        "retries": max_retries,
+                    })
+                except Exception:
+                    pass
         finally:
             self.active_jobs -= 1
             self._running_task_ids.discard(task_id)
