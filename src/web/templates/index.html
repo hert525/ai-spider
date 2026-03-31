@@ -850,7 +850,7 @@ function connectWS() {
   const wsPath = API_BASE + '/ws/' + apiKey;
   const wsUrl = wsProtocol + '//' + location.host + wsPath;
   _ws = new WebSocket(wsUrl);
-  _ws.onopen = () => { console.log('WS connected'); };
+  _ws.onopen = () => { console.log('WS connected'); _wsRetryCount = 0; };
   _ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -858,8 +858,10 @@ function connectWS() {
     } catch(err) { console.warn('WS parse error', err); }
   };
   _ws.onclose = () => {
-    console.log('WS disconnected, reconnecting in 5s...');
-    setTimeout(connectWS, 5000);
+    _wsRetryCount = (_wsRetryCount || 0) + 1;
+    const delay = Math.min(5000 * Math.pow(2, _wsRetryCount - 1), 60000);
+    console.log(`WS disconnected, reconnecting in ${delay/1000}s (attempt ${_wsRetryCount})...`);
+    setTimeout(connectWS, delay);
   };
   _ws.onerror = (e) => { console.warn('WS error', e); };
   // Keepalive ping every 30s
@@ -1268,7 +1270,7 @@ async function openProject(id) {
       const box = document.getElementById('chat-messages');
       box.innerHTML = msgs.map(m => {
         const cls = m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'ai';
-        return `<div class="chat-msg ${cls}">${m.isHtml ? m.content : esc(m.content)}</div>`;
+        return `<div class="chat-msg ${cls}">${esc(m.content)}</div>`;
       }).join('');
       // Init chat with project context
       if (currentProject.code && currentProject.code.trim()) {
@@ -1400,8 +1402,8 @@ async function _saveChatHistory() {
   const box = document.getElementById('chat-messages');
   const msgs = Array.from(box.querySelectorAll('.chat-msg')).map(el => ({
     role: el.classList.contains('user') ? 'user' : el.classList.contains('system') ? 'system' : 'assistant',
-    content: el.innerHTML,
-    isHtml: true,
+    content: el.textContent,
+    isHtml: false,
   }));
   try {
     await api('PUT', `/api/v1/projects/${currentProject.id}`, { messages: JSON.stringify(msgs) });
