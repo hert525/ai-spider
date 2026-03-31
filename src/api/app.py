@@ -157,15 +157,18 @@ from src.api.middleware.rate_limit import IPRateLimitMiddleware
 app.add_middleware(IPRateLimitMiddleware, minute_limit=60, hour_limit=1000)
 
 # ── CORS ──
+import os as _os
 from starlette.middleware.cors import CORSMiddleware
+_cors_origins = _os.environ.get("CORS_ORIGINS", "").strip()
+_allowed_origins = [o.strip() for o in _cors_origins.split(",") if o.strip()] if _cors_origins else [
+    "https://rthe525.top",
+    "https://www.rthe525.top",
+    "http://127.0.0.1:8901",
+    "http://localhost:8901",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rthe525.top",
-        "https://www.rthe525.top",
-        "http://127.0.0.1:8901",
-        "http://localhost:8901",
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["X-API-Key", "Content-Type", "Authorization"],

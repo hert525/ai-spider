@@ -216,39 +216,21 @@ class WorkerProcess:
                 pass
 
         except Exception as e:
-            # Retry logic
-            if retry_count < max_retries:
-                retry_delays = [10, 30, 90]
-                delay = retry_delays[min(retry_count, len(retry_delays) - 1)]
-                logger.warning(f"Task {task_id} failed (attempt {retry_count+1}/{max_retries}), retrying in {delay}s: {e}")
-                try:
-                    await self._report(task_id, run_id, "retrying", error=str(e),
-                                       retry_count=retry_count + 1,
-                                       next_retry_at=(datetime.utcnow() + __import__('datetime').timedelta(seconds=delay)).isoformat())
-                except Exception:
-                    pass
-                await asyncio.sleep(delay)
-                task["retry_count"] = retry_count + 1
-                self.active_jobs -= 1
-                self._running_task_ids.discard(task_id)
-                self.active_jobs += 1
-                self._running_task_ids.add(task_id)
-                await self._execute_task(task)
-                return
-            else:
-                logger.error(f"Task {task_id} failed after {max_retries} retries: {e}")
-                await self._report(task_id, run_id, "failed", error=str(e))
-                self.total_failed += 1
-                # Notify on final failure
-                try:
-                    from src.core.notifier import notifier
-                    await notifier.notify("task_failed", {
-                        "task_id": task_id,
-                        "error": str(e),
-                        "retries": max_retries,
-                    })
-                except Exception:
-                    pass
+            # Report failure — retry is handled by the Redis queue (queue.fail()),
+            # NOT here. Previous recursive self._execute_task() caused double-retry.
+            logger.error(f"Task {task_id} failed (attempt {retry_count+1}/{max_retries+1}): {e}")
+            await self._report(task_id, run_id, "failed", error=str(e))
+            self.total_failed += 1
+            # Notify on final failure
+            try:
+                from src.core.notifier import notifier
+                await notifier.notify("task_failed", {
+                    "task_id": task_id,
+                    "error": str(e),
+                    "retries": max_retries,
+                })
+            except Exception:
+                pass
         finally:
             self.active_jobs -= 1
             self._running_task_ids.discard(task_id)
