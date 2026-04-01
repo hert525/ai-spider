@@ -442,7 +442,6 @@ class FetchNode(BaseNode):
                             if api_captured:
                                 api_url, api_body = api_captured[0]
                                 # Extract distinctive URL pattern
-                                from urllib.parse import urlparse
                                 path = urlparse(api_url).path
                                 parts = path.strip("/").split("/")
                                 pg_config["api_pattern"] = parts[-1] if parts else ""
