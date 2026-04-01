@@ -1,4 +1,6 @@
 """GenerateNode - LLM code generation for crawlers."""
+from urllib.parse import urlparse
+
 from .base import BaseNode
 from src.core.llm import llm_completion
 from src.core.config import settings
@@ -120,7 +122,6 @@ class GenerateNode(BaseNode):
         """Try common API patterns for a URL and return a hint with actual response structure."""
         import httpx
         import json
-        from urllib.parse import urlparse
 
         parsed = urlparse(target_url)
         domain = parsed.hostname or ""

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel
 from typing import Optional
@@ -668,8 +669,7 @@ async def test_project(pid: str, req: TestReq, user: dict = Depends(get_current_
                         _all_cookies.extend(cookie_config.get("cookies", []))
                     # 2. From browser_sessions table (saved via browser login)
                     try:
-                        from urllib.parse import urlparse as _urlparse
-                        _domain = _urlparse(url).hostname or ""
+                        _domain = urlparse(url).hostname or ""
                         _saved = await db.query(
                             "SELECT cookies FROM browser_sessions WHERE user_id = ? AND domain = ? AND (project_id = ? OR project_id = '' OR project_id IS NULL) AND status = 'active' ORDER BY updated_at DESC LIMIT 1",
                             [user["id"], _domain, pid],
