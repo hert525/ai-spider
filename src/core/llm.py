@@ -76,8 +76,17 @@ async def llm_completion(
     last_error = None
     for i, m in enumerate(unique_models):
         try:
-            # 主模型用配置的api_key/api_base；fallback模型走litellm自动路由
-            extra = primary_params if i == 0 else {}
+            # 主模型用配置的api_key/api_base；同provider的fallback也继承api_base
+            if i == 0:
+                extra = primary_params
+            else:
+                # fallback模型如果和主模型同provider，继承api_base
+                _fb_provider = m.split("/")[0] if "/" in m else ""
+                _pri_provider = unique_models[0].split("/")[0] if "/" in unique_models[0] else ""
+                if _fb_provider == _pri_provider and "api_base" in primary_params:
+                    extra = {"api_base": primary_params["api_base"]}
+                else:
+                    extra = {}
             # 过滤掉kwargs中已有的key
             call_extra = {k: v for k, v in extra.items() if k not in kwargs}
             resp = await acompletion(
