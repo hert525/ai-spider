@@ -428,7 +428,8 @@ async def create_project(req: CreateProjectReq, user: dict = Depends(get_current
                 except Exception as at_e:
                     logger.warning(f"Auto-test failed for project {project.id}: {at_e}")
         except Exception as e:
-            logger.error(f"Generation failed for project {project.id}: {e}")
+            import traceback
+            logger.error(f"Generation failed for project {project.id}: {e}\n{traceback.format_exc()}")
             await db.update("projects", project.id, {
                 "status": ProjectStatus.FAILED,
                 "messages": json.dumps([
